@@ -19,6 +19,10 @@
 
 #pragma once
 
+#include <tchar.h>
+
+static const TCHAR* VPN_CONNECTION_NAME = _T("PsiphonV");
+
 static const int MAX_WORKER_THREAD_POOL_SIZE = 5;
 
 static const char* LOCAL_LISTEN_IP = "127.0.0.1";

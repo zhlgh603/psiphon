@@ -19,13 +19,18 @@
 
 #pragma once
 
-// Including SDKDDKVer.h defines the highest available Windows platform.
+#include "ras.h"
 
-// If you wish to build your application for a previous Windows platform, include WinSDKVer.h and
-// set the _WIN32_WINNT macro to the platform you wish to support before including SDKDDKVer.h.
+using namespace std;
 
-// We only support Windows XP and later because we use L2TP/IPSec PSK and that is not supported
-// on lower versions.
-#define _WIN32_WINNT 0x0501 
+class VPNConnection
+{
+public:
+    VPNConnection(void);
+    virtual ~VPNConnection(void);
+    bool Establish(void);
+    bool Remove(void);
 
-#include <SDKDDKVer.h>
+private:
+    HRASCONN m_rasConnection;
+};

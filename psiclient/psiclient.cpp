@@ -22,7 +22,7 @@
 
 #include "stdafx.h"
 #include "psiclient.h"
-#include "networksettings.h" // TODO: rename
+#include "vpnconnection.h"
 #include "webbrowser.h"
 
 #define MAX_LOADSTRING 100
@@ -268,12 +268,12 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
 //=== other stuff ========================================================
 
 WebBrowser g_webBrowser;
-NetworkSettings g_proxySettings;
+VPNConnection g_vpnConnection;
 
 void Start()
 {
     // Configure the proxy settings
-    if (!g_proxySettings.Configure())
+    if (!g_vpnConnection.Establish())
     {
         my_print(false, _T("error configuring proxy settings"));
     }
@@ -292,7 +292,7 @@ void Stop()
     g_webBrowser.Close();
 
     // Reset the proxy settings
-    g_proxySettings.Revert();
+    g_vpnConnection.Remove();
 }
 
 //
