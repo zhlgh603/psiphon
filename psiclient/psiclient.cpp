@@ -191,7 +191,7 @@ HWND CreateToolbar(HWND hWndParent)
 
     HIMAGELIST hImageList = ImageList_LoadImage(
         hInst, MAKEINTRESOURCE(IDB_TOOLBAR_ICONS),
-        bitmapSize, numButtons, GetSysColor(COLOR_BTNFACE),
+        bitmapSize, numButtons, CLR_DEFAULT, // GetSysColor(COLOR_BTNFACE),
         IMAGE_BITMAP, LR_CREATEDIBSECTION);
 
     // TODO: transparency
