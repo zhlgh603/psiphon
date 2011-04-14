@@ -23,7 +23,6 @@
 #include "stdafx.h"
 #include "psiclient.h"
 #include "vpnconnection.h"
-#include "webbrowser.h"
 
 #define MAX_LOADSTRING 100
 
@@ -267,7 +266,7 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
 
 //=== other stuff ========================================================
 
-WebBrowser g_webBrowser;
+
 VPNConnection g_vpnConnection;
 
 void Start()
@@ -275,22 +274,16 @@ void Start()
     // Configure the proxy settings
     if (!g_vpnConnection.Establish())
     {
-        my_print(false, _T("error configuring proxy settings"));
+        my_print(false, _T("Error configuring VPN settings"));
     }
     else
     {
-        // Start web browser
-        g_webBrowser.Open();
-
-        my_print(false, _T("PsiphonY started"));
+        my_print(false, _T("Establishing connection..."));
     }
 }
 
 void Stop()
 {
-    // Stop web browser
-    g_webBrowser.Close();
-
     // Reset the proxy settings
     g_vpnConnection.Remove();
 }

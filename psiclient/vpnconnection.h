@@ -21,8 +21,6 @@
 
 #include "ras.h"
 
-using namespace std;
-
 class VPNConnection
 {
 public:
@@ -30,7 +28,4 @@ public:
     virtual ~VPNConnection(void);
     bool Establish(void);
     bool Remove(void);
-
-private:
-    HRASCONN m_rasConnection;
 };

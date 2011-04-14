@@ -23,11 +23,10 @@
 #include "psiclient.h"
 #include "ras.h"
 #include "raserror.h"
+#include "webbrowser.h"
 
 VPNConnection::VPNConnection(void)
 {
-    // Don't use INVALID_HANDLE_VALUE.  This needs to be set to 0 for RasDial to succeed.
-    m_rasConnection = 0;
 }
 
 VPNConnection::~VPNConnection(void)
@@ -38,6 +37,15 @@ VPNConnection::~VPNConnection(void)
 void CALLBACK RasDialCallback(UINT, RASCONNSTATE rasConnState, DWORD dwError)
 {
     my_print(false, _T("RasDialCallback (%d %d)"), rasConnState, dwError);
+    if (0 != dwError)
+    {
+        my_print(false, _T("Connection failed."));
+    }
+    else if (RASCS_Connected == rasConnState)
+    {
+        my_print(false, _T("Successfully connected."));
+        OpenBrowser();
+    }
 }
 
 bool VPNConnection::Establish(void)
@@ -111,27 +119,12 @@ bool VPNConnection::Establish(void)
     lstrcpy(vpnParams.szPassword, _T("password")); // This can also be hardcoded because
                                                    // the server authentication (which we
                                                    // really care about) is in IPSec using PSK
-    m_rasConnection = 0;
-    returnCode = RasDial(0, 0, &vpnParams, 0, &RasDialCallback, &m_rasConnection);
+    HRASCONN rasConnection = 0;
+    returnCode = RasDial(0, 0, &vpnParams, 0, &RasDialCallback, &rasConnection);
     if (ERROR_SUCCESS != returnCode)
     {
         my_print(false, _T("RasDial failed (%d)"), returnCode);
         return false;
-    }
-
-    // Check the connection status
-    RASCONNSTATUS status;
-    memset(&status, 0, sizeof(status));
-    status.dwSize = sizeof(status);
-    returnCode = RasGetConnectStatus(m_rasConnection, &status);
-    if (ERROR_SUCCESS != returnCode)
-    {
-        my_print(false, _T("RasGetConnectStatus failed (%d)"), returnCode);
-        return false;
-    }
-    if (RASCS_Connected != status.rasconnstate)
-    {
-        my_print(false, _T("Failed to connect."));
     }
 
     return true;
@@ -141,27 +134,67 @@ bool VPNConnection::Remove(void)
 {
     DWORD returnCode = ERROR_SUCCESS;
 
-    // Hangup
-    if (0 != m_rasConnection)
+    LPRASCONN rasConnections = 0;
+    DWORD bufferSize = 0;
+    DWORD connections = 0;
+    returnCode = RasEnumConnections(rasConnections, &bufferSize, &connections);
+
+    if (ERROR_BUFFER_TOO_SMALL == returnCode)
     {
-        returnCode = RasHangUp(m_rasConnection);
-        if (ERROR_SUCCESS != returnCode)
+        // Allocate the memory needed for the array of RAS structure(s).
+        rasConnections = (LPRASCONN)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
+        if (!rasConnections)
         {
-            my_print(false, _T("RasHangUp failed (%d)"), returnCode);
+            my_print(false, _T("HeapAlloc failed"));
+            return false;
+        }
+ 
+        // The first RASCONN structure in the array must contain the RASCONN structure size
+        rasConnections[0].dwSize = sizeof(RASCONN);
+		
+        // Call RasEnumConnections to enumerate active connections
+        returnCode = RasEnumConnections(rasConnections, &bufferSize, &connections);
+
+        // If successful, find the one with VPN_CONNECTION_NAME.
+        if (ERROR_SUCCESS == returnCode)
+        {
+            for (DWORD i = 0; i < connections; i++)
+            {
+                if (!_tcscmp(rasConnections[i].szEntryName, VPN_CONNECTION_NAME))
+                {
+                    // Hangup
+                    HRASCONN rasConnection = rasConnections[i].hrasconn;
+                    returnCode = RasHangUp(rasConnection);
+                    if (ERROR_SUCCESS != returnCode)
+                    {
+                        my_print(false, _T("RasHangUp failed (%d)"), returnCode);
+                    }
+
+                    RASCONNSTATUS status;
+                    memset(&status, 0, sizeof(status));
+                    status.dwSize = sizeof(status);
+                    // Wait until the connection has been terminated.
+                    // See the remarks here:
+                    // http://msdn.microsoft.com/en-us/library/aa377567(VS.85).aspx
+                    while(ERROR_INVALID_HANDLE != RasGetConnectStatus(rasConnection, &status))
+                    {
+                        Sleep(0);
+                    }
+                }
+		    }
         }
 
-        RASCONNSTATUS status;
-        memset(&status, 0, sizeof(status));
-        status.dwSize = sizeof(status);
-        // Wait until the connection has been terminated.
-        // See the remarks here:
-        // http://msdn.microsoft.com/en-us/library/aa377567(VS.85).aspx
-        while(ERROR_INVALID_HANDLE != RasGetConnectStatus(m_rasConnection, &status))
+        //Deallocate memory for the connection buffer
+        HeapFree(GetProcessHeap(), 0, rasConnections);
+        rasConnections = 0;
+    }
+    else
+    {
+        if (connections > 0)
         {
-            Sleep(0);
+            my_print(false, _T("RasEnumConnections failed to acquire the buffer size"));
+            return false;
         }
-
-        m_rasConnection = 0;
     }
 
     // Delete the connection

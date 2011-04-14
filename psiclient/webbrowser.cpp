@@ -21,164 +21,17 @@
 #include "config.h"
 #include "psiclient.h"
 #include "webbrowser.h"
-#include "winuser.h"
-#include "Tlhelp32.h"
+#include "shellapi.h"
 
-#include <string>
-
-using namespace std;
-
-WebBrowser::WebBrowser(void)
+void OpenBrowser(void)
 {
-    ZeroMemory(&m_pi, sizeof(m_pi));
-}
+    HINSTANCE returnValue = ShellExecute(0, _T("open"), WEB_BROWSER_HOME_PAGE, 0, 0, SW_SHOWNORMAL);
 
-WebBrowser::~WebBrowser(void)
-{
-    Close();
-}
-
-void WebBrowser::Open(void)
-{
-    Close();
-
-    STARTUPINFOA si;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-
-    string command_line = "IEXPLORE.EXE ";
-    command_line += WEB_BROWSER_HOME_PAGE;
-
-    // Start the child process.
-    if (!CreateProcessA(
-                "C:\\Program Files (x86)\\Internet Explorer\\IEXPLORE.EXE",
-                const_cast<char*>(command_line.c_str()),
-                NULL, NULL, FALSE, 0, NULL, NULL,
-                &si,
-                &m_pi)
-        && // TODO: should determine the correct path, but maybe this is OK instead
-        !CreateProcessA(
-                "C:\\Program Files\\Internet Explorer\\IEXPLORE.EXE",
-                const_cast<char*>(command_line.c_str()),
-                NULL, NULL, FALSE, 0, NULL, NULL,
-                &si,
-                &m_pi))
+    // If the function succeeds, it returns a value greater than 32. If the function fails,
+    // it returns an error value that indicates the cause of the failure. 
+    // http://msdn.microsoft.com/en-us/library/bb762153(v=vs.85).aspx
+    if ((int)returnValue <= 32)
     {
-        my_print(false, _T("CreateProcess failed (%d)"), GetLastError());
+        my_print(false, _T("ShellExecute failed (%d)"), (int)returnValue);
     }
-}
-
-BOOL __stdcall EnumWindowsProc(HWND hWnd, LPARAM lParam)
-{
-    // close all top-level windows of class "IEFrame" belonging to target process
-
-    DWORD dwProcessID = NULL;
-    TCHAR szClassName[1024];
-
-    GetWindowThreadProcessId(hWnd, &dwProcessID);
-    if (!GetClassName(hWnd, szClassName, sizeof(szClassName)/sizeof(TCHAR) - 1))
-    {
-        my_print(false, _T("GetClassName failed (%d)"), GetLastError());
-        return TRUE;
-    }
-
-    if (dwProcessID == (DWORD)lParam && _tcscmp(szClassName, _T("IEFrame")) == 0)
-    {
-        // TODO: use EndTask?
-        // http://msdn.microsoft.com/en-us/library/ms633492%28VS.85%29.aspx
-        //EndTask(hWnd, FALSE, TRUE);
-
-        SendMessage(hWnd, WM_CLOSE, 0, 0);
-        Sleep(100);
-    }
-
-    return TRUE;
-}
-
-void CloseWindows(DWORD dwProcessId)
-{
-    EnumWindows(EnumWindowsProc, (LPARAM)dwProcessId);
-}
-
-void CloseIEProcesses(void)
-{
-    HANDLE hSnapShot;
-    BOOL bContinue;
-    PROCESSENTRY32 stProcessEntry;
-
-    hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-
-    ZeroMemory(&stProcessEntry, sizeof(stProcessEntry));
-    stProcessEntry.dwSize = sizeof(stProcessEntry);
-    bContinue = Process32First(hSnapShot, &stProcessEntry);
-
-    while (bContinue)
-    {
-        if (0 == _tcsicmp(stProcessEntry.szExeFile, _T("IEXPLORE.EXE")))
-        {
-            CloseWindows(stProcessEntry.th32ProcessID);
-        }
-
-        ZeroMemory(&stProcessEntry, sizeof(stProcessEntry));
-        stProcessEntry.dwSize = sizeof(stProcessEntry);
-        bContinue = Process32Next(hSnapShot, &stProcessEntry);
-    }
-
-    CloseHandle(hSnapShot);
-}
-
-bool IsIEProcessRunning(void)
-{
-    bool bResult = false;
-    HANDLE hSnapShot;
-    BOOL bContinue;
-    PROCESSENTRY32 stProcessEntry;
-
-    hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-
-    ZeroMemory(&stProcessEntry, sizeof(stProcessEntry));
-    stProcessEntry.dwSize = sizeof(stProcessEntry);
-    bContinue = Process32First(hSnapShot, &stProcessEntry);
-
-    while (bContinue)
-    {
-        if (0 == _tcsicmp(stProcessEntry.szExeFile, _T("IEXPLORE.EXE")))
-        {
-            bResult = true;
-            break;
-        }
-
-        ZeroMemory(&stProcessEntry, sizeof(stProcessEntry));
-        stProcessEntry.dwSize = sizeof(stProcessEntry);
-        bContinue = Process32Next(hSnapShot, &stProcessEntry);
-    }
-
-    CloseHandle(hSnapShot);
-
-    return bResult;
-}
-
-extern HWND g_hWnd;
-
-void WebBrowser::Close(void)
-{
-    if (m_pi.dwProcessId != 0 && IsIEProcessRunning())
-    {
-        // if we spawned an IE process, close *ALL* IE processes
-        // we must close all to cover the case where IE was running
-        // befoere our spawn and took over our process
-
-        int rc = MessageBox(
-                    g_hWnd,
-                    _T("Close Internet Explorer?"),
-                    _T("PsiphonY"),
-                    MB_YESNO|MB_ICONQUESTION|MB_SETFOREGROUND|MB_TOPMOST|MB_APPLMODAL);
-        if (rc == IDYES)
-        {
-            CloseIEProcesses();
-    
-        }
-    }
-
-    ZeroMemory(&m_pi, sizeof(m_pi));
 }

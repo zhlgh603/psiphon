@@ -29,6 +29,6 @@ static const char* LOCAL_LISTEN_IP = "127.0.0.1";
 static const unsigned short LOCAL_LISTEN_PORT = 8080;
 static const char* HTTP_PROXY_HOST = "localhost"; /* resolved by the server */ 
 
-static const char* WEB_BROWSER_HOME_PAGE = "https://www.facebook.com";
+static const TCHAR* WEB_BROWSER_HOME_PAGE = _T("https://www.facebook.com");
 
 // TODO: VPN settings, home page

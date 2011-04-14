@@ -19,16 +19,4 @@
 
 #pragma once
 
-#include "windows.h"
-
-class WebBrowser
-{
-public:
-    WebBrowser(void);
-    virtual ~WebBrowser(void);
-    void Open(void);
-    void Close(void);
-
-private:
-    PROCESS_INFORMATION m_pi;
-};
+void OpenBrowser(void);
