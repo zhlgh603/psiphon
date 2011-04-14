@@ -36,7 +36,8 @@ VPNConnection::~VPNConnection(void)
 
 void CALLBACK RasDialCallback(UINT, RASCONNSTATE rasConnState, DWORD dwError)
 {
-    my_print(false, _T("RasDialCallback (%d %d)"), rasConnState, dwError);
+    // TODO: spinner or progress bar
+    my_print(true, _T("RasDialCallback (%d %d)"), rasConnState, dwError);
     if (0 != dwError)
     {
         my_print(false, _T("Connection failed."));
@@ -127,11 +128,16 @@ bool VPNConnection::Establish(void)
         return false;
     }
 
+    my_print(false, _T("Establishing connection..."));
+
     return true;
 }
 
 bool VPNConnection::Remove(void)
 {
+    // Based on sample code in:
+    // http://msdn.microsoft.com/en-us/library/aa377284%28v=vs.85%29.aspx
+
     DWORD returnCode = ERROR_SUCCESS;
 
     LPRASCONN rasConnections = 0;
@@ -139,7 +145,12 @@ bool VPNConnection::Remove(void)
     DWORD connections = 0;
     returnCode = RasEnumConnections(rasConnections, &bufferSize, &connections);
 
-    if (ERROR_BUFFER_TOO_SMALL == returnCode)
+    if (ERROR_BUFFER_TOO_SMALL != returnCode && connections > 0)
+    {
+        my_print(false, _T("RasEnumConnections failed (%d)"), returnCode);
+        // Fall through to delete entry
+    }
+    else if (ERROR_BUFFER_TOO_SMALL == returnCode && connections > 0)
     {
         // Allocate the memory needed for the array of RAS structure(s).
         rasConnections = (LPRASCONN)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
@@ -156,7 +167,12 @@ bool VPNConnection::Remove(void)
         returnCode = RasEnumConnections(rasConnections, &bufferSize, &connections);
 
         // If successful, find the one with VPN_CONNECTION_NAME.
-        if (ERROR_SUCCESS == returnCode)
+        if (ERROR_SUCCESS != returnCode)
+        {
+            my_print(false, _T("RasEnumConnections failed (%d)"), returnCode);
+            // Fall through to delete entry
+        }
+        else
         {
             for (DWORD i = 0; i < connections; i++)
             {
@@ -168,6 +184,7 @@ bool VPNConnection::Remove(void)
                     if (ERROR_SUCCESS != returnCode)
                     {
                         my_print(false, _T("RasHangUp failed (%d)"), returnCode);
+                        // Fall through to delete entry
                     }
 
                     RASCONNSTATUS status;
@@ -176,10 +193,24 @@ bool VPNConnection::Remove(void)
                     // Wait until the connection has been terminated.
                     // See the remarks here:
                     // http://msdn.microsoft.com/en-us/library/aa377567(VS.85).aspx
+                    const int sleepTime = 100; // milliseconds
+                    const int maxSleepTime = 5000; // 5 seconds max wait time
+                    int totalSleepTime = 0;
                     while(ERROR_INVALID_HANDLE != RasGetConnectStatus(rasConnection, &status))
                     {
-                        Sleep(0);
+                        Sleep(sleepTime);
+                        totalSleepTime += sleepTime;
+                        if (totalSleepTime >= maxSleepTime)
+                        {
+                            // Don't hang forever
+                            my_print(false, _T("RasHangUp/RasGetConnectStatus timed out (%d)"), GetLastError());
+                            break;
+                        }
                     }
+
+                    my_print(false, _T("Disconnected"));
+
+                    break; // Entry name is unique and we found it
                 }
 		    }
         }
@@ -187,14 +218,6 @@ bool VPNConnection::Remove(void)
         //Deallocate memory for the connection buffer
         HeapFree(GetProcessHeap(), 0, rasConnections);
         rasConnections = 0;
-    }
-    else
-    {
-        if (connections > 0)
-        {
-            my_print(false, _T("RasEnumConnections failed to acquire the buffer size"));
-            return false;
-        }
     }
 
     // Delete the connection
@@ -205,6 +228,6 @@ bool VPNConnection::Remove(void)
         my_print(false, _T("RasDeleteEntry failed (%d)"), returnCode);
         return false;
     }
-    
+
     return true;
 }

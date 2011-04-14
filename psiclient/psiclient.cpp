@@ -271,20 +271,13 @@ VPNConnection g_vpnConnection;
 
 void Start()
 {
-    // Configure the proxy settings
-    if (!g_vpnConnection.Establish())
-    {
-        my_print(false, _T("Error configuring VPN settings"));
-    }
-    else
-    {
-        my_print(false, _T("Establishing connection..."));
-    }
+    // Configure the VPN and connect
+    g_vpnConnection.Establish();
 }
 
 void Stop()
 {
-    // Reset the proxy settings
+    // Disconnect from VPN and remove configuration
     g_vpnConnection.Remove();
 }
 
