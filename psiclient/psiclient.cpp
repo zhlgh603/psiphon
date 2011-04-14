@@ -128,7 +128,7 @@ HWND g_hWnd;
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    HWND hWnd;
-   int width = 150, height = 100;
+   int width = 160, height = 140;
    RECT rect = {0, 0, width, height};
 
    hInst = hInstance; // Store instance handle in our global variable
@@ -136,10 +136,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
 
    hWnd = CreateWindowEx(
+            //WS_EX_TOPMOST|WS_EX_TOOLWINDOW,
             WS_EX_TOPMOST|WS_EX_TOOLWINDOW,
             szWindowClass,
             szTitle,
-            WS_OVERLAPPEDWINDOW & ~WS_SYSMENU,
+            //WS_OVERLAPPEDWINDOW & ~WS_SYSMENU,
+            WS_OVERLAPPEDWINDOW,
             // CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
             rect.right - width, rect.bottom - height, width, height,
             NULL, NULL, hInstance, NULL);
@@ -164,13 +166,15 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 HWND g_hToolBar = NULL;
 
+const int BUTTON_SIZE = 64;
+
 HWND CreateToolbar(HWND hWndParent)
 {
     // Define some constants.
     const int ImageListID = 0;
-    const int numButtons = 3;
+    const int numButtons = 2;
     const DWORD buttonStyles = BTNS_AUTOSIZE;
-    const int bitmapSize = 32;
+    const int bitmapSize = BUTTON_SIZE;
 
     // Create the toolbar.
     HWND hWndToolbar = CreateWindowEx(
@@ -203,13 +207,7 @@ HWND CreateToolbar(HWND hWndParent)
         { MAKELONG(0, ImageListID), IDM_START, TBSTATE_ENABLED, 
           buttonStyles, {0}, 0, (INT_PTR)L"" },
         { MAKELONG(1, ImageListID), IDM_STOP, TBSTATE_ENABLED, 
-          buttonStyles, {0}, 0, (INT_PTR)L"" },
-        //{ MAKELONG(2, ImageListID), IDM_SHOW_DEBUG_MESSAGES, TBSTATE_ENABLED, 
-        //  buttonStyles, {0}, 0, (INT_PTR)L"" },
-        //{ MAKELONG(3, ImageListID), IDM_HELP, TBSTATE_ENABLED, 
-        //  buttonStyles, {0}, 0, (INT_PTR)L"" },
-        { MAKELONG(4, ImageListID), IDM_EXIT, TBSTATE_ENABLED, 
-          buttonStyles, {0}, 0, (INT_PTR)L"" },
+          buttonStyles, {0}, 0, (INT_PTR)L"" }
     };
 
     // Add buttons.
@@ -298,7 +296,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     HDC hdc;
     RECT rect;
     HGDIOBJ font;
-    int toolbar_height = 48; // TODO: calculate
+    int toolbar_height = BUTTON_SIZE + 16; // TODO: calculate
 
     switch (message)
     {
@@ -313,6 +311,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                                 hWnd, NULL, NULL, NULL);
         font = GetStockObject(DEFAULT_GUI_FONT);
         SendMessage(g_hListBox, WM_SETFONT, (WPARAM)font, NULL);
+
+        Start();
 
         break;
     case WM_SIZE:
