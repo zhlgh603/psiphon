@@ -142,11 +142,25 @@ bool VPNConnection::Remove(void)
 
     DWORD returnCode = ERROR_SUCCESS;
 
-    LPRASCONN rasConnections = 0;
-    DWORD bufferSize = 0;
+    RASCONN conn;
+    memset(&conn, 0, sizeof(conn));
+    conn.dwSize = sizeof(conn);
+    LPRASCONN rasConnections = &conn;
+    DWORD bufferSize = sizeof(conn);
     DWORD connections = 0;
     returnCode = RasEnumConnections(rasConnections, &bufferSize, &connections);
 
+    // On Windows XP, we can't call RasEnumConnections with rasConnections = 0 because it
+    // fails with 632 ERROR_INVALID_SIZE.  So we set rasConnections to point to a single
+    // RASCONN, and we'll always reallocate, even if there is only one RASCONN and the
+    // first call succeeds.
+    if (ERROR_SUCCESS == returnCode)
+    {
+        returnCode = ERROR_BUFFER_TOO_SMALL;
+    }
+
+    // TODO: Race condition where a new connection is added between the buffersize check
+    //       and the second call.
     if (ERROR_BUFFER_TOO_SMALL != returnCode && connections > 0)
     {
         my_print(false, _T("RasEnumConnections failed (%d)"), returnCode);
@@ -154,6 +168,12 @@ bool VPNConnection::Remove(void)
     }
     else if (ERROR_BUFFER_TOO_SMALL == returnCode && connections > 0)
     {
+        // See "A fix to work with older versions of Windows"
+        if (bufferSize < (connections * sizeof(RASCONN)))
+        {
+            bufferSize = connections * sizeof(RASCONN);
+        }
+
         // Allocate the memory needed for the array of RAS structure(s).
         rasConnections = (LPRASCONN)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
         if (!rasConnections)
