@@ -135,7 +135,9 @@ bool VPNConnection::Establish(void)
 
 bool VPNConnection::Remove(void)
 {
-    // Based on sample code in:
+    bool deleteEntry = true;
+
+    // Disconnect by entry name -- based on sample code in:
     // http://msdn.microsoft.com/en-us/library/aa377284%28v=vs.85%29.aspx
 
     DWORD returnCode = ERROR_SUCCESS;
@@ -184,7 +186,11 @@ bool VPNConnection::Remove(void)
                     if (ERROR_SUCCESS != returnCode)
                     {
                         my_print(false, _T("RasHangUp failed (%d)"), returnCode);
-                        // Fall through to delete entry
+
+                        // Don't delete entry when in this state -- Windows gets confused
+                        deleteEntry = false;
+
+                        // Fall through to HeapFree
                     }
 
                     RASCONNSTATUS status;
@@ -200,10 +206,14 @@ bool VPNConnection::Remove(void)
                     {
                         Sleep(sleepTime);
                         totalSleepTime += sleepTime;
+                        // Don't hang forever
                         if (totalSleepTime >= maxSleepTime)
                         {
-                            // Don't hang forever
                             my_print(false, _T("RasHangUp/RasGetConnectStatus timed out (%d)"), GetLastError());
+
+                            // Don't delete entry when in this state -- Windows gets confused
+                            deleteEntry = false;
+
                             break;
                         }
                     }
@@ -220,13 +230,16 @@ bool VPNConnection::Remove(void)
         rasConnections = 0;
     }
 
-    // Delete the connection
-    returnCode = RasDeleteEntry(0, VPN_CONNECTION_NAME);
-    if (ERROR_SUCCESS != returnCode &&
-        ERROR_CANNOT_FIND_PHONEBOOK_ENTRY != returnCode)
+    if (deleteEntry)
     {
-        my_print(false, _T("RasDeleteEntry failed (%d)"), returnCode);
-        return false;
+        // Delete the entry
+        returnCode = RasDeleteEntry(0, VPN_CONNECTION_NAME);
+        if (ERROR_SUCCESS != returnCode &&
+            ERROR_CANNOT_FIND_PHONEBOOK_ENTRY != returnCode)
+        {
+            my_print(false, _T("RasDeleteEntry failed (%d)"), returnCode);
+            return false;
+        }
     }
 
     return true;
