@@ -24,6 +24,7 @@
 #include "ras.h"
 #include "raserror.h"
 #include "webbrowser.h"
+#include "httpsrequest.h"
 
 VPNConnection::VPNConnection(void)
 {
@@ -51,6 +52,14 @@ void CALLBACK RasDialCallback(UINT, RASCONNSTATE rasConnState, DWORD dwError)
 
 bool VPNConnection::Establish(void)
 {
+    //*********** TEMP
+
+    HTTPSRequest r;
+    string response;
+    r.GetRequest("", response);
+    return false;
+    //*********** TEMP
+
     DWORD returnCode = ERROR_SUCCESS;
 
     Remove();
