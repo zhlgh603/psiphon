@@ -35,7 +35,7 @@ VPNConnection::~VPNConnection(void)
     Remove();
 }
 
-void CALLBACK RasDialCallback(UINT, RASCONNSTATE rasConnState, DWORD dwError)
+void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConnState, DWORD dwError, DWORD)
 {
     // TODO: spinner or progress bar
     my_print(true, _T("RasDialCallback (%d %d)"), rasConnState, dwError);
@@ -45,8 +45,25 @@ void CALLBACK RasDialCallback(UINT, RASCONNSTATE rasConnState, DWORD dwError)
     }
     else if (RASCS_Connected == rasConnState)
     {
+        // Set up a disconnection notification event
+        HANDLE rasEvent = CreateEvent(0, FALSE, FALSE, 0);
+        DWORD returnCode = RasConnectionNotification(rasConnection, rasEvent, RASCN_Disconnection);
+        if (ERROR_SUCCESS != returnCode)
+        {
+            my_print(false, _T("RasConnectionNotification failed (%d)"), returnCode);
+            return;
+        }
+
         my_print(false, _T("Successfully connected."));
         OpenBrowser();
+
+        if (WAIT_FAILED == WaitForSingleObject(rasEvent, INFINITE))
+        {
+            my_print(false, _T("WaitForSingleObject failed (%d)"), GetLastError());
+            return;
+        }
+
+        my_print(false, _T("Disconnected."));
     }
 }
 
@@ -54,10 +71,10 @@ bool VPNConnection::Establish(void)
 {
     //*********** TEMP
 
-    HTTPSRequest r;
-    string response;
-    r.GetRequest("", response);
-    return false;
+    //HTTPSRequest r;
+    //string response;
+    //r.GetRequest("", response);
+    //return false;
     //*********** TEMP
 
     DWORD returnCode = ERROR_SUCCESS;
@@ -130,7 +147,7 @@ bool VPNConnection::Establish(void)
                                                    // the server authentication (which we
                                                    // really care about) is in IPSec using PSK
     HRASCONN rasConnection = 0;
-    returnCode = RasDial(0, 0, &vpnParams, 0, &RasDialCallback, &rasConnection);
+    returnCode = RasDial(0, 0, &vpnParams, 1, &RasDialCallback, &rasConnection);
     if (ERROR_SUCCESS != returnCode)
     {
         my_print(false, _T("RasDial failed (%d)"), returnCode);
@@ -246,8 +263,6 @@ bool VPNConnection::Remove(void)
                             break;
                         }
                     }
-
-                    my_print(false, _T("Disconnected"));
 
                     break; // Entry name is unique and we found it
                 }
