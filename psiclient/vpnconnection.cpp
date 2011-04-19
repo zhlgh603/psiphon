@@ -35,9 +35,18 @@ VPNConnection::~VPNConnection(void)
     Remove();
 }
 
+class AutoHANDLE
+{
+public:
+    AutoHANDLE(HANDLE handle) {m_handle = handle;}
+    ~AutoHANDLE() {CloseHandle(m_handle);}
+    operator HANDLE() {return m_handle;}
+private:
+    HANDLE m_handle;
+};
+
 void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConnState, DWORD dwError, DWORD)
 {
-    // TODO: spinner or progress bar
     my_print(true, _T("RasDialCallback (%d %d)"), rasConnState, dwError);
     if (0 != dwError)
     {
@@ -46,7 +55,7 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
     else if (RASCS_Connected == rasConnState)
     {
         // Set up a disconnection notification event
-        HANDLE rasEvent = CreateEvent(0, FALSE, FALSE, 0);
+        AutoHANDLE rasEvent = CreateEvent(0, FALSE, FALSE, 0);
         DWORD returnCode = RasConnectionNotification(rasConnection, rasEvent, RASCN_Disconnection);
         if (ERROR_SUCCESS != returnCode)
         {
@@ -63,7 +72,15 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
             return;
         }
 
+        // NOTE: The disconnect event may have been invoked on application shutdown, so
+        //       the main thread may be gone by now.
+        // TODO: Do something here other than my_print that will be safe when the main thread is gone.
         my_print(false, _T("Disconnected."));
+    }
+    else
+    {
+        // TODO: spinner or progress bar
+        my_print(false, _T("Establishing connection... (%d)"), rasConnState);
     }
 }
 
@@ -153,8 +170,6 @@ bool VPNConnection::Establish(void)
         my_print(false, _T("RasDial failed (%d)"), returnCode);
         return false;
     }
-
-    my_print(false, _T("Establishing connection..."));
 
     return true;
 }
