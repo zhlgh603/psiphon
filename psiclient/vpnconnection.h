@@ -28,4 +28,9 @@ public:
     virtual ~VPNConnection(void);
     bool Establish(void);
     bool Remove(void);
+
+private:
+    HRASCONN getCurrentRasConnection(void);
+
+    HRASCONN m_rasConnection;
 };

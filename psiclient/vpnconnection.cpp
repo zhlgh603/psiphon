@@ -26,7 +26,8 @@
 #include "webbrowser.h"
 #include "httpsrequest.h"
 
-VPNConnection::VPNConnection(void)
+VPNConnection::VPNConnection(void) :
+    m_rasConnection(0)
 {
 }
 
@@ -163,8 +164,8 @@ bool VPNConnection::Establish(void)
     lstrcpy(vpnParams.szPassword, _T("password")); // This can also be hardcoded because
                                                    // the server authentication (which we
                                                    // really care about) is in IPSec using PSK
-    HRASCONN rasConnection = 0;
-    returnCode = RasDial(0, 0, &vpnParams, 1, &RasDialCallback, &rasConnection);
+    m_rasConnection = 0;
+    returnCode = RasDial(0, 0, &vpnParams, 1, &RasDialCallback, &m_rasConnection);
     if (ERROR_SUCCESS != returnCode)
     {
         my_print(false, _T("RasDial failed (%d)"), returnCode);
@@ -176,20 +177,83 @@ bool VPNConnection::Establish(void)
 
 bool VPNConnection::Remove(void)
 {
-    bool deleteEntry = true;
-
-    // Disconnect by entry name -- based on sample code in:
-    // http://msdn.microsoft.com/en-us/library/aa377284%28v=vs.85%29.aspx
-
     DWORD returnCode = ERROR_SUCCESS;
 
+    // Disconnect either the stored HRASCONN, or by entry name.
+    // Based on sample code in:
+    // http://msdn.microsoft.com/en-us/library/aa377284%28v=vs.85%29.aspx
+
+    HRASCONN rasConnection = getCurrentRasConnection();
+
+    if (rasConnection)
+    {
+        // Hang up
+        returnCode = RasHangUp(rasConnection);
+        if (ERROR_SUCCESS != returnCode)
+        {
+            my_print(false, _T("RasHangUp failed (%d)"), returnCode);
+
+            // Don't delete entry when in this state -- Windows gets confused
+            return false;
+        }
+
+        RASCONNSTATUS status;
+        memset(&status, 0, sizeof(status));
+        status.dwSize = sizeof(status);
+        // Wait until the connection has been terminated.
+        // See the remarks here:
+        // http://msdn.microsoft.com/en-us/library/aa377567(VS.85).aspx
+        const int sleepTime = 100; // milliseconds
+        const int maxSleepTime = 5000; // 5 seconds max wait time
+        int totalSleepTime = 0;
+        while(ERROR_INVALID_HANDLE != RasGetConnectStatus(rasConnection, &status))
+        {
+            Sleep(sleepTime);
+            totalSleepTime += sleepTime;
+            // Don't hang forever
+            if (totalSleepTime >= maxSleepTime)
+            {
+                my_print(false, _T("RasHangUp/RasGetConnectStatus timed out (%d)"), GetLastError());
+
+                // Don't delete entry when in this state -- Windows gets confused
+                return false;
+            }
+        }
+    }
+
+    // Delete the entry
+    returnCode = RasDeleteEntry(0, VPN_CONNECTION_NAME);
+    if (ERROR_SUCCESS != returnCode &&
+        ERROR_CANNOT_FIND_PHONEBOOK_ENTRY != returnCode)
+    {
+        my_print(false, _T("RasDeleteEntry failed (%d)"), returnCode);
+        return false;
+    }
+
+    m_rasConnection = 0;
+
+    return true;
+}
+
+HRASCONN VPNConnection::getCurrentRasConnection()
+{
+    if (m_rasConnection)
+    {
+        return m_rasConnection;
+    }
+
+    // In case the application starts while the VPN connection is already active, 
+    // we need to find the rasConnection by name.
+
+    HRASCONN rasConnection = 0;
     RASCONN conn;
     memset(&conn, 0, sizeof(conn));
     conn.dwSize = sizeof(conn);
     LPRASCONN rasConnections = &conn;
     DWORD bufferSize = sizeof(conn);
     DWORD connections = 0;
-    returnCode = RasEnumConnections(rasConnections, &bufferSize, &connections);
+
+    DWORD returnCode = RasEnumConnections(rasConnections, &bufferSize, &connections);
 
     // On Windows XP, we can't call RasEnumConnections with rasConnections = 0 because it
     // fails with 632 ERROR_INVALID_SIZE.  So we set rasConnections to point to a single
@@ -205,7 +269,6 @@ bool VPNConnection::Remove(void)
     if (ERROR_BUFFER_TOO_SMALL != returnCode && connections > 0)
     {
         my_print(false, _T("RasEnumConnections failed (%d)"), returnCode);
-        // Fall through to delete entry
     }
     else if (ERROR_BUFFER_TOO_SMALL == returnCode && connections > 0)
     {
@@ -220,7 +283,7 @@ bool VPNConnection::Remove(void)
         if (!rasConnections)
         {
             my_print(false, _T("HeapAlloc failed"));
-            return false;
+            return rasConnection;
         }
  
         // The first RASCONN structure in the array must contain the RASCONN structure size
@@ -233,7 +296,6 @@ bool VPNConnection::Remove(void)
         if (ERROR_SUCCESS != returnCode)
         {
             my_print(false, _T("RasEnumConnections failed (%d)"), returnCode);
-            // Fall through to delete entry
         }
         else
         {
@@ -241,45 +303,9 @@ bool VPNConnection::Remove(void)
             {
                 if (!_tcscmp(rasConnections[i].szEntryName, VPN_CONNECTION_NAME))
                 {
-                    // Hangup
-                    HRASCONN rasConnection = rasConnections[i].hrasconn;
-                    returnCode = RasHangUp(rasConnection);
-                    if (ERROR_SUCCESS != returnCode)
-                    {
-                        my_print(false, _T("RasHangUp failed (%d)"), returnCode);
-
-                        // Don't delete entry when in this state -- Windows gets confused
-                        deleteEntry = false;
-
-                        // Fall through to HeapFree
-                    }
-
-                    RASCONNSTATUS status;
-                    memset(&status, 0, sizeof(status));
-                    status.dwSize = sizeof(status);
-                    // Wait until the connection has been terminated.
-                    // See the remarks here:
-                    // http://msdn.microsoft.com/en-us/library/aa377567(VS.85).aspx
-                    const int sleepTime = 100; // milliseconds
-                    const int maxSleepTime = 5000; // 5 seconds max wait time
-                    int totalSleepTime = 0;
-                    while(ERROR_INVALID_HANDLE != RasGetConnectStatus(rasConnection, &status))
-                    {
-                        Sleep(sleepTime);
-                        totalSleepTime += sleepTime;
-                        // Don't hang forever
-                        if (totalSleepTime >= maxSleepTime)
-                        {
-                            my_print(false, _T("RasHangUp/RasGetConnectStatus timed out (%d)"), GetLastError());
-
-                            // Don't delete entry when in this state -- Windows gets confused
-                            deleteEntry = false;
-
-                            break;
-                        }
-                    }
-
-                    break; // Entry name is unique and we found it
+                    // Entry name is unique and we found it
+                    rasConnection = rasConnections[i].hrasconn;
+                    break;
                 }
 		    }
         }
@@ -289,17 +315,5 @@ bool VPNConnection::Remove(void)
         rasConnections = 0;
     }
 
-    if (deleteEntry)
-    {
-        // Delete the entry
-        returnCode = RasDeleteEntry(0, VPN_CONNECTION_NAME);
-        if (ERROR_SUCCESS != returnCode &&
-            ERROR_CANNOT_FIND_PHONEBOOK_ENTRY != returnCode)
-        {
-            my_print(false, _T("RasDeleteEntry failed (%d)"), returnCode);
-            return false;
-        }
-    }
-
-    return true;
+    return rasConnection;
 }
