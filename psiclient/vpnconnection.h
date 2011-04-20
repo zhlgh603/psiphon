@@ -31,6 +31,5 @@ public:
 
 private:
     HRASCONN getCurrentRasConnection(void);
-
     HRASCONN m_rasConnection;
 };
