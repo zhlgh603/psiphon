@@ -250,32 +250,32 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
 {
     if (!bDebugMessage || g_bShowDebugMessages)
     {
-        TCHAR* debug_prefix = _T("DEBUG: ");
+        TCHAR* debugPrefix = _T("DEBUG: ");
+        size_t debugPrefixLength = _tcsclen(debugPrefix);
         TCHAR* buffer = NULL;
-        int len;
         va_list args;
         va_start(args, format);
-        len = _vsctprintf(format, args) + 1;
+        int length = _vsctprintf(format, args) + 1;
         if (bDebugMessage)
         {
-            len += _tcsclen(debug_prefix) + 1;
+            length += debugPrefixLength;
         }
-        buffer = (TCHAR*)malloc(len*sizeof(TCHAR));
+        buffer = (TCHAR*)malloc(length * sizeof(TCHAR));
         if (!buffer) return;
         if (bDebugMessage)
         {
-            _tcscpy(buffer, debug_prefix);
-            _vstprintf(buffer + _tcsclen(debug_prefix), format, args);
+            _tcscpy_s(buffer, length, debugPrefix);
+            _vstprintf_s(buffer + debugPrefixLength, length - debugPrefixLength, format, args);
         }
         else
         {
-            _vstprintf(buffer, format, args);
+            _vstprintf_s(buffer, length, format, args);
         }
         va_end(args);
         SendMessage(g_hListBox, LB_ADDSTRING, NULL, (LPARAM)buffer);
         free(buffer);
         SendMessage(g_hListBox, LB_SETCURSEL,
-            SendMessage(g_hListBox, LB_GETCOUNT, NULL, NULL)-1, NULL);
+        SendMessage(g_hListBox, LB_GETCOUNT, NULL, NULL)-1, NULL);
     }
 }
 
