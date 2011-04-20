@@ -17,19 +17,35 @@
  *
  */
 
-// psiclient.cpp : Defines the entry point for the application.
-//
+//==== includes ===============================================================
 
 #include "stdafx.h"
 #include "psiclient.h"
 #include "vpnconnection.h"
 
+
+//==== layout =================================================================
+
+// TODO: Calculate instead of using magic constants
+
+const int BUTTON_SIZE = 80;
+const int BANNER_X = BUTTON_SIZE + 10;
+const int BANNER_Y = 3;
+const int BANNER_WIDTH = 200;
+const int BANNER_HEIGHT = 80;
+const int TOOLBAR_HEIGHT = BUTTON_SIZE + 16;
+const int WINDOW_WIDTH = BUTTON_SIZE + BANNER_WIDTH + 30;
+const int WINDOW_HEIGHT = 160;
+
+
+//==== Win32 boilerplate ======================================================
+
 #define MAX_LOADSTRING 100
 
-// Global Variables:
-HINSTANCE hInst;                                // current instance
-TCHAR szTitle[MAX_LOADSTRING];                    // The title bar text
-TCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+// Global Variables
+HINSTANCE hInst;
+TCHAR szTitle[MAX_LOADSTRING];
+TCHAR szWindowClass[MAX_LOADSTRING];
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -75,21 +91,6 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     return (int) msg.wParam;
 }
 
-
-
-//
-//  FUNCTION: MyRegisterClass()
-//
-//  PURPOSE: Registers the window class.
-//
-//  COMMENTS:
-//
-//    This function and its usage are only necessary if you want this code
-//    to be compatible with Win32 systems prior to the 'RegisterClassEx'
-//    function that was added to Windows 95. It is important to call this function
-//    so that the application will get 'well formed' small icons associated
-//    with it.
-//
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
     WNDCLASSEX wcex;
@@ -111,28 +112,6 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
     return RegisterClassEx(&wcex);
 }
-
-// Magic layout constants
-// TODO: calc toolbar border size to get X and Y
-
-const int BUTTON_SIZE = 80;
-const int BANNER_X = BUTTON_SIZE + 10;
-const int BANNER_Y = 3;
-const int BANNER_WIDTH = 200;
-const int BANNER_HEIGHT = 80;
-const int WINDOW_WIDTH = BUTTON_SIZE + BANNER_WIDTH + 30;
-const int WINDOW_HEIGHT = 140;
-
-//
-//   FUNCTION: InitInstance(HINSTANCE, int)
-//
-//   PURPOSE: Saves instance handle and creates main window
-//
-//   COMMENTS:
-//
-//        In this function, we save the instance handle in a global variable and
-//        create and display the main program window.
-//
 
 HWND g_hWnd;
 
@@ -169,7 +148,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    return TRUE;
 }
 
-//=== toolbar ========================================================
+
+//==== toolbar ================================================================
 
 // http://msdn.microsoft.com/en-us/library/bb760446%28v=VS.85%29.aspx
 
@@ -249,7 +229,8 @@ void ShowButton(VPNState state)
     SendMessage(g_hToolBar, TB_SETBUTTONINFO, IDM_TOGGLE, (LPARAM)&info);
 }
 
-//=== my_print ========================================================
+
+//==== my_print (logging) =====================================================
 
 HWND g_hListBox = NULL;
 bool g_bShowDebugMessages = false;
@@ -287,7 +268,8 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
     }
 }
 
-//=== VPN state ========================================================
+
+//==== VPN state ==============================================================
 
 VPNState g_VPNState = VPN_STATE_STOPPED;
 
@@ -310,7 +292,8 @@ void Toggle()
     }
 }
 
-//=== Main window function =================================================
+
+//==== Main window function ===================================================
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -319,7 +302,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     HDC hdc;
     RECT rect;
     HGDIOBJ font;
-    int toolbar_height = BUTTON_SIZE + 16; // TODO: calculate
 
     switch (message)
     {
@@ -329,7 +311,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         g_hListBox = CreateWindow(_T("listbox"),
                                 _T(""),
-                                WS_CHILD|WS_VISIBLE|WS_VSCROLL|LBS_NOINTEGRALHEIGHT|LBS_DISABLENOSCROLL|LBS_NOTIFY,
+                                WS_CHILD|WS_VISIBLE|WS_VSCROLL|
+                                LBS_NOINTEGRALHEIGHT|LBS_DISABLENOSCROLL|LBS_NOTIFY,
                                 0, 0, 1, 1,
                                 hWnd, NULL, NULL, NULL);
         font = GetStockObject(DEFAULT_GUI_FONT);
@@ -346,15 +329,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             MoveWindow(
                 g_hToolBar,
                 0, 0,
-                rect.right-rect.left, toolbar_height,
+                rect.right-rect.left, TOOLBAR_HEIGHT,
                 TRUE);
         }
         if (g_hListBox != NULL)
         {
             MoveWindow(
                 g_hListBox,
-                0, toolbar_height,
-                rect.right-rect.left, rect.bottom-rect.top - toolbar_height,
+                0, TOOLBAR_HEIGHT,
+                rect.right-rect.left, rect.bottom-rect.top - TOOLBAR_HEIGHT,
                 TRUE);
         }
         break;
