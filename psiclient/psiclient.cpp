@@ -224,7 +224,11 @@ void ShowButton(VPNState state)
     TBBUTTONINFO info;
     info.cbSize = sizeof(info);
     info.dwMask = TBIF_IMAGE;
-    info.iImage = (int)state;
+    static int g_nextAnimationIndex = 0;
+
+    if (state == VPN_STATE_STOPPED) info.iImage = 0;
+    else if (state == VPN_STATE_CONNECTED) info.iImage = 1;
+    else info.iImage = 2 + (g_nextAnimationIndex++)%4;
     
     SendMessage(g_hToolBar, TB_SETBUTTONINFO, IDM_TOGGLE, (LPARAM)&info);
 }
@@ -282,6 +286,7 @@ void Toggle()
     case VPN_STATE_STOPPED:
         // Configure the VPN and connect
         g_vpnConnection.Establish();
+
         break;
 
     case VPN_STATE_STARTING:
@@ -294,6 +299,8 @@ void Toggle()
 
 
 //==== Main window function ===================================================
+
+static UINT_PTR g_hTimer;
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -318,9 +325,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         font = GetStockObject(DEFAULT_GUI_FONT);
         SendMessage(g_hListBox, WM_SETFONT, (WPARAM)font, NULL);
 
+        // TODO: kill the timer when connected, restart when re-connecting
+        g_hTimer = SetTimer(g_hWnd, 0, 100, NULL);
+
         Toggle();
 
         break;
+
+    case WM_TIMER:
+        ShowButton(g_VPNState);
+        break;
+
     case WM_SIZE:
         // make list box fill window client area
         GetClientRect(hWnd, &rect);
@@ -341,6 +356,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 TRUE);
         }
         break;
+
     case WM_COMMAND:
 
         wmId    = LOWORD(wParam);
@@ -370,20 +386,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             return DefWindowProc(hWnd, message, wParam, lParam);
         }
         break;
+
     case WM_PSIPHON_VPN_STATE_CHANGE:
         g_VPNState = (VPNState)wParam;
         ShowButton(g_VPNState);
         break;
+
     case WM_PAINT:
         hdc = BeginPaint(hWnd, &ps);
         // TODO: Add any drawing code here...
         EndPaint(hWnd, &ps);
         break;
+
     case WM_DESTROY:
         // Stop VPN if running
         g_vpnConnection.Remove();
         PostQuitMessage(0);
         break;
+
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
