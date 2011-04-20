@@ -26,15 +26,10 @@
 #include "webbrowser.h"
 #include "httpsrequest.h"
 
-VPNConnection::VPNConnection(void) :
-    m_rasConnection(0)
-{
-}
 
-VPNConnection::~VPNConnection(void)
-{
-    Remove();
-}
+// RAS callback sends messages to our main window.  Since there's only one main
+// window, we use a global variable.
+extern HWND g_hWnd;
 
 class AutoHANDLE
 {
@@ -52,6 +47,8 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
     if (0 != dwError)
     {
         my_print(false, _T("Connection failed."));
+
+        ::SendMessage(g_hWnd, WM_PSIPHON_VPN_STATE_CHANGE, VPN_STATE_STOPPED, 0);
     }
     else if (RASCS_Connected == rasConnState)
     {
@@ -65,6 +62,9 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
         }
 
         my_print(false, _T("Successfully connected."));
+
+        ::SendMessage(g_hWnd, WM_PSIPHON_VPN_STATE_CHANGE, VPN_STATE_CONNECTED, 0);
+
         OpenBrowser();
 
         if (WAIT_FAILED == WaitForSingleObject(rasEvent, INFINITE))
@@ -77,12 +77,26 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
         //       the main thread may be gone by now.
         // TODO: Do something here other than my_print that will be safe when the main thread is gone.
         my_print(false, _T("Disconnected."));
+
+        ::SendMessage(g_hWnd, WM_PSIPHON_VPN_STATE_CHANGE, VPN_STATE_STOPPED, 0);
     }
     else
     {
         // TODO: spinner or progress bar
         my_print(false, _T("Establishing connection... (%d)"), rasConnState);
+
+        ::SendMessage(g_hWnd, WM_PSIPHON_VPN_STATE_CHANGE, VPN_STATE_STARTING, 0);
     }
+}
+
+VPNConnection::VPNConnection(void) :
+    m_rasConnection(0)
+{
+}
+
+VPNConnection::~VPNConnection(void)
+{
+    Remove();
 }
 
 bool VPNConnection::Establish(void)

@@ -32,8 +32,7 @@
 #define IDI_PSICLIENT			107
 #define IDI_SMALL				108
 #define IDC_PSICLIENT			109
-#define IDM_START               110
-#define IDM_STOP                111
+#define IDM_TOGGLE              110
 #define IDM_SHOW_DEBUG_MESSAGES 112
 #define IDM_HELP                113
 #define IDC_MYICON				2

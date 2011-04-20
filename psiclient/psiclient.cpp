@@ -115,11 +115,11 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 // Magic layout constants
 // TODO: calc toolbar border size to get X and Y
 
-const int BUTTON_SIZE = 64;
+const int BUTTON_SIZE = 80;
 const int BANNER_X = BUTTON_SIZE + 10;
 const int BANNER_Y = 3;
-const int BANNER_WIDTH = 192;
-const int BANNER_HEIGHT = 64;
+const int BANNER_WIDTH = 200;
+const int BANNER_HEIGHT = 80;
 const int WINDOW_WIDTH = BUTTON_SIZE + BANNER_WIDTH + 30;
 const int WINDOW_HEIGHT = 140;
 
@@ -175,29 +175,30 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 
 HWND g_hToolBar = NULL;
+HIMAGELIST g_hToolbarImageList = NULL;
 
-HWND CreateToolbar(HWND hWndParent)
+void CreateToolbar(HWND hWndParent)
 {
     // Define some constants.
     const int ImageListID = 0;
-    const int numButtons = 2;
+    const int numButtons = 1;
     const DWORD buttonStyles = BTNS_AUTOSIZE;
     const int bitmapSize = BUTTON_SIZE;
 
     // Create the toolbar.
-    HWND hWndToolbar = CreateWindowEx(
+    g_hToolBar = CreateWindowEx(
                             0, TOOLBARCLASSNAME, NULL, 
                             WS_CHILD | TBSTYLE_WRAPABLE,
                             0, 0, 0, 0,
                             hWndParent, NULL, hInst, NULL);
-    if (hWndToolbar == NULL)
+    if (g_hToolBar == NULL)
     {
-        return NULL;
+        return;
     }
 
     // Create image list from bitmap
 
-    HIMAGELIST hImageList = ImageList_LoadImage(
+    g_hToolbarImageList = ImageList_LoadImage(
         hInst, MAKEINTRESOURCE(IDB_TOOLBAR_ICONS),
         bitmapSize, numButtons, CLR_DEFAULT, // GetSysColor(COLOR_BTNFACE),
         IMAGE_BITMAP, LR_CREATEDIBSECTION);
@@ -206,24 +207,22 @@ HWND CreateToolbar(HWND hWndParent)
 
     // Set the image list.
     SendMessage(
-        hWndToolbar, TB_SETIMAGELIST, (WPARAM)ImageListID, 
-        (LPARAM)hImageList);
+        g_hToolBar, TB_SETIMAGELIST, (WPARAM)ImageListID, 
+        (LPARAM)g_hToolbarImageList);
 
     // Initialize button info.
     TBBUTTON tbButtons[numButtons] = 
     {
-        { MAKELONG(0, ImageListID), IDM_START, TBSTATE_ENABLED, 
-          buttonStyles, {0}, 0, (INT_PTR)L"" },
-        { MAKELONG(1, ImageListID), IDM_STOP, TBSTATE_ENABLED, 
+        { MAKELONG(0, ImageListID), IDM_TOGGLE, TBSTATE_ENABLED, 
           buttonStyles, {0}, 0, (INT_PTR)L"" }
     };
 
     // Add buttons.
     SendMessage(
-        hWndToolbar, TB_BUTTONSTRUCTSIZE, 
+        g_hToolBar, TB_BUTTONSTRUCTSIZE, 
         (WPARAM)sizeof(TBBUTTON), 0);
     SendMessage(
-        hWndToolbar, TB_ADDBUTTONS, (WPARAM)numButtons, 
+        g_hToolBar, TB_ADDBUTTONS, (WPARAM)numButtons, 
         (LPARAM)&tbButtons);
 
     // Add banner child control.
@@ -231,14 +230,23 @@ HWND CreateToolbar(HWND hWndParent)
                             L"Static", 0,
                             WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE | SS_BITMAP,
                             BANNER_X, BANNER_Y, BANNER_WIDTH, BANNER_HEIGHT,
-                            hWndToolbar, NULL, hInst, NULL);
+                            g_hToolBar, NULL, hInst, NULL);
     HBITMAP hBanner = LoadBitmap(hInst, MAKEINTRESOURCE(IDB_BANNER));
     SendMessage(hWndBanner, STM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)hBanner);
 
     // Tell the toolbar to resize itself, and show it.
-    SendMessage(hWndToolbar, TB_AUTOSIZE, 0, 0); 
-    ShowWindow(hWndToolbar, TRUE);
-    return hWndToolbar;
+    SendMessage(g_hToolBar, TB_AUTOSIZE, 0, 0); 
+    ShowWindow(g_hToolBar, TRUE);
+}
+
+void ShowButton(VPNState state)
+{
+    TBBUTTONINFO info;
+    info.cbSize = sizeof(info);
+    info.dwMask = TBIF_IMAGE;
+    info.iImage = (int)state;
+    
+    SendMessage(g_hToolBar, TB_SETBUTTONINFO, IDM_TOGGLE, (LPARAM)&info);
 }
 
 //=== my_print ========================================================
@@ -279,33 +287,31 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
     }
 }
 
-//=== other stuff ========================================================
+//=== VPN state ========================================================
 
+VPNState g_VPNState = VPN_STATE_STOPPED;
 
 VPNConnection g_vpnConnection;
 
-void Start()
+void Toggle()
 {
-    // Configure the VPN and connect
-    g_vpnConnection.Establish();
+    switch (g_VPNState)
+    {
+    case VPN_STATE_STOPPED:
+        // Configure the VPN and connect
+        g_vpnConnection.Establish();
+        break;
+
+    case VPN_STATE_STARTING:
+    case VPN_STATE_CONNECTED:
+        // Disconnect from VPN and remove configuration
+        g_vpnConnection.Remove();
+        break;
+    }
 }
 
-void Stop()
-{
-    // Disconnect from VPN and remove configuration
-    g_vpnConnection.Remove();
-}
+//=== Main window function =================================================
 
-//
-//  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
-//
-//  PURPOSE:  Processes messages for the main window.
-//
-//  WM_COMMAND    - process the application menu
-//  WM_PAINT    - Paint the main window
-//  WM_DESTROY    - post a quit message and return
-//
-//
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     int wmId, wmEvent;
@@ -319,7 +325,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
     case WM_CREATE:
 
-        g_hToolBar = CreateToolbar(hWnd);
+        CreateToolbar(hWnd);
 
         g_hListBox = CreateWindow(_T("listbox"),
                                 _T(""),
@@ -329,7 +335,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         font = GetStockObject(DEFAULT_GUI_FONT);
         SendMessage(g_hListBox, WM_SETFONT, (WPARAM)font, NULL);
 
-        //****TEMP****Start();
+        Toggle();
 
         break;
     case WM_SIZE:
@@ -360,11 +366,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         // Parse the menu selections:
         switch (wmId)
         {
-        case IDM_START:
-            Start();
-            break;
-        case IDM_STOP:
-            Stop();
+        case IDM_TOGGLE:
+            Toggle();
             break;
         case IDM_SHOW_DEBUG_MESSAGES:
             g_bShowDebugMessages = !g_bShowDebugMessages;
@@ -384,13 +387,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             return DefWindowProc(hWnd, message, wParam, lParam);
         }
         break;
+    case WM_PSIPHON_VPN_STATE_CHANGE:
+        g_VPNState = (VPNState)wParam;
+        ShowButton(g_VPNState);
+        break;
     case WM_PAINT:
         hdc = BeginPaint(hWnd, &ps);
         // TODO: Add any drawing code here...
         EndPaint(hWnd, &ps);
         break;
     case WM_DESTROY:
-        Stop();
+        // Stop VPN if running
+        g_vpnConnection.Remove();
         PostQuitMessage(0);
         break;
     default:
