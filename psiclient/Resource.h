@@ -42,6 +42,7 @@
 #endif
 
 #define IDB_TOOLBAR_ICONS       200
+#define IDB_BANNER              201
 
 
 // Next default values for new objects

@@ -112,6 +112,17 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     return RegisterClassEx(&wcex);
 }
 
+// Magic layout constants
+// TODO: calc toolbar border size to get X and Y
+
+const int BUTTON_SIZE = 64;
+const int BANNER_X = BUTTON_SIZE + 10;
+const int BANNER_Y = 3;
+const int BANNER_WIDTH = 192;
+const int BANNER_HEIGHT = 64;
+const int WINDOW_WIDTH = BUTTON_SIZE + BANNER_WIDTH + 30;
+const int WINDOW_HEIGHT = 140;
+
 //
 //   FUNCTION: InitInstance(HINSTANCE, int)
 //
@@ -128,8 +139,7 @@ HWND g_hWnd;
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    HWND hWnd;
-   int width = 160, height = 140;
-   RECT rect = {0, 0, width, height};
+   RECT rect = {0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
 
    hInst = hInstance; // Store instance handle in our global variable
 
@@ -143,7 +153,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
             //WS_OVERLAPPEDWINDOW & ~WS_SYSMENU,
             WS_OVERLAPPEDWINDOW,
             // CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-            rect.right - width, rect.bottom - height, width, height,
+            rect.right - WINDOW_WIDTH, rect.bottom - WINDOW_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT,
             NULL, NULL, hInstance, NULL);
 
    if (!hWnd)
@@ -165,8 +175,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 
 HWND g_hToolBar = NULL;
-
-const int BUTTON_SIZE = 64;
 
 HWND CreateToolbar(HWND hWndParent)
 {
@@ -217,6 +225,15 @@ HWND CreateToolbar(HWND hWndParent)
     SendMessage(
         hWndToolbar, TB_ADDBUTTONS, (WPARAM)numButtons, 
         (LPARAM)&tbButtons);
+
+    // Add banner child control.
+    HWND hWndBanner = CreateWindow(
+                            L"Static", 0,
+                            WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE | SS_BITMAP,
+                            BANNER_X, BANNER_Y, BANNER_WIDTH, BANNER_HEIGHT,
+                            hWndToolbar, NULL, hInst, NULL);
+    HBITMAP hBanner = LoadBitmap(hInst, MAKEINTRESOURCE(IDB_BANNER));
+    SendMessage(hWndBanner, STM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)hBanner);
 
     // Tell the toolbar to resize itself, and show it.
     SendMessage(hWndToolbar, TB_AUTOSIZE, 0, 0); 
@@ -312,7 +329,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         font = GetStockObject(DEFAULT_GUI_FONT);
         SendMessage(g_hListBox, WM_SETFONT, (WPARAM)font, NULL);
 
-        Start();
+        //****TEMP****Start();
 
         break;
     case WM_SIZE:
