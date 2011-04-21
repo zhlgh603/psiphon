@@ -70,7 +70,8 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
         if (WAIT_FAILED == WaitForSingleObject(rasEvent, INFINITE))
         {
             my_print(false, _T("WaitForSingleObject failed (%d)"), GetLastError());
-            return;
+            // Fall through to VPN_STATE_CHANGE.
+            // Otherwise we'd be stuck in a connected state.
         }
 
         // NOTE: Don't my_print here.
