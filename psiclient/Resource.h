@@ -35,6 +35,7 @@
 #define IDM_TOGGLE              110
 #define IDM_SHOW_DEBUG_MESSAGES 112
 #define IDM_HELP                113
+#define IDT_BUTTON_ROTATION     129
 #define IDC_MYICON				2
 #ifndef IDC_STATIC
 #define IDC_STATIC				-1

@@ -326,7 +326,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         SendMessage(g_hListBox, WM_SETFONT, (WPARAM)font, NULL);
 
         // TODO: kill the timer when connected, restart when re-connecting
-        g_hTimer = SetTimer(g_hWnd, 0, 100, NULL);
+        g_hTimer = SetTimer(hWnd, IDT_BUTTON_ROTATION, 100, NULL);
 
         Toggle();
 
