@@ -73,16 +73,14 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
             return;
         }
 
-        // NOTE: The disconnect event may have been invoked on application shutdown, so
+        // NOTE: Don't my_print here.
+        //       The disconnect event may have been invoked on application shutdown, so
         //       the main thread may be gone by now.
-        // TODO: Do something here other than my_print that will be safe when the main thread is gone.
-        my_print(false, _T("Disconnected."));
 
         ::SendMessage(g_hWnd, WM_PSIPHON_VPN_STATE_CHANGE, VPN_STATE_STOPPED, 0);
     }
     else
     {
-        // TODO: spinner or progress bar
         my_print(false, _T("Establishing connection... (%d)"), rasConnState);
 
         ::SendMessage(g_hWnd, WM_PSIPHON_VPN_STATE_CHANGE, VPN_STATE_STARTING, 0);
