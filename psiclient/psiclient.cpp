@@ -390,6 +390,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_PSIPHON_VPN_STATE_CHANGE:
         g_VPNState = (VPNState)wParam;
         ShowButton(g_VPNState);
+        if (VPN_STATE_STOPPED == g_VPNState)
+        {
+            // This is printed here to avoid printing in the vpnconnection's callback thread
+            // in case it is called after my_print is already gone (when the app quits).
+            my_print(false, _T("Disconnected."));
+        }
         break;
 
     case WM_PAINT:
