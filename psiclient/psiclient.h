@@ -21,15 +21,6 @@
 
 #include "resource.h"
 
-//==== VPN state ======================================================
-
-enum VPNState
-{
-    VPN_STATE_STOPPED = 0,
-    VPN_STATE_STARTING,
-    VPN_STATE_CONNECTED,
-};
-
 #define WM_PSIPHON_VPN_STATE_CHANGE    WM_USER + 100
 
 //==== logging =========================================================

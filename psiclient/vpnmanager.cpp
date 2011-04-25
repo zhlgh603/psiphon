@@ -17,28 +17,33 @@
  *
  */
 
-#pragma once
+#include "stdafx.h"
+#include "vpnmanager.h"
 
-#include "ras.h"
 
-//==== VPN state ======================================================
-
-enum VPNState
+VPNManager::VPNManager(void) :
+    m_vpnState(VPN_STATE_STOPPED)
 {
-    VPN_STATE_STOPPED = 0,
-    VPN_STATE_STARTING,
-    VPN_STATE_CONNECTED,
-};
+}
 
-class VPNConnection
+VPNManager::~VPNManager(void)
 {
-public:
-    VPNConnection(void);
-    virtual ~VPNConnection(void);
-    bool Establish(void);
-    bool Remove(void);
+    Stop();
+}
 
-private:
-    HRASCONN getCurrentRasConnection(void);
-    HRASCONN m_rasConnection;
-};
+void VPNManager::Toggle()
+{
+    if (VPN_STATE_STOPPED == m_vpnState)
+    {
+        m_vpnConnection.Establish();
+    }
+    else
+    {
+        Stop();
+    }
+}
+
+void VPNManager::Stop(void)
+{
+    m_vpnConnection.Remove();
+}

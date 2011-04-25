@@ -21,7 +21,7 @@
 
 #include "stdafx.h"
 #include "psiclient.h"
-#include "vpnconnection.h"
+#include "vpnmanager.h"
 
 
 //==== layout =================================================================
@@ -149,6 +149,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 }
 
 
+//==== The VPN Manager ========================================================
+
+VPNManager g_vpnManager;
+
+
 //==== toolbar ================================================================
 
 // http://msdn.microsoft.com/en-us/library/bb760446%28v=VS.85%29.aspx
@@ -219,13 +224,14 @@ void CreateToolbar(HWND hWndParent)
     ShowWindow(g_hToolBar, TRUE);
 }
 
-void ShowButton(VPNState state)
+void UpdateButton(void)
 {
     TBBUTTONINFO info;
     info.cbSize = sizeof(info);
     info.dwMask = TBIF_IMAGE;
     static int g_nextAnimationIndex = 0;
 
+    VPNState state = g_vpnManager.GetVPNState();
     if (state == VPN_STATE_STOPPED) info.iImage = 0;
     else if (state == VPN_STATE_CONNECTED) info.iImage = 1;
     else info.iImage = 2 + (g_nextAnimationIndex++)%4;
@@ -273,31 +279,6 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
 }
 
 
-//==== VPN state ==============================================================
-
-VPNState g_VPNState = VPN_STATE_STOPPED;
-
-VPNConnection g_vpnConnection;
-
-void Toggle()
-{
-    switch (g_VPNState)
-    {
-    case VPN_STATE_STOPPED:
-        // Configure the VPN and connect
-        g_vpnConnection.Establish();
-
-        break;
-
-    case VPN_STATE_STARTING:
-    case VPN_STATE_CONNECTED:
-        // Disconnect from VPN and remove configuration
-        g_vpnConnection.Remove();
-        break;
-    }
-}
-
-
 //==== Main window function ===================================================
 
 static UINT_PTR g_hTimer;
@@ -328,12 +309,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         // TODO: kill the timer when connected, restart when re-connecting
         g_hTimer = SetTimer(hWnd, IDT_BUTTON_ROTATION, 250, NULL);
 
-        Toggle();
+        g_vpnManager.Toggle();
 
         break;
 
     case WM_TIMER:
-        ShowButton(g_VPNState);
+        UpdateButton();
         break;
 
     case WM_SIZE:
@@ -366,7 +347,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         switch (wmId)
         {
         case IDM_TOGGLE:
-            Toggle();
+            g_vpnManager.Toggle();
             break;
         case IDM_SHOW_DEBUG_MESSAGES:
             g_bShowDebugMessages = !g_bShowDebugMessages;
@@ -388,9 +369,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_PSIPHON_VPN_STATE_CHANGE:
-        g_VPNState = (VPNState)wParam;
-        ShowButton(g_VPNState);
-        if (VPN_STATE_STOPPED == g_VPNState)
+        g_vpnManager.SetVPNState((VPNState)wParam);
+        UpdateButton();
+        if (VPN_STATE_STOPPED == g_vpnManager.GetVPNState())
         {
             // This is printed here to avoid printing in the vpnconnection's callback thread
             // in case it is called after my_print is already gone (when the app quits).
@@ -406,7 +387,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_DESTROY:
         // Stop VPN if running
-        g_vpnConnection.Remove();
+        g_vpnManager.Stop();
         PostQuitMessage(0);
         break;
 
