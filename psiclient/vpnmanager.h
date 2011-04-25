@@ -19,26 +19,19 @@
 
 #pragma once
 
-#include "ras.h"
+#include "vpnconnection.h"
 
-//==== VPN state ======================================================
-
-enum VPNState
-{
-    VPN_STATE_STOPPED = 0,
-    VPN_STATE_STARTING,
-    VPN_STATE_CONNECTED,
-};
-
-class VPNConnection
+class VPNManager
 {
 public:
-    VPNConnection(void);
-    virtual ~VPNConnection(void);
-    bool Establish(void);
-    bool Remove(void);
+    VPNManager(void);
+    virtual ~VPNManager(void);
+    void Toggle(void);
+    void Stop(void);
+    VPNState GetVPNState(void) {return m_vpnState;}
+    void SetVPNState(VPNState state) {m_vpnState = state;}
 
 private:
-    HRASCONN getCurrentRasConnection(void);
-    HRASCONN m_rasConnection;
+    VPNConnection m_vpnConnection;
+    VPNState m_vpnState;
 };
