@@ -26,7 +26,6 @@
 #include "webbrowser.h"
 #include "httpsrequest.h"
 
-
 // RAS callback sends messages to our main window.  Since there's only one main
 // window, we use a global variable.
 extern HWND g_hWnd;
@@ -98,7 +97,7 @@ VPNConnection::~VPNConnection(void)
     Remove();
 }
 
-bool VPNConnection::Establish(void)
+bool VPNConnection::Establish(const tstring& serverAddress, const tstring& PSK)
 {
     //*********** TEMP
 
@@ -138,7 +137,7 @@ bool VPNConnection::Establish(void)
                            RASEO2_SecureClientForMSNet |
                            RASEO2_DisableNbtOverIP;
     rasEntry.dwVpnStrategy = VS_L2tpOnly;
-    lstrcpy(rasEntry.szLocalPhoneNumber, _T("192.168.1.250")); //TODO
+    lstrcpy(rasEntry.szLocalPhoneNumber, serverAddress.c_str());
     rasEntry.dwfNetProtocols = RASNP_Ip;
     rasEntry.dwFramingProtocol = RASFP_Ppp;
     rasEntry.dwEncryptionType = ET_Require;
@@ -160,7 +159,7 @@ bool VPNConnection::Establish(void)
     memset(&vpnCredentials, 0, sizeof(vpnCredentials));
     vpnCredentials.dwSize = sizeof(vpnCredentials);
     vpnCredentials.dwMask = RASCM_PreSharedKey;
-    lstrcpy(vpnCredentials.szPassword, _T("1q2w3e4r!")); // TODO
+    lstrcpy(vpnCredentials.szPassword, PSK.c_str());
     returnCode = RasSetCredentials(0, VPN_CONNECTION_NAME, &vpnCredentials, FALSE);
     if (ERROR_SUCCESS != returnCode)
     {

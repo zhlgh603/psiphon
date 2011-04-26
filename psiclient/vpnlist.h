@@ -19,24 +19,18 @@
 
 #pragma once
 
-#include "vpnconnection.h"
-#include "vpnlist.h"
-
-class VPNManager
+class VPNList
 {
 public:
-    VPNManager(void);
-    virtual ~VPNManager(void);
-    void Toggle(void);
-    void Stop(void);
-    VPNState GetVPNState(void) {return m_vpnState;}
-    void VPNStateChanged(VPNState newState);
+    VPNList(void);
+    virtual ~VPNList(void);
+    bool InitList(void);
+    bool AddEntryToList(const tstring& hexEncodedEntry);
+    void MarkCurrentServerFailed(void);
+    bool GetNextServer(tstring& serverAddress, int& webServerPort, tstring& webServerSecret);
 
 private:
-    void TryNextServer(void);
-
-    VPNList m_vpnList;
-    VPNConnection m_vpnConnection;
-    VPNState m_vpnState;
-    bool m_userSignalledStop;
+    bool InitListFromResources(void);
+    bool InitListFromSystem(void);
+    bool WriteListToSystem(void);
 };

@@ -94,6 +94,7 @@
     <ClInclude Include="targetver.h" />
     <ClInclude Include="tstring.h" />
     <ClInclude Include="vpnconnection.h" />
+    <ClInclude Include="vpnlist.h" />
     <ClInclude Include="vpnmanager.h" />
     <ClInclude Include="webbrowser.h" />
   </ItemGroup>
@@ -105,6 +106,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="vpnconnection.cpp" />
+    <ClCompile Include="vpnlist.cpp" />
     <ClCompile Include="vpnmanager.cpp" />
     <ClCompile Include="webbrowser.cpp" />
   </ItemGroup>
