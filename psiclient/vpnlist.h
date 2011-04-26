@@ -46,5 +46,5 @@ private:
     ServerEntries GetListFromEmbeddedValues(void);
     ServerEntries GetListFromSystem(void);
     ServerEntries ParseServerEntries(const char* serverEntryListString);
-    bool WriteListToSystem(const ServerEntries& serverEntryList);
+    void WriteListToSystem(const ServerEntries& serverEntryList);
 };
