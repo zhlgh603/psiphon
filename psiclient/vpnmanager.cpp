@@ -22,7 +22,8 @@
 
 
 VPNManager::VPNManager(void) :
-    m_vpnState(VPN_STATE_STOPPED)
+    m_vpnState(VPN_STATE_STOPPED),
+    m_userSignalledStop(false)
 {
 }
 
@@ -35,10 +36,19 @@ void VPNManager::Toggle()
 {
     if (VPN_STATE_STOPPED == m_vpnState)
     {
+        // The user clicked the button to start the VPN.
+        // Clear this flag so we can do retries on failed connections.
+        m_userSignalledStop = false;
         m_vpnConnection.Establish();
     }
     else
     {
+        // The user requested to stop the VPN by clicking the button.
+        // If a connection was in the "Establishing" state, we will get a
+        // "Connection Failed" notification.
+        // This flag indicates that we should not retry when a failed
+        // connection is signalled.
+        m_userSignalledStop = true;
         Stop();
     }
 }
@@ -46,4 +56,24 @@ void VPNManager::Toggle()
 void VPNManager::Stop(void)
 {
     m_vpnConnection.Remove();
+}
+
+void VPNManager::VPNStateChanged(VPNState newState)
+{
+    m_vpnState = newState;
+
+    if (VPN_STATE_FAILED == m_vpnState &&
+        m_userSignalledStop)
+    {
+        // The user cancelled an in-progress connection.
+        // Set the status to STOPPED.
+        m_vpnState = VPN_STATE_STOPPED;
+    }
+    else if (VPN_STATE_FAILED == m_vpnState &&
+             !m_userSignalledStop)
+    {
+        // Connecting to the current server failed.
+        // TODO: Try the next one in our list.
+        m_vpnConnection.Establish();
+    }
 }
