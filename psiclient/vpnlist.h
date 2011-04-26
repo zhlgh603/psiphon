@@ -19,18 +19,32 @@
 
 #pragma once
 
+#include <vector>
+
+using namespace std;
+
+struct ServerEntry
+{
+    string serverAddress;
+    int webServerPort;
+    string webServerSecret;
+};
+
+typedef vector<ServerEntry> ServerEntries;
+
 class VPNList
 {
 public:
     VPNList(void);
     virtual ~VPNList(void);
-    bool InitList(void);
     bool AddEntryToList(const tstring& hexEncodedEntry);
     void MarkCurrentServerFailed(void);
-    bool GetNextServer(tstring& serverAddress, int& webServerPort, tstring& webServerSecret);
+    bool GetNextServer(ServerEntry& serverEntry);
 
 private:
-    bool InitListFromResources(void);
-    bool InitListFromSystem(void);
-    bool WriteListToSystem(void);
+    ServerEntries GetList(void);
+    ServerEntries GetListFromEmbeddedValues(void);
+    ServerEntries GetListFromSystem(void);
+    ServerEntries ParseServerEntries(const char* serverEntryListString);
+    bool WriteListToSystem(const ServerEntries& serverEntryList);
 };
