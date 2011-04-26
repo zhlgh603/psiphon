@@ -87,6 +87,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h" />
+    <ClInclude Include="embeddedvalues.h" />
     <ClInclude Include="httpsrequest.h" />
     <ClInclude Include="psiclient.h" />
     <ClInclude Include="Resource.h" />

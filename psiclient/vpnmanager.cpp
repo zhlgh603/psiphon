@@ -19,6 +19,7 @@
 
 #include "stdafx.h"
 #include "vpnmanager.h"
+#include <algorithm>
 
 VPNManager::VPNManager(void) :
     m_vpnState(VPN_STATE_STOPPED),
@@ -80,13 +81,17 @@ void VPNManager::VPNStateChanged(VPNState newState)
 
 void VPNManager::TryNextServer(void)
 {
-    tstring serverAddress;
-    int webServerPort;
-    tstring webServerSecret;
+    ServerEntry serverEntry;
 
     // Try the next server in our list.
-    if (m_vpnList.GetNextServer(serverAddress, webServerPort, webServerSecret))
+    if (m_vpnList.GetNextServer(serverEntry))
     {
+#ifdef _UNICODE
+        wstring serverAddress(serverEntry.serverAddress.length(), L' ');
+        std::copy(serverEntry.serverAddress.begin(), serverEntry.serverAddress.end(), serverAddress.begin());
+#else
+        string serverAddress = serverEntry.serverAddress;
+#endif
         // TODO: do web request to get the PSK
         // TODO: if the web request is synchronous, do not continuously retry because
         //       that will prevent us from processing another toggle click.
