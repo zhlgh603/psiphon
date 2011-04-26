@@ -39,7 +39,14 @@ bool VPNList::AddEntryToList(const tstring& hexEncodedEntry)
 
 void VPNList::MarkCurrentServerFailed(void)
 {
-    // TODO
+    ServerEntries serverEntryList = GetList();
+    if (serverEntryList.size() > 1)
+    {
+        // Move the first server to the end of the list
+        serverEntryList.push_back(serverEntryList[0]);
+        serverEntryList.erase(serverEntryList.begin());
+        WriteListToSystem(serverEntryList);
+    }
 }
 
 bool VPNList::GetNextServer(ServerEntry& serverEntry)
@@ -64,6 +71,8 @@ ServerEntries VPNList::GetList(void)
     if (serverEntryList.size() < 1)
     {
         serverEntryList = GetListFromEmbeddedValues();
+        // Write this out immediately, so the next time we'll get it from the system
+        WriteListToSystem(serverEntryList);
     }
 
     return serverEntryList;
@@ -154,8 +163,8 @@ ServerEntries VPNList::ParseServerEntries(const char* serverEntryListString)
     return serverEntryList;
 }
 
-bool VPNList::WriteListToSystem(const ServerEntries& serverEntryList)
+void VPNList::WriteListToSystem(const ServerEntries& serverEntryList)
 {
     // TODO: implement
-    return false;
+    return;
 }
