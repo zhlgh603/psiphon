@@ -20,6 +20,7 @@
 #pragma once
 
 #include "ras.h"
+#include "tstring.h"
 
 //==== VPN state ======================================================
 
@@ -36,7 +37,7 @@ class VPNConnection
 public:
     VPNConnection(void);
     virtual ~VPNConnection(void);
-    bool Establish(void);
+    bool Establish(const tstring& serverAddress, const tstring& PSK);
     bool Remove(void);
 
 private:

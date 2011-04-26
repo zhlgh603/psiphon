@@ -20,7 +20,6 @@
 #include "stdafx.h"
 #include "vpnmanager.h"
 
-
 VPNManager::VPNManager(void) :
     m_vpnState(VPN_STATE_STOPPED),
     m_userSignalledStop(false)
@@ -39,7 +38,7 @@ void VPNManager::Toggle()
         // The user clicked the button to start the VPN.
         // Clear this flag so we can do retries on failed connections.
         m_userSignalledStop = false;
-        m_vpnConnection.Establish();
+        TryNextServer();
     }
     else
     {
@@ -62,18 +61,35 @@ void VPNManager::VPNStateChanged(VPNState newState)
 {
     m_vpnState = newState;
 
-    if (VPN_STATE_FAILED == m_vpnState &&
-        m_userSignalledStop)
+    if (VPN_STATE_FAILED == m_vpnState)
     {
-        // The user cancelled an in-progress connection.
-        // Set the status to STOPPED.
+        // Either the user cancelled an in-progress connection,
+        // or a connection actually failed.
+        // Either way, we need to set the status to STOPPED,
+        // so that another Toggle() will cause the VPN to start again.
         m_vpnState = VPN_STATE_STOPPED;
+
+        if (!m_userSignalledStop)
+        {
+            // Connecting to the current server failed.
+            m_vpnList.MarkCurrentServerFailed();
+            TryNextServer();
+        }
     }
-    else if (VPN_STATE_FAILED == m_vpnState &&
-             !m_userSignalledStop)
+}
+
+void VPNManager::TryNextServer(void)
+{
+    tstring serverAddress;
+    int webServerPort;
+    tstring webServerSecret;
+
+    // Try the next server in our list.
+    if (m_vpnList.GetNextServer(serverAddress, webServerPort, webServerSecret))
     {
-        // Connecting to the current server failed.
-        // TODO: Try the next one in our list.
-        m_vpnConnection.Establish();
+        // TODO: do web request to get the PSK
+        // TODO: if the web request is synchronous, do not continuously retry because
+        //       that will prevent us from processing another toggle click.
+        m_vpnConnection.Establish(serverAddress, _T("1q2w3e4r!"));
     }
 }

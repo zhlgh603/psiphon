@@ -17,26 +17,24 @@
  *
  */
 
-#pragma once
-
-#include "vpnconnection.h"
+#include "stdafx.h"
 #include "vpnlist.h"
 
-class VPNManager
+VPNList::VPNList(void)
 {
-public:
-    VPNManager(void);
-    virtual ~VPNManager(void);
-    void Toggle(void);
-    void Stop(void);
-    VPNState GetVPNState(void) {return m_vpnState;}
-    void VPNStateChanged(VPNState newState);
+}
 
-private:
-    void TryNextServer(void);
+VPNList::~VPNList(void)
+{
+}
 
-    VPNList m_vpnList;
-    VPNConnection m_vpnConnection;
-    VPNState m_vpnState;
-    bool m_userSignalledStop;
-};
+void VPNList::MarkCurrentServerFailed(void)
+{
+}
+
+bool VPNList::GetNextServer(tstring& serverAddress, int& webServerPort, tstring& webServerSecret)
+{
+    serverAddress = _T("192.168.1.250");
+
+    return true;
+}

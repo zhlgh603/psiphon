@@ -21,6 +21,8 @@
 
 #include <string>
 
+using namespace std;
+
 #ifdef _UNICODE
 #define tstring wstring
 #else
