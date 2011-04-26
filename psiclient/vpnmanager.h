@@ -29,9 +29,10 @@ public:
     void Toggle(void);
     void Stop(void);
     VPNState GetVPNState(void) {return m_vpnState;}
-    void SetVPNState(VPNState state) {m_vpnState = state;}
+    void VPNStateChanged(VPNState newState);
 
 private:
     VPNConnection m_vpnConnection;
     VPNState m_vpnState;
+    bool m_userSignalledStop;
 };

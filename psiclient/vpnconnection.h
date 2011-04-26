@@ -28,6 +28,7 @@ enum VPNState
     VPN_STATE_STOPPED = 0,
     VPN_STATE_STARTING,
     VPN_STATE_CONNECTED,
+    VPN_STATE_FAILED
 };
 
 class VPNConnection

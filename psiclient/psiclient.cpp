@@ -369,7 +369,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_PSIPHON_VPN_STATE_CHANGE:
-        g_vpnManager.SetVPNState((VPNState)wParam);
+        g_vpnManager.VPNStateChanged((VPNState)wParam);
         UpdateButton();
         if (VPN_STATE_STOPPED == g_vpnManager.GetVPNState())
         {
