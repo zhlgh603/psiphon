@@ -278,14 +278,11 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
     }
 }
 
-void my_print(bool bDebugMessage, const string& format, ...)
+void my_print(bool bDebugMessage, const string& message)
 {
-    tstring tFormat(format.length(), _T(' '));
-    std::copy(format.begin(), format.end(), tFormat.begin());
-    va_list args;
-    va_start(args, format);
-    my_print(bDebugMessage, tFormat.c_str(), args);
-    va_end(args);
+    tstring tMessage(message.length(), _T(' '));
+    std::copy(message.begin(), message.end(), tMessage.begin());
+    my_print(bDebugMessage, tMessage.c_str());
 }
 
 
