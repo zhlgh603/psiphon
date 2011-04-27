@@ -39,7 +39,7 @@ public:
     virtual ~VPNList(void);
     bool AddEntryToList(const tstring& hexEncodedEntry);
     void MarkCurrentServerFailed(void);
-    bool GetNextServer(ServerEntry& serverEntry);
+    ServerEntry GetNextServer(void);
 
 private:
     ServerEntries GetList(void);
