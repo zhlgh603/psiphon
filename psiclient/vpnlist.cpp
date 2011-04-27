@@ -21,6 +21,7 @@
 #include "psiclient.h"
 #include "vpnlist.h"
 #include "embeddedvalues.h"
+#include "config.h"
 #include <algorithm>
 #include <sstream>
 
@@ -93,12 +94,65 @@ ServerEntries VPNList::GetListFromEmbeddedValues(void)
 
 ServerEntries VPNList::GetListFromSystem(void)
 {
-    // TODO: implement
-    return ServerEntries();
+    HKEY key = 0;
+    DWORD disposition = 0;
+    LONG returnCode = RegCreateKeyEx(HKEY_CURRENT_USER, LOCAL_SETTINGS_REGISTRY_KEY, 0, 0, 0, KEY_READ, 0, &key, &disposition);
+    if (ERROR_SUCCESS != returnCode)
+    {
+        std::stringstream s;
+        s << "Create Registry Key failed (" << returnCode << ")";
+        throw std::exception(s.str().c_str());
+    }
+
+    DWORD bufferLength = 1;
+    char *buffer = (char *)malloc(bufferLength * sizeof(char));
+
+    // Using the ANSI version explicitly.
+    returnCode = RegQueryValueExA(key, LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS, 0, 0, (LPBYTE)buffer, &bufferLength);
+    while (ERROR_MORE_DATA == returnCode)
+    {
+        // We must ensure that the string is null terminated, as per MSDN
+        buffer = (char *)realloc(buffer, bufferLength + 1);
+        buffer[bufferLength - 1] = 0;
+        returnCode = RegQueryValueExA(key, LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS, 0, 0, (LPBYTE)buffer, &bufferLength);
+    }
+
+    string serverEntryListString(buffer);
+    free(buffer);
+    RegCloseKey(key);
+
+    if (ERROR_FILE_NOT_FOUND == returnCode)
+    {
+        return ServerEntries();
+    }
+    else if (ERROR_SUCCESS != returnCode)
+    {
+        std::stringstream s;
+        s << "Query Registry Value failed (" << returnCode << ")";
+        throw std::exception(s.str().c_str());
+    }
+
+    return ParseServerEntries(serverEntryListString.c_str());
 }
 
 // Adapted from here:
 // http://stackoverflow.com/questions/3381614/c-convert-string-to-hexadecimal-and-vice-versa
+string Hexlify(const string& input)
+{
+    static const char* const lut = "0123456789ABCDEF";
+    size_t len = input.length();
+
+    string output;
+    output.reserve(2 * len);
+    for (size_t i = 0; i < len; ++i)
+    {
+        const char c = input[i];
+        output.push_back(lut[c >> 4]);
+        output.push_back(lut[c & 15]);
+    }
+    return output;
+}
+
 string Dehexlify(const string& input)
 {
     static const char* const lut = "0123456789ABCDEF";
@@ -173,8 +227,46 @@ ServerEntries VPNList::ParseServerEntries(const char* serverEntryListString)
     return serverEntryList;
 }
 
+// NOTE: This function does not throw because we don't want a failure to prevent a connection attempt.
 void VPNList::WriteListToSystem(const ServerEntries& serverEntryList)
 {
-    // TODO: implement
-    return;
+    HKEY key = 0;
+    DWORD disposition = 0;
+    LONG returnCode = RegCreateKeyEx(HKEY_CURRENT_USER, LOCAL_SETTINGS_REGISTRY_KEY, 0, 0, 0, KEY_WRITE, 0, &key, &disposition);
+    if (ERROR_SUCCESS != returnCode)
+    {
+        my_print(false, _T("Create Registry Key failed (%d)"), returnCode);
+        return;
+    }
+
+    string encodedServerEntryList = EncodeServerEntries(serverEntryList);
+    // REG_MULTI_SZ needs two terminating null characters.  We're using REG_SZ right now, but I'm leaving this in anyways.
+    int bufferLength = encodedServerEntryList.length() + 2;
+    char *buffer = (char *)malloc(bufferLength * sizeof(char));
+    sprintf_s(buffer, bufferLength, encodedServerEntryList.c_str());
+    buffer[bufferLength - 1] = 0;
+    buffer[bufferLength - 2] = 0;
+
+    // Using the ANSI version explicitly.
+    returnCode = RegSetValueExA(key, LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS, 0, REG_SZ, (PBYTE)buffer, bufferLength);
+    if (ERROR_SUCCESS != returnCode)
+    {
+        my_print(false, _T("Set Registry Value failed (%d)"), returnCode);
+    }
+    free(buffer);
+
+    RegCloseKey(key);
+}
+
+string VPNList::EncodeServerEntries(const ServerEntries& serverEntryList)
+{
+    string encodedServerList;
+    for (ServerEntryIterator it = serverEntryList.begin(); it != serverEntryList.end(); ++it)
+    {
+        stringstream port;
+        port << it->webServerPort;
+        string serverEntry = it->serverAddress + " " + port.str() + " " + it->webServerSecret;
+        encodedServerList += Hexlify(serverEntry) + "\n";
+    }
+    return encodedServerList;
 }

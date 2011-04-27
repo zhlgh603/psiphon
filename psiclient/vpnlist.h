@@ -31,6 +31,7 @@ struct ServerEntry
 };
 
 typedef vector<ServerEntry> ServerEntries;
+typedef ServerEntries::const_iterator ServerEntryIterator;
 
 class VPNList
 {
@@ -47,4 +48,5 @@ private:
     ServerEntries GetListFromSystem(void);
     ServerEntries ParseServerEntries(const char* serverEntryListString);
     void WriteListToSystem(const ServerEntries& serverEntryList);
+    string EncodeServerEntries(const ServerEntries& serverEntryList);
 };

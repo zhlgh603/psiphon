@@ -22,6 +22,8 @@
 #include <tchar.h>
 
 static const TCHAR* VPN_CONNECTION_NAME = _T("PsiphonV");
+static const TCHAR* LOCAL_SETTINGS_REGISTRY_KEY = _T("Software\\PsiphonV");
+static const char* LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS = "Servers";
 
 static const TCHAR* WEB_BROWSER_HOME_PAGE = _T("https://www.facebook.com");
 
