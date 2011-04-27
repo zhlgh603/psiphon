@@ -79,7 +79,15 @@ ServerEntries VPNList::GetList(void)
 
     if (serverEntryList.size() < 1)
     {
-        serverEntryList = GetListFromEmbeddedValues();
+        try
+        {
+            serverEntryList = GetListFromEmbeddedValues();
+        }
+        catch (std::exception &ex)
+        {
+            string message = string("Bad Embedded Server List.  This application is possibly corrupt: ") + ex.what();
+            throw std::exception(message.c_str());
+        }
         // Write this out immediately, so the next time we'll get it from the system
         WriteListToSystem(serverEntryList);
     }
