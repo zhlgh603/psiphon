@@ -81,20 +81,17 @@ void VPNManager::VPNStateChanged(VPNState newState)
 
 void VPNManager::TryNextServer(void)
 {
-    ServerEntry serverEntry;
-
     // Try the next server in our list.
-    if (m_vpnList.GetNextServer(serverEntry))
-    {
+    ServerEntry serverEntry = m_vpnList.GetNextServer();
+
 #ifdef _UNICODE
-        wstring serverAddress(serverEntry.serverAddress.length(), L' ');
-        std::copy(serverEntry.serverAddress.begin(), serverEntry.serverAddress.end(), serverAddress.begin());
+    wstring serverAddress(serverEntry.serverAddress.length(), L' ');
+    std::copy(serverEntry.serverAddress.begin(), serverEntry.serverAddress.end(), serverAddress.begin());
 #else
-        string serverAddress = serverEntry.serverAddress;
+    string serverAddress = serverEntry.serverAddress;
 #endif
-        // TODO: do web request to get the PSK
-        // TODO: if the web request is synchronous, do not continuously retry because
-        //       that will prevent us from processing another toggle click.
-        m_vpnConnection.Establish(serverAddress, _T("1q2w3e4r!"));
-    }
+    // TODO: do web request to get the PSK
+    // TODO: if the web request is synchronous, do not continuously retry because
+    //       that will prevent us from processing another toggle click.
+    m_vpnConnection.Establish(serverAddress, _T("1q2w3e4r!"));
 }

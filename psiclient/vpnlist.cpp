@@ -18,6 +18,7 @@
  */
 
 #include "stdafx.h"
+#include "psiclient.h"
 #include "vpnlist.h"
 #include "embeddedvalues.h"
 #include <algorithm>
@@ -49,25 +50,32 @@ void VPNList::MarkCurrentServerFailed(void)
     }
 }
 
-bool VPNList::GetNextServer(ServerEntry& serverEntry)
+ServerEntry VPNList::GetNextServer(void)
 {
     ServerEntries serverEntryList = GetList();
     if (serverEntryList.size() < 1)
     {
-        return false;
+        throw std::exception("No servers found.  This application is possibly corrupt.");
     }
 
     // The client always tries the first entry in the list.
     // The list will be rearranged elsewhere, such as when a server has failed,
     // or when new servers are discovered.
-    serverEntry = serverEntryList[0];
-
-    return true;
+    return serverEntryList[0];
 }
 
 ServerEntries VPNList::GetList(void)
 {
-    ServerEntries serverEntryList = GetListFromSystem();
+    ServerEntries serverEntryList;
+    try
+    {
+        serverEntryList = GetListFromSystem();
+    }
+    catch (std::exception &ex)
+    {
+        my_print(false, string("Using Embedded Server List because the System Server List is corrupt: ") + ex.what());
+    }
+
     if (serverEntryList.size() < 1)
     {
         serverEntryList = GetListFromEmbeddedValues();
@@ -89,7 +97,6 @@ ServerEntries VPNList::GetListFromSystem(void)
     return ServerEntries();
 }
 
-// TODO: Catch the exceptions somewhere.
 // Adapted from here:
 // http://stackoverflow.com/questions/3381614/c-convert-string-to-hexadecimal-and-vice-versa
 string Dehexlify(const string& input)
@@ -98,7 +105,7 @@ string Dehexlify(const string& input)
     size_t len = input.length();
     if (len & 1)
     {
-        throw std::invalid_argument("odd length");
+        throw std::invalid_argument("Dehexlify: odd length");
     }
 
     string output;
@@ -109,14 +116,14 @@ string Dehexlify(const string& input)
         const char* p = std::lower_bound(lut, lut + 16, a);
         if (*p != a)
         {
-            throw std::invalid_argument("not a hex digit");
+            throw std::invalid_argument("Dehexlify: not a hex digit");
         }
 
         char b = toupper(input[i + 1]);
         const char* q = std::lower_bound(lut, lut + 16, b);
         if (*q != b)
         {
-            throw std::invalid_argument("not a hex digit");
+            throw std::invalid_argument("Dehexlify: not a hex digit");
         }
 
         output.push_back(((p - lut) << 4) | (q - lut));
@@ -125,8 +132,8 @@ string Dehexlify(const string& input)
     return output;
 }
 
-// TODO: some error reporting?
-// TODO: throw (and catch) exceptions?
+// TODO: Should the errors below throw (preventing any VPN connection from starting),
+//       or just continue (throwing out the bad server entry)?
 ServerEntries VPNList::ParseServerEntries(const char* serverEntryListString)
 {
     ServerEntries serverEntryList;
@@ -134,7 +141,7 @@ ServerEntries VPNList::ParseServerEntries(const char* serverEntryListString)
     stringstream stream(serverEntryListString);
     string item;
 
-    while(getline(stream, item, '\n'))
+    while (getline(stream, item, '\n'))
     {
         string line = Dehexlify(item);
 
@@ -142,20 +149,23 @@ ServerEntries VPNList::ParseServerEntries(const char* serverEntryListString)
         string lineItem;
         ServerEntry entry;
         
-        if (getline(lineStream, lineItem, ' '))
+        if (!getline(lineStream, lineItem, ' '))
         {
-            entry.serverAddress = lineItem;
+            throw std::exception("Server Entries are corrupt: can't parse Server Address");
         }
+        entry.serverAddress = lineItem;
 
-        if (getline(lineStream, lineItem, ' '))
+        if (!getline(lineStream, lineItem, ' '))
         {
-            entry.webServerPort = atoi(lineItem.c_str());
+            throw std::exception("Server Entries are corrupt: can't parse Web Server Port");
         }
+        entry.webServerPort = atoi(lineItem.c_str());
 
-        if (getline(lineStream, lineItem, ' '))
+        if (!getline(lineStream, lineItem, ' '))
         {
-            entry.webServerSecret = lineItem;
+            throw std::exception("Server Entries are corrupt: can't parse Web Server Secret");
         }
+        entry.webServerSecret = lineItem;
 
         serverEntryList.push_back(entry);
     }

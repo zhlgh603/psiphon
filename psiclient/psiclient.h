@@ -26,3 +26,4 @@
 //==== logging =========================================================
 
 void my_print(bool bDebugMessage, const TCHAR* format, ...);
+void my_print(bool bDebugMessage, const string& format, ...);
