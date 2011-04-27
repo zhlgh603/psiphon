@@ -106,14 +106,26 @@ ServerEntries VPNList::GetListFromSystem(void)
 
     DWORD bufferLength = 1;
     char *buffer = (char *)malloc(bufferLength * sizeof(char));
+    if (!buffer)
+    {
+        RegCloseKey(key);
+        throw std::exception("GetListFromSystem: Error allocating memory");
+    }
 
     // Using the ANSI version explicitly.
     returnCode = RegQueryValueExA(key, LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS, 0, 0, (LPBYTE)buffer, &bufferLength);
-    while (ERROR_MORE_DATA == returnCode)
+    if (ERROR_MORE_DATA == returnCode)
     {
         // We must ensure that the string is null terminated, as per MSDN
-        buffer = (char *)realloc(buffer, bufferLength + 1);
-        buffer[bufferLength - 1] = 0;
+        char *newBuffer = (char *)realloc(buffer, bufferLength + 1);
+        if (!newBuffer)
+        {
+            free(buffer);
+            RegCloseKey(key);
+            throw std::exception("GetListFromSystem: Error reallocating memory");
+        }
+        buffer = newBuffer;
+        buffer[bufferLength - 1] = '\0';
         returnCode = RegQueryValueExA(key, LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS, 0, 0, (LPBYTE)buffer, &bufferLength);
     }
 
@@ -243,9 +255,15 @@ void VPNList::WriteListToSystem(const ServerEntries& serverEntryList)
     // REG_MULTI_SZ needs two terminating null characters.  We're using REG_SZ right now, but I'm leaving this in anyways.
     int bufferLength = encodedServerEntryList.length() + 2;
     char *buffer = (char *)malloc(bufferLength * sizeof(char));
+    if (!buffer)
+    {
+        my_print(false, _T("WriteListToSystem: Error allocating memory"));
+        RegCloseKey(key);
+        return;
+    }
     sprintf_s(buffer, bufferLength, encodedServerEntryList.c_str());
-    buffer[bufferLength - 1] = 0;
-    buffer[bufferLength - 2] = 0;
+    buffer[bufferLength - 1] = '\0';
+    buffer[bufferLength - 2] = '\0';
 
     // Using the ANSI version explicitly.
     returnCode = RegSetValueExA(key, LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS, 0, REG_SZ, (PBYTE)buffer, bufferLength);
