@@ -43,7 +43,7 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
     my_print(true, _T("RasDialCallback (%d %d)"), rasConnState, dwError);
     if (0 != dwError)
     {
-        my_print(false, _T("Connection failed."));
+        my_print(false, _T("Connection failed (%d)"), dwError);
 
         ::SendMessage(g_hWnd, WM_PSIPHON_VPN_STATE_CHANGE, VPN_STATE_FAILED, 0);
     }
