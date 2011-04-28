@@ -19,6 +19,7 @@
 
 #include "stdafx.h"
 #include "vpnmanager.h"
+#include "webbrowser.h"
 #include <algorithm>
 
 VPNManager::VPNManager(void) :
@@ -62,8 +63,13 @@ void VPNManager::VPNStateChanged(VPNState newState)
 {
     m_vpnState = newState;
 
-    if (VPN_STATE_FAILED == m_vpnState)
+    switch (m_vpnState)
     {
+    case VPN_STATE_CONNECTED:
+        OpenBrowser();
+        break;
+
+    case VPN_STATE_FAILED:
         // Either the user cancelled an in-progress connection,
         // or a connection actually failed.
         // Either way, we need to set the status to STOPPED,
@@ -76,6 +82,11 @@ void VPNManager::VPNStateChanged(VPNState newState)
             m_vpnList.MarkCurrentServerFailed();
             TryNextServer();
         }
+        break;
+
+    default:
+        // no default actions
+        break;
     }
 }
 
