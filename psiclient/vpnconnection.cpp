@@ -198,7 +198,8 @@ bool VPNConnection::Remove(void)
     {
         // Hang up
         returnCode = RasHangUp(rasConnection);
-        if (ERROR_SUCCESS != returnCode)
+        if (ERROR_SUCCESS != returnCode &&
+            ERROR_NO_CONNECTION != returnCode)
         {
             my_print(false, _T("RasHangUp failed (%d)"), returnCode);
 
