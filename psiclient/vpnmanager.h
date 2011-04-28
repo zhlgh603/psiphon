@@ -34,6 +34,7 @@ public:
 
 private:
     void TryNextServer(void);
+    static DWORD WINAPI TryNextServerThread(void* object);
 
     VPNList m_vpnList;
     VPNConnection m_vpnConnection;

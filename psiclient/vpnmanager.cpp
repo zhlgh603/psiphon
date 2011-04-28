@@ -19,7 +19,9 @@
 
 #include "stdafx.h"
 #include "vpnmanager.h"
+#include "psiclient.h"
 #include "webbrowser.h"
+#include "httpsrequest.h"
 #include <algorithm>
 
 VPNManager::VPNManager(void) :
@@ -92,7 +94,16 @@ void VPNManager::VPNStateChanged(VPNState newState)
         if (!m_userSignalledStop)
         {
             // Connecting to the current server failed.
-            m_vpnList.MarkCurrentServerFailed();
+            try
+            {
+                m_vpnList.MarkCurrentServerFailed();
+            }
+            catch (std::exception &ex)
+            {
+                my_print(false, string("VPNStateChanged caught exception: ") + ex.what());
+                return;
+            }
+
             TryNextServer();
         }
         break;
@@ -105,10 +116,31 @@ void VPNManager::VPNStateChanged(VPNState newState)
 
 void VPNManager::TryNextServer(void)
 {
-    VPNStateChanged(VPN_STATE_INITIALIZING);
+    // This function might not return quickly, because it performs an HTTPS Request.
+    // It is run in a thread so that it does not starve the message pump.
+    if (!CreateThread(0, 0, TryNextServerThread, (void*)this, 0, 0))
+    {
+        my_print(false, _T("TryNextServer: CreateThread failed (%d)"), GetLastError());
+    }
+}
 
-    // Try the next server in our list.
-    ServerEntry serverEntry = m_vpnList.GetNextServer();
+DWORD WINAPI VPNManager::TryNextServerThread(void* object)
+{
+    VPNManager* This = (VPNManager*)object;
+    This->VPNStateChanged(VPN_STATE_INITIALIZING);
+
+    ServerEntry serverEntry;
+    try
+    {
+        // Try the next server in our list.
+        serverEntry = This->m_vpnList.GetNextServer();
+    }
+    catch (std::exception &ex)
+    {
+        my_print(false, string("TryNextServerThread caught exception: ") + ex.what());
+        This->Stop();
+        return 0;
+    }
 
 #ifdef _UNICODE
     wstring serverAddress(serverEntry.serverAddress.length(), L' ');
@@ -116,20 +148,36 @@ void VPNManager::TryNextServer(void)
 #else
     string serverAddress = serverEntry.serverAddress;
 #endif
-    // TODO: do web request to get the PSK
-    // TODO: if the web request is synchronous, do not continuously retry because
-    //       that will prevent us from processing another toggle click.
+
     // NOTE: Toggle may have been clicked since the start of this function.
-    //       If it was, don't Establish the VPN connection.
-    if (!m_userSignalledStop)
+    //       If it was, don't make the web request.
+    if (!This->m_userSignalledStop)
     {
-        m_vpnConnection.Establish(serverAddress, _T("1q2w3e4r!"));
+        HTTPSRequest r;
+        string response;
+        if (!r.GetRequest("", response))
+        {
+            This->VPNStateChanged(VPN_STATE_FAILED);
+            return 0;
+        }
+    }
+
+    // NOTE: Toggle may have been clicked during the web request.
+    //       If it was, don't Establish the VPN connection.
+    if (!This->m_userSignalledStop)
+    {
+        if (!This->m_vpnConnection.Establish(serverAddress, _T("1q2w3e4r!")))
+        {
+            This->Stop();
+        }
     }
 
     // NOTE: Toggle may have been clicked during Establish.
     //       If it was, Stop the VPN.
-    if (m_userSignalledStop)
+    if (This->m_userSignalledStop)
     {
-        Stop();
+        This->Stop();
     }
+
+    return 0;
 }
