@@ -23,7 +23,6 @@
 #include "psiclient.h"
 #include "ras.h"
 #include "raserror.h"
-#include "webbrowser.h"
 #include "httpsrequest.h"
 
 // RAS callback sends messages to our main window.  Since there's only one main
@@ -63,8 +62,6 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
         my_print(false, _T("Successfully connected."));
 
         ::SendMessage(g_hWnd, WM_PSIPHON_VPN_STATE_CHANGE, VPN_STATE_CONNECTED, 0);
-
-        OpenBrowser();
 
         if (WAIT_FAILED == WaitForSingleObject(rasEvent, INFINITE))
         {
