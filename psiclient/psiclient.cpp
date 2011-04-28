@@ -290,18 +290,6 @@ void my_print(bool bDebugMessage, const string& message)
 
 static UINT_PTR g_hTimer;
 
-void Toggle()
-{
-    try
-    {
-        g_vpnManager.Toggle();
-    }
-    catch (std::exception &ex)
-    {
-        my_print(false, string("Caught exception: ") + ex.what());
-    }
-}
-
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     int wmId, wmEvent;
@@ -328,7 +316,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         // TODO: kill the timer when connected, restart when re-connecting
         g_hTimer = SetTimer(hWnd, IDT_BUTTON_ROTATION, 250, NULL);
 
-        Toggle();
+        g_vpnManager.Toggle();
 
         break;
 
@@ -366,7 +354,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         switch (wmId)
         {
         case IDM_TOGGLE:
-            Toggle();
+            g_vpnManager.Toggle();
             break;
         case IDM_SHOW_DEBUG_MESSAGES:
             g_bShowDebugMessages = !g_bShowDebugMessages;
@@ -388,14 +376,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_PSIPHON_VPN_STATE_CHANGE:
-        try
-        {
-            g_vpnManager.VPNStateChanged((VPNState)wParam);
-        }
-        catch (std::exception &ex)
-        {
-            my_print(false, string("Caught exception: ") + ex.what());
-        }
+        g_vpnManager.VPNStateChanged((VPNState)wParam);
         UpdateButton();
         if (VPN_STATE_STOPPED == g_vpnManager.GetVPNState())
         {
