@@ -23,7 +23,6 @@
 #include "psiclient.h"
 #include "ras.h"
 #include "raserror.h"
-#include "httpsrequest.h"
 
 // RAS callback sends messages to our main window.  Since there's only one main
 // window, we use a global variable.
@@ -96,14 +95,6 @@ VPNConnection::~VPNConnection(void)
 
 bool VPNConnection::Establish(const tstring& serverAddress, const tstring& PSK)
 {
-    //*********** TEMP
-
-    //HTTPSRequest r;
-    //string response;
-    //r.GetRequest("", response);
-    //return false;
-    //*********** TEMP
-
     DWORD returnCode = ERROR_SUCCESS;
 
     Remove();
