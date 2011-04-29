@@ -187,7 +187,10 @@ bool VPNConnection::Remove(void)
 
     if (!rasConnection)
     {
-        // If there is no active RAS connection, we don't want to do anything.        // We especially don't want to delete the phone book entry for a connection        // that is connecting (but not active so does not enumerate) because that will        // result in an ERROR_PORT_NOT_AVAILABLE error from RasDial until a reboot.
+        // If there is no active RAS connection, we don't want to do anything.
+        // We especially don't want to delete the phone book entry for a connection
+        // that is connecting (but not active so does not enumerate) because that will
+        // result in an ERROR_PORT_NOT_AVAILABLE error from RasDial until a reboot.
         return true;
     }
 
