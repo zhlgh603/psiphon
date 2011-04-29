@@ -42,6 +42,6 @@ public:
     bool Remove(void);
 
 private:
-    HRASCONN getCurrentRasConnection(void);
+    HRASCONN getActiveRasConnection(void);
     HRASCONN m_rasConnection;
 };
