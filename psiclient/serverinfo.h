@@ -19,8 +19,21 @@
 
 #pragma once
 
-#include <tchar.h>
+#include <vector>
+#include "vpnlist.h"
+#include "tstring.h"
 
-static const TCHAR* VPN_CONNECTION_NAME = _T("PsiphonV");
-static const TCHAR* LOCAL_SETTINGS_REGISTRY_KEY = _T("Software\\PsiphonV");
-static const char* LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS = "Servers";
+class ServerInfo
+{
+public:
+    ServerInfo(const ServerEntry& serverEntry);
+    virtual ~ServerInfo(void);
+
+    bool DoHandshake(void);
+    tstring GetPSK(void);
+    vector<tstring> GetHomepages(void);
+    ServerEntries GetDiscoveredServerEntries(void);
+
+private:
+    ServerEntry m_serverEntry;
+};

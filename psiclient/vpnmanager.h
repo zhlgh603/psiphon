@@ -21,6 +21,7 @@
 
 #include "vpnconnection.h"
 #include "vpnlist.h"
+#include "serverinfo.h"
 
 class VPNManager
 {
@@ -40,4 +41,5 @@ private:
     VPNConnection m_vpnConnection;
     VPNState m_vpnState;
     bool m_userSignalledStop;
+    std::auto_ptr<ServerInfo> m_serverInfo;
 };

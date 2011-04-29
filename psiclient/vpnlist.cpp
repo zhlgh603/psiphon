@@ -33,10 +33,41 @@ VPNList::~VPNList(void)
 {
 }
 
-bool VPNList::AddEntryToList(const tstring& hexEncodedEntry)
+void VPNList::AddEntriesToList(const ServerEntries& newServerEntryList)
 {
-    // TODO
-    return false;
+    if (newServerEntryList.size() < 1)
+    {
+        return;
+    }
+
+    ServerEntries oldServerEntryList = GetList();
+    for (ServerEntryIterator newServerEntry = newServerEntryList.begin();
+         newServerEntry != newServerEntryList.end(); ++newServerEntry)
+    {
+        // Check if we already know about this server
+        bool alreadyKnown = false;
+        for (ServerEntries::iterator oldServerEntry = oldServerEntryList.begin();
+             oldServerEntry != oldServerEntryList.end(); ++oldServerEntry)
+        {
+            if (newServerEntry->serverAddress == oldServerEntry->serverAddress)
+            {
+                alreadyKnown = true;
+                // TODO: Decide if we should update the values, or discard the update
+                oldServerEntry->webServerPort = newServerEntry->webServerPort;
+                oldServerEntry->webServerSecret = newServerEntry->webServerSecret;
+                break;
+            }
+        }
+
+        if (!alreadyKnown)
+        {
+            // Insert the new entry below the current (first) entry, but not at the bottom,
+            // because that may contain a previously failed entry
+            oldServerEntryList.insert(oldServerEntryList.begin() + 1, *newServerEntry);
+        }
+    }
+
+    WriteListToSystem(oldServerEntryList);
 }
 
 void VPNList::MarkCurrentServerFailed(void)

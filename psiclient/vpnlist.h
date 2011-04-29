@@ -25,6 +25,10 @@ using namespace std;
 
 struct ServerEntry
 {
+    ServerEntry(void) {}
+    ServerEntry(const string& serverAddress_, int webServerPort_, const string& webServerSecret_) :
+        serverAddress(serverAddress_), webServerPort(webServerPort_), webServerSecret(webServerSecret_) {}
+
     string serverAddress;
     int webServerPort;
     string webServerSecret;
@@ -38,7 +42,7 @@ class VPNList
 public:
     VPNList(void);
     virtual ~VPNList(void);
-    bool AddEntryToList(const tstring& hexEncodedEntry);
+    void AddEntriesToList(const ServerEntries& newServerEntryList);
     void MarkCurrentServerFailed(void);
     ServerEntry GetNextServer(void);
 

@@ -19,4 +19,8 @@
 
 #pragma once
 
-void OpenBrowser(void);
+#include <vector>
+#include "tstring.h"
+
+void OpenBrowser(const tstring& url);
+void OpenBrowser(const vector<tstring>& urls);

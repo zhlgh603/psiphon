@@ -21,7 +21,6 @@
 #include "vpnmanager.h"
 #include "psiclient.h"
 #include "webbrowser.h"
-#include "httpsrequest.h"
 #include <algorithm>
 
 VPNManager::VPNManager(void) :
@@ -81,7 +80,10 @@ void VPNManager::VPNStateChanged(VPNState newState)
     switch (m_vpnState)
     {
     case VPN_STATE_CONNECTED:
-        OpenBrowser();
+        if (m_serverInfo.get())
+        {
+            OpenBrowser(m_serverInfo->GetHomepages());
+        }
         break;
 
     case VPN_STATE_FAILED:
@@ -97,14 +99,12 @@ void VPNManager::VPNStateChanged(VPNState newState)
             try
             {
                 m_vpnList.MarkCurrentServerFailed();
+                TryNextServer();
             }
             catch (std::exception &ex)
             {
                 my_print(false, string("VPNStateChanged caught exception: ") + ex.what());
-                return;
             }
-
-            TryNextServer();
         }
         break;
 
@@ -153,9 +153,20 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* object)
     //       If it was, don't make the web request.
     if (!This->m_userSignalledStop)
     {
-        HTTPSRequest r;
-        string response;
-        if (!r.GetRequest("", response))
+        This->m_serverInfo.reset(new ServerInfo(serverEntry));
+        if (This->m_serverInfo->DoHandshake())
+        {
+            try
+            {
+                This->m_vpnList.AddEntriesToList(This->m_serverInfo->GetDiscoveredServerEntries());
+            }
+            catch (std::exception &ex)
+            {
+                my_print(false, string("TryNextServerThread caught exception: ") + ex.what());
+                // This isn't fatal.  The VPN connection can still be established.
+            }
+        }
+        else
         {
             This->VPNStateChanged(VPN_STATE_FAILED);
             return 0;
@@ -166,7 +177,7 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* object)
     //       If it was, don't Establish the VPN connection.
     if (!This->m_userSignalledStop)
     {
-        if (!This->m_vpnConnection.Establish(serverAddress, _T("1q2w3e4r!")))
+        if (!This->m_vpnConnection.Establish(serverAddress, This->m_serverInfo->GetPSK()))
         {
             This->Stop();
         }

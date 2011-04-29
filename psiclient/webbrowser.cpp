@@ -23,9 +23,9 @@
 #include "webbrowser.h"
 #include "shellapi.h"
 
-void OpenBrowser(void)
+void OpenBrowser(const tstring& url)
 {
-    HINSTANCE returnValue = ShellExecute(0, _T("open"), WEB_BROWSER_HOME_PAGE, 0, 0, SW_SHOWNORMAL);
+    HINSTANCE returnValue = ShellExecute(0, _T("open"), url.c_str(), 0, 0, SW_SHOWNORMAL);
 
     // If the function succeeds, it returns a value greater than 32. If the function fails,
     // it returns an error value that indicates the cause of the failure. 
@@ -33,5 +33,14 @@ void OpenBrowser(void)
     if ((int)returnValue <= 32)
     {
         my_print(false, _T("ShellExecute failed (%d)"), (int)returnValue);
+    }
+}
+
+void OpenBrowser(const vector<tstring>& urls)
+{
+    for (vector<tstring>::const_iterator it = urls.begin();
+         it != urls.end(); ++it)
+    {
+        OpenBrowser(*it);
     }
 }
