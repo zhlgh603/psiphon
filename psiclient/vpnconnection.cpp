@@ -183,42 +183,48 @@ bool VPNConnection::Remove(void)
     // Based on sample code in:
     // http://msdn.microsoft.com/en-us/library/aa377284%28v=vs.85%29.aspx
 
-    HRASCONN rasConnection = getCurrentRasConnection();
+    HRASCONN rasConnection = getActiveRasConnection();
 
-    if (rasConnection)
+    if (!rasConnection)
     {
-        // Hang up
-        returnCode = RasHangUp(rasConnection);
-        if (ERROR_SUCCESS != returnCode &&
-            ERROR_NO_CONNECTION != returnCode)
+        // If there is no active RAS connection, we don't want to do anything.        // We especially don't want to delete the phone book entry for a connection        // that is connecting (but not active so does not enumerate) because that will        // result in an ERROR_PORT_NOT_AVAILABLE error from RasDial until a reboot.
+        return true;
+    }
+
+    // Hang up
+    returnCode = RasHangUp(rasConnection);
+    if (ERROR_NO_CONNECTION == returnCode)
+    {
+        return true;
+    }
+    else if (ERROR_SUCCESS != returnCode)
+    {
+        my_print(false, _T("RasHangUp failed (%d)"), returnCode);
+
+        // Don't delete entry when in this state -- Windows gets confused
+        return false;
+    }
+
+    RASCONNSTATUS status;
+    memset(&status, 0, sizeof(status));
+    status.dwSize = sizeof(status);
+    // Wait until the connection has been terminated.
+    // See the remarks here:
+    // http://msdn.microsoft.com/en-us/library/aa377567(VS.85).aspx
+    const int sleepTime = 100; // milliseconds
+    const int maxSleepTime = 5000; // 5 seconds max wait time
+    int totalSleepTime = 0;
+    while(ERROR_INVALID_HANDLE != RasGetConnectStatus(rasConnection, &status))
+    {
+        Sleep(sleepTime);
+        totalSleepTime += sleepTime;
+        // Don't hang forever
+        if (totalSleepTime >= maxSleepTime)
         {
-            my_print(false, _T("RasHangUp failed (%d)"), returnCode);
+            my_print(false, _T("RasHangUp/RasGetConnectStatus timed out (%d)"), GetLastError());
 
             // Don't delete entry when in this state -- Windows gets confused
             return false;
-        }
-
-        RASCONNSTATUS status;
-        memset(&status, 0, sizeof(status));
-        status.dwSize = sizeof(status);
-        // Wait until the connection has been terminated.
-        // See the remarks here:
-        // http://msdn.microsoft.com/en-us/library/aa377567(VS.85).aspx
-        const int sleepTime = 100; // milliseconds
-        const int maxSleepTime = 5000; // 5 seconds max wait time
-        int totalSleepTime = 0;
-        while(ERROR_INVALID_HANDLE != RasGetConnectStatus(rasConnection, &status))
-        {
-            Sleep(sleepTime);
-            totalSleepTime += sleepTime;
-            // Don't hang forever
-            if (totalSleepTime >= maxSleepTime)
-            {
-                my_print(false, _T("RasHangUp/RasGetConnectStatus timed out (%d)"), GetLastError());
-
-                // Don't delete entry when in this state -- Windows gets confused
-                return false;
-            }
         }
     }
 
@@ -236,7 +242,7 @@ bool VPNConnection::Remove(void)
     return true;
 }
 
-HRASCONN VPNConnection::getCurrentRasConnection()
+HRASCONN VPNConnection::getActiveRasConnection()
 {
     if (m_rasConnection)
     {
