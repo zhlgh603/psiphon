@@ -178,7 +178,7 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* object)
     catch (std::exception &ex)
     {
         my_print(false, string("TryNextServerThread caught exception: ") + ex.what());
-        This->Stop();
+        This->VPNStateChanged(VPN_STATE_STOPPED);
         return 0;
     }
 
@@ -215,23 +215,19 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* object)
 
     // NOTE: Toggle may have been clicked during the web request.
     //       If it was, don't Establish the VPN connection.
-    if (!This->m_userSignalledStop)
-    {
-        if (!This->m_vpnConnection.Establish(serverAddress, This->m_serverInfo->GetPSK()))
-        {
-            // See note in Stop() which explains why we're not calling Stop() here
-            // but just changing the state value.
-            //This->Stop();
-
-            This->m_vpnState = VPN_STATE_STOPPED;
-        }
-    }
-
-    // NOTE: Toggle may have been clicked during Establish.
-    //       If it was, Stop the VPN.
     if (This->m_userSignalledStop)
     {
-        This->Stop();
+        This->VPNStateChanged(VPN_STATE_STOPPED);
+        return 0;
+    }
+
+    if (!This->m_vpnConnection.Establish(serverAddress, This->m_serverInfo->GetPSK()))
+    {
+        // See note in Stop() which explains why we're not calling Stop() here
+        // but just changing the state value.
+        //This->Stop();
+
+        This->VPNStateChanged(VPN_STATE_STOPPED);
     }
 
     return 0;
