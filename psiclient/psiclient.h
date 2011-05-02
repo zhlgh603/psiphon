@@ -20,10 +20,48 @@
 #pragma once
 
 #include "resource.h"
+#include <Winhttp.h>
+
+
+//==== global constants ================================================
 
 #define WM_PSIPHON_VPN_STATE_CHANGE    WM_USER + 100
+
 
 //==== logging =========================================================
 
 void my_print(bool bDebugMessage, const TCHAR* format, ...);
 void my_print(bool bDebugMessage, const string& message);
+
+
+//==== global helpers ==================================================
+
+class AutoHANDLE
+{
+public:
+    AutoHANDLE(HANDLE handle) {m_handle = handle;}
+    ~AutoHANDLE() {CloseHandle(m_handle);}
+    operator HANDLE() {return m_handle;}
+private:
+    HANDLE m_handle;
+};
+
+class AutoHINTERNET
+{
+public:
+    AutoHINTERNET(HINTERNET handle) {m_handle = handle;}
+    ~AutoHINTERNET() {WinHttpCloseHandle(m_handle);}
+    operator HINTERNET() {return m_handle;}
+private:
+    HINTERNET m_handle;
+};
+
+class AutoMUTEX
+{
+public:
+    AutoMUTEX(HANDLE mutex) {m_mutex = mutex; WaitForSingleObject(m_mutex, INFINITE);}
+    ~AutoMUTEX() {ReleaseMutex(m_mutex);}
+private:
+    HANDLE m_mutex;
+};
+
