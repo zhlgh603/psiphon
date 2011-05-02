@@ -31,16 +31,6 @@ HTTPSRequest::~HTTPSRequest(void)
 {
 }
 
-class AutoHINTERNET
-{
-public:
-    AutoHINTERNET(HINTERNET handle) {m_handle = handle;}
-    ~AutoHINTERNET() {WinHttpCloseHandle(m_handle);}
-    operator HINTERNET() {return m_handle;}
-private:
-    HINTERNET m_handle;
-};
-
 bool HTTPSRequest::GetRequest(const char* url, string& response)
 {
     BOOL bRet = FALSE;

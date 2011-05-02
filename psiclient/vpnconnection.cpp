@@ -28,16 +28,6 @@
 // window, we use a global variable.
 extern HWND g_hWnd;
 
-class AutoHANDLE
-{
-public:
-    AutoHANDLE(HANDLE handle) {m_handle = handle;}
-    ~AutoHANDLE() {CloseHandle(m_handle);}
-    operator HANDLE() {return m_handle;}
-private:
-    HANDLE m_handle;
-};
-
 void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConnState, DWORD dwError, DWORD)
 {
     my_print(true, _T("RasDialCallback (%d %d)"), rasConnState, dwError);

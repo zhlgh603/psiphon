@@ -23,19 +23,24 @@
 #include "webbrowser.h"
 #include <algorithm>
 
+
 VPNManager::VPNManager(void) :
     m_vpnState(VPN_STATE_STOPPED),
     m_userSignalledStop(false)
 {
+    m_mutex = CreateMutex(NULL, FALSE, 0);
 }
 
 VPNManager::~VPNManager(void)
 {
     Stop();
+    CloseHandle(m_mutex);
 }
 
 void VPNManager::Toggle()
 {
+    AutoMUTEX lock(m_mutex);
+
     switch (m_vpnState)
     {
     case VPN_STATE_STOPPED:
@@ -67,14 +72,34 @@ void VPNManager::Toggle()
 
 void VPNManager::Stop(void)
 {
+    AutoMUTEX lock(m_mutex);
+
     if (m_vpnConnection.Remove())
     {
-        VPNStateChanged(VPN_STATE_STOPPED);
+        // TODO:
+        //
+        // This call was here for some now-forgotten reason: restore a known state or something.
+        // However, it was causing a problem: after this STOPPED state was set, the user was able
+        // to start a new Establish, but the RasCallback that was previously cancelled kicked in
+        // after that Establish with a FAILED state change that caused a retry, which causes
+        // VPNStateChanged to TryNextServer... end up with two simultaneous connection threads.
+        //
+        // Also:
+        //
+        // Another potential problem is that Stop() is invoked -- from a user Toggle -- after
+        // Establish() but before the RasCallback thread is invoked, and RasHangup simply
+        // succeeds (ERROR_NO_CONNECTION).  In this case, we go into the STOPPED state while
+        // a connection is still outstanding.  Again, leading to multiple simultanetous connection
+        // threads.  Maybe.
+        //
+        //VPNStateChanged(VPN_STATE_STOPPED);
     }
 }
 
 void VPNManager::VPNStateChanged(VPNState newState)
 {
+    AutoMUTEX lock(m_mutex);
+
     m_vpnState = newState;
 
     switch (m_vpnState)
@@ -123,6 +148,8 @@ void VPNManager::VPNStateChanged(VPNState newState)
 
 void VPNManager::TryNextServer(void)
 {
+    AutoMUTEX lock(m_mutex);
+
     // The INITIALIZING state is set here, instead of inside the thread, to prevent a second
     // button click from triggering a second concurrent TryNextServer invocation.
     VPNStateChanged(VPN_STATE_INITIALIZING);
@@ -139,6 +166,8 @@ void VPNManager::TryNextServer(void)
 DWORD WINAPI VPNManager::TryNextServerThread(void* object)
 {
     VPNManager* This = (VPNManager*)object;
+
+    AutoMUTEX lock(This->m_mutex);
 
     ServerEntry serverEntry;
     try
@@ -190,7 +219,11 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* object)
     {
         if (!This->m_vpnConnection.Establish(serverAddress, This->m_serverInfo->GetPSK()))
         {
-            This->Stop();
+            // See note in Stop() which explains why we're not calling Stop() here
+            // but just changing the state value.
+            //This->Stop();
+
+            This->m_vpnState = VPN_STATE_STOPPED;
         }
     }
 

@@ -272,6 +272,8 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
         }
         va_end(args);
         SendMessage(g_hListBox, LB_ADDSTRING, NULL, (LPARAM)buffer);
+        OutputDebugString(buffer);
+        OutputDebugString(L"\n");
         free(buffer);
         SendMessage(g_hListBox, LB_SETCURSEL,
         SendMessage(g_hListBox, LB_GETCOUNT, NULL, NULL)-1, NULL);

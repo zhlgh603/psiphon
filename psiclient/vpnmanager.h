@@ -22,6 +22,7 @@
 #include "vpnconnection.h"
 #include "vpnlist.h"
 #include "serverinfo.h"
+#include "psiclient.h"
 
 class VPNManager
 {
@@ -30,13 +31,14 @@ public:
     virtual ~VPNManager(void);
     void Toggle(void);
     void Stop(void);
-    VPNState GetVPNState(void) {return m_vpnState;}
+    VPNState GetVPNState(void) {AutoMUTEX lock(m_mutex); return m_vpnState;}
     void VPNStateChanged(VPNState newState);
 
 private:
     void TryNextServer(void);
     static DWORD WINAPI TryNextServerThread(void* object);
 
+    HANDLE m_mutex;
     VPNList m_vpnList;
     VPNConnection m_vpnConnection;
     VPNState m_vpnState;
