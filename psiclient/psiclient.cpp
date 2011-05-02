@@ -242,7 +242,6 @@ void UpdateButton(void)
 
 //==== my_print (logging) =====================================================
 
-HWND g_hListBox = NULL;
 bool g_bShowDebugMessages = false;
 
 void my_print(bool bDebugMessage, const TCHAR* format, ...)
@@ -271,12 +270,13 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
             _vstprintf_s(buffer, length, format, args);
         }
         va_end(args);
-        SendMessage(g_hListBox, LB_ADDSTRING, NULL, (LPARAM)buffer);
-        OutputDebugString(buffer);
-        OutputDebugString(L"\n");
-        free(buffer);
-        SendMessage(g_hListBox, LB_SETCURSEL,
-        SendMessage(g_hListBox, LB_GETCOUNT, NULL, NULL)-1, NULL);
+
+        // NOTE:
+        // Main window handles displaying the message. This avoids
+        // deadlocks with SendMessage. Main window will deallocate
+        // buffer.
+
+        PostMessage(g_hWnd, WM_PSIPHON_MY_PRINT, NULL, (LPARAM)buffer);
     }
 }
 
@@ -291,6 +291,7 @@ void my_print(bool bDebugMessage, const string& message)
 //==== Main window function ===================================================
 
 static UINT_PTR g_hTimer;
+static HWND g_hListBox = NULL;
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -299,6 +300,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     HDC hdc;
     RECT rect;
     HGDIOBJ font;
+    TCHAR* myPrintMessage;
 
     switch (message)
     {
@@ -375,6 +377,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         default:
             return DefWindowProc(hWnd, message, wParam, lParam);
         }
+        break;
+
+    case WM_PSIPHON_MY_PRINT:
+        // Display message in listbox and scroll to bottom of listbox.
+        myPrintMessage = (TCHAR*)lParam;
+        SendMessage(g_hListBox, LB_ADDSTRING, NULL, (LPARAM)myPrintMessage);
+        OutputDebugString(myPrintMessage);
+        OutputDebugString(L"\n");
+        free(myPrintMessage);
+        SendMessage(g_hListBox, LB_SETCURSEL,
+        SendMessage(g_hListBox, LB_GETCOUNT, NULL, NULL)-1, NULL);
         break;
 
     case WM_PSIPHON_VPN_STATE_CHANGE:
