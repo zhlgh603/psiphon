@@ -91,19 +91,26 @@ void VPNManager::VPNStateChanged(VPNState newState)
         // or a connection actually failed.
         // Either way, we need to set the status to STOPPED,
         // so that another Toggle() will cause the VPN to start again.
-        m_vpnState = VPN_STATE_STOPPED;
-
-        if (!m_userSignalledStop)
+        if (m_userSignalledStop)
+        {
+            m_vpnState = VPN_STATE_STOPPED;
+        }
+        else
         {
             // Connecting to the current server failed.
             try
             {
                 m_vpnList.MarkCurrentServerFailed();
+                // WARNING: Don't try to optimize this code.
+                // It is important for the state not to become STOPPED before TryNextServer
+                // is called, to ensure that a button click does not invoke a second concurrent
+                // TryNextServer.
                 TryNextServer();
             }
             catch (std::exception &ex)
             {
                 my_print(false, string("VPNStateChanged caught exception: ") + ex.what());
+                m_vpnState = VPN_STATE_STOPPED;
             }
         }
         break;
@@ -116,18 +123,22 @@ void VPNManager::VPNStateChanged(VPNState newState)
 
 void VPNManager::TryNextServer(void)
 {
+    // The INITIALIZING state is set here, instead of inside the thread, to prevent a second
+    // button click from triggering a second concurrent TryNextServer invocation.
+    VPNStateChanged(VPN_STATE_INITIALIZING);
+
     // This function might not return quickly, because it performs an HTTPS Request.
     // It is run in a thread so that it does not starve the message pump.
     if (!CreateThread(0, 0, TryNextServerThread, (void*)this, 0, 0))
     {
         my_print(false, _T("TryNextServer: CreateThread failed (%d)"), GetLastError());
+        Stop();
     }
 }
 
 DWORD WINAPI VPNManager::TryNextServerThread(void* object)
 {
     VPNManager* This = (VPNManager*)object;
-    This->VPNStateChanged(VPN_STATE_INITIALIZING);
 
     ServerEntry serverEntry;
     try
