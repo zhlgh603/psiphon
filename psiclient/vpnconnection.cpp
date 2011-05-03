@@ -19,6 +19,7 @@
 
 #include "stdafx.h"
 #include "config.h"
+#include "vpnmanager.h"
 #include "vpnconnection.h"
 #include "psiclient.h"
 #include "ras.h"

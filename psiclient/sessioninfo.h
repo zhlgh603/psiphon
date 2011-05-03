@@ -23,17 +23,21 @@
 #include "vpnlist.h"
 #include "tstring.h"
 
-class ServerInfo
+class VPNManager;
+
+class SessionInfo
 {
 public:
-    ServerInfo(const ServerEntry& serverEntry);
-    virtual ~ServerInfo(void);
-
-    bool DoHandshake(void);
+    void Set(const ServerEntry& serverEntry);
+    tstring GetServerAddress(void) {return m_serverAddress;}
+    int GetWebPort(void);
+    string GetHandshakeRequestLine(void);
+    bool ParseHandshakeResponse(const string& response);
     tstring GetPSK(void);
     vector<tstring> GetHomepages(void);
     ServerEntries GetDiscoveredServerEntries(void);
 
 private:
     ServerEntry m_serverEntry;
+    tstring m_serverAddress;
 };

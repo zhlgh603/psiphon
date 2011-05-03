@@ -105,10 +105,7 @@ void VPNManager::VPNStateChanged(VPNState newState)
     switch (m_vpnState)
     {
     case VPN_STATE_CONNECTED:
-        if (m_serverInfo.get())
-        {
-            OpenBrowser(m_serverInfo->GetHomepages());
-        }
+        OpenBrowser(m_currentSessionInfo.GetHomepages());
         break;
 
     case VPN_STATE_FAILED:
@@ -163,72 +160,195 @@ void VPNManager::TryNextServer(void)
     }
 }
 
-DWORD WINAPI VPNManager::TryNextServerThread(void* object)
+DWORD WINAPI VPNManager::TryNextServerThread(void* data)
 {
-    VPNManager* This = (VPNManager*)object;
+    // By design, this function doesn't hold the VPNManager lock for the
+    // duration. This allows the user to cancel the operation.
+    //
+    // This is all a stupid mess and a proper state machine should be
+    // introduced here.  But it works well enough for now.
+    //
+    // If the user clicks cancel before Establish() is invoked, this thread
+    // will change the state from INITIALIZING --> STOPPED. A second button
+    // click before that transition should have no effect.
+    //
+    // If any of LoadNextServer, DoHandshake, Establish, HandleHandshakeResponse
+    // fail, they will transition the state to STOPPED or FAILED.
+    // In the case of failed, the a 2nd thread will start before this one
+    // exits, and the state will go back to INITIALIZED and bypass STOPPED so
+    // user button clicks won't start a new connection thread.
+    //
+    // When the state goes to STOPPED, another button click can start a new
+    // connecttion attempt thread.  So in all cases, once the state becomes
+    // STOPPED, this thread must immediately exit without modifying the
+    // VPN state.
 
-    AutoMUTEX lock(This->m_mutex);
+    VPNManager* manager = (VPNManager*)data;
 
-    ServerEntry serverEntry;
-    try
+    string serverAddress;
+    int webPort;
+    string handshakeRequest;
+    string handshakeResponse;
+
+    if (!manager->LoadNextServer(serverAddress, webPort,
+                                 handshakeRequest))
     {
-        // Try the next server in our list.
-        serverEntry = This->m_vpnList.GetNextServer();
-    }
-    catch (std::exception &ex)
-    {
-        my_print(false, string("TryNextServerThread caught exception: ") + ex.what());
-        This->VPNStateChanged(VPN_STATE_STOPPED);
+        // Helper function sets state to STOPPED or FAILED
         return 0;
     }
 
-#ifdef _UNICODE
-    wstring serverAddress(serverEntry.serverAddress.length(), L' ');
-    std::copy(serverEntry.serverAddress.begin(), serverEntry.serverAddress.end(), serverAddress.begin());
-#else
-    string serverAddress = serverEntry.serverAddress;
-#endif
+    // NOTE: DoHandshake doesn't hold the VPNManager lock for the entire
+    // web request transaction.
 
-    // NOTE: Toggle may have been clicked since the start of this function.
-    //       If it was, don't make the web request.
-    if (!This->m_userSignalledStop)
+    if (!manager->DoHandshake(serverAddress.c_str(), webPort,
+                              handshakeRequest.c_str(), handshakeResponse))
     {
-        This->m_serverInfo.reset(new ServerInfo(serverEntry));
-        if (This->m_serverInfo->DoHandshake())
-        {
-            try
-            {
-                This->m_vpnList.AddEntriesToList(This->m_serverInfo->GetDiscoveredServerEntries());
-            }
-            catch (std::exception &ex)
-            {
-                my_print(false, string("TryNextServerThread caught exception: ") + ex.what());
-                // This isn't fatal.  The VPN connection can still be established.
-            }
-        }
-        else
-        {
-            This->VPNStateChanged(VPN_STATE_FAILED);
-            return 0;
-        }
-    }
-
-    // NOTE: Toggle may have been clicked during the web request.
-    //       If it was, don't Establish the VPN connection.
-    if (This->m_userSignalledStop)
-    {
-        This->VPNStateChanged(VPN_STATE_STOPPED);
+        // Helper function sets state to STOPPED or FAILED
         return 0;
     }
 
-    if (!This->m_vpnConnection.Establish(serverAddress, This->m_serverInfo->GetPSK()))
+    if (!manager->HandleHandshakeResponse(handshakeResponse.c_str()))
     {
-        // See note in Stop() which explains why we're not calling Stop() here
-        // but just changing the state value.
-        //This->Stop();
+        // Helper function sets state to STOPPED or FAILED
+        return 0;
+    }
 
-        This->VPNStateChanged(VPN_STATE_STOPPED);
+    // Abort now if user clicked cancel during web request
+    if (manager->GetUserSignalledStop())
+    {
+        manager->VPNStateChanged(VPN_STATE_STOPPED);
+        return 0;
+    }
+
+    if (!manager->Establish())
+    {
+        // Helper function sets state to STOPPED or FAILED
+        return 0;
     }
 
     return 0;
+}
+
+bool VPNManager::LoadNextServer(
+        string& serverAddress,
+        int& webPort,
+        string& handshakeRequest)
+{
+    // Select next server to try to connect to
+
+    AutoMUTEX lock(m_mutex);
+    
+    ServerEntry serverEntry;
+
+    try
+    {
+        // Try the next server in our list.
+        serverEntry = m_vpnList.GetNextServer();
+    }
+    catch (std::exception &ex)
+    {
+        my_print(false, string("LoadNextServer caught exception: ") + ex.what());
+
+        // NOTE: state change assumes we're calling LoadNextServer in sequence in TryNextServer thread
+        VPNStateChanged(VPN_STATE_STOPPED);
+        return false;
+    }
+
+    // Current session holds server entry info and will also be loaded
+    // with homepage and other info.
+
+    m_currentSessionInfo.Set(serverEntry);
+
+    // Output values used in next TryNextServer step
+
+    serverAddress = serverEntry.serverAddress;
+    webPort = serverEntry.webServerPort;
+    handshakeRequest = "/index.html"; // TODO
+
+    return true;
+}
+
+bool VPNManager::DoHandshake(
+        const char* serverAddress,
+        int webPort,
+        const char* handshakeRequest,
+        string& handshakeResponse)
+{
+    // Perform handshake HTTPS request
+
+    // NOTE: Lock isn't held while making network request
+    //       Ensure AutoMUTEX() is created unless calling
+    //       synchronized member function.
+    //
+    //       An assumption is made that other code won't
+    //       change the state value while the HTTP request
+    //       is performed and the VPNManager is unlocked.
+
+    // TODO: make HTTPS request
+
+    for (int i=0; i<10; i++)
+    {
+        if (GetUserSignalledStop())
+        {
+            // NOTE: state change assumes we're calling DoHandshake in sequence in TryNextServer thread
+            VPNStateChanged(VPN_STATE_STOPPED);
+            return false;
+        }
+        my_print(false, L"Slow web request step...");
+        Sleep(500);
+    }
+
+    if (false)
+    {
+        // NOTE: state change assumes we're calling DoHandshake in sequence in TryNextServer thread
+        VPNStateChanged(VPN_STATE_FAILED);
+        return false;
+    }
+
+    return true;
+}
+
+bool VPNManager::HandleHandshakeResponse(const char* handshakeResponse)
+{
+    // Parse handshake response
+    // - get PSK, which we use to connect to VPN
+    // - get homepage, which we'll launch later
+    // - add discovered servers to local list
+
+    AutoMUTEX lock(m_mutex);
+    
+    if (!m_currentSessionInfo.ParseHandshakeResponse(handshakeResponse))
+    {
+        // NOTE: state change assumes we're calling DoHandshake in sequence in TryNextServer thread
+        VPNStateChanged(VPN_STATE_FAILED);
+        return false;
+    }
+
+    try
+    {
+        m_vpnList.AddEntriesToList(m_currentSessionInfo.GetDiscoveredServerEntries());
+    }
+    catch (std::exception &ex)
+    {
+        my_print(false, string("DoHandshake caught exception: ") + ex.what());
+        // This isn't fatal.  The VPN connection can still be established.
+    }
+
+    return true;
+}
+
+bool VPNManager::Establish(void)
+{
+    // Kick off the VPN connection establishment
+
+    AutoMUTEX lock(m_mutex);
+    
+    if (!m_vpnConnection.Establish(m_currentSessionInfo.GetServerAddress(), m_currentSessionInfo.GetPSK()))
+    {
+        // NOTE: state change assumes we're calling Establish in sequence in TryNextServer thread
+        VPNStateChanged(VPN_STATE_STOPPED);
+        return false;
+    }
+
+    return true;
 }
