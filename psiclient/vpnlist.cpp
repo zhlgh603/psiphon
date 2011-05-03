@@ -33,7 +33,7 @@ VPNList::~VPNList(void)
 {
 }
 
-void VPNList::AddEntriesToList(const ServerEntries& newServerEntryList)
+void VPNList::AddEntriesToList(const vector<string>& newServerEntryList)
 {
     if (newServerEntryList.size() < 1)
     {
@@ -41,20 +41,22 @@ void VPNList::AddEntriesToList(const ServerEntries& newServerEntryList)
     }
 
     ServerEntries oldServerEntryList = GetList();
-    for (ServerEntryIterator newServerEntry = newServerEntryList.begin();
-         newServerEntry != newServerEntryList.end(); ++newServerEntry)
+    for (vector<string>::const_iterator newServerEntryString = newServerEntryList.begin();
+         newServerEntryString != newServerEntryList.end(); ++newServerEntryString)
     {
+        ServerEntry newServerEntry = ParseServerEntry(*newServerEntryString);
+
         // Check if we already know about this server
         bool alreadyKnown = false;
         for (ServerEntries::iterator oldServerEntry = oldServerEntryList.begin();
              oldServerEntry != oldServerEntryList.end(); ++oldServerEntry)
         {
-            if (newServerEntry->serverAddress == oldServerEntry->serverAddress)
+            if (newServerEntry.serverAddress == oldServerEntry->serverAddress)
             {
                 alreadyKnown = true;
                 // TODO: Decide if we should update the values, or discard the update
-                oldServerEntry->webServerPort = newServerEntry->webServerPort;
-                oldServerEntry->webServerSecret = newServerEntry->webServerSecret;
+                oldServerEntry->webServerPort = newServerEntry.webServerPort;
+                oldServerEntry->webServerSecret = newServerEntry.webServerSecret;
                 break;
             }
         }
@@ -63,7 +65,7 @@ void VPNList::AddEntriesToList(const ServerEntries& newServerEntryList)
         {
             // Insert the new entry below the current (first) entry, but not at the bottom,
             // because that may contain a previously failed entry
-            oldServerEntryList.insert(oldServerEntryList.begin() + 1, *newServerEntry);
+            oldServerEntryList.insert(oldServerEntryList.begin() + 1, newServerEntry);
         }
     }
 
@@ -248,34 +250,39 @@ ServerEntries VPNList::ParseServerEntries(const char* serverEntryListString)
 
     while (getline(stream, item, '\n'))
     {
-        string line = Dehexlify(item);
-
-        stringstream lineStream(line);
-        string lineItem;
-        ServerEntry entry;
-        
-        if (!getline(lineStream, lineItem, ' '))
-        {
-            throw std::exception("Server Entries are corrupt: can't parse Server Address");
-        }
-        entry.serverAddress = lineItem;
-
-        if (!getline(lineStream, lineItem, ' '))
-        {
-            throw std::exception("Server Entries are corrupt: can't parse Web Server Port");
-        }
-        entry.webServerPort = atoi(lineItem.c_str());
-
-        if (!getline(lineStream, lineItem, ' '))
-        {
-            throw std::exception("Server Entries are corrupt: can't parse Web Server Secret");
-        }
-        entry.webServerSecret = lineItem;
-
-        serverEntryList.push_back(entry);
+        serverEntryList.push_back(ParseServerEntry(item));
     }
 
     return serverEntryList;
+}
+
+ServerEntry VPNList::ParseServerEntry(const string& serverEntry)
+{
+    string line = Dehexlify(serverEntry);
+
+    stringstream lineStream(line);
+    string lineItem;
+    ServerEntry entry;
+        
+    if (!getline(lineStream, lineItem, ' '))
+    {
+        throw std::exception("Server Entries are corrupt: can't parse Server Address");
+    }
+    entry.serverAddress = lineItem;
+
+    if (!getline(lineStream, lineItem, ' '))
+    {
+        throw std::exception("Server Entries are corrupt: can't parse Web Server Port");
+    }
+    entry.webServerPort = atoi(lineItem.c_str());
+
+    if (!getline(lineStream, lineItem, ' '))
+    {
+        throw std::exception("Server Entries are corrupt: can't parse Web Server Secret");
+    }
+    entry.webServerSecret = lineItem;
+
+    return entry;
 }
 
 // NOTE: This function does not throw because we don't want a failure to prevent a connection attempt.

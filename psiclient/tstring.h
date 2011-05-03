@@ -28,3 +28,14 @@ using namespace std;
 #else
 #define tstring string
 #endif
+
+static tstring NarrowToTString(const string& narrowString)
+{
+#ifdef _UNICODE
+    wstring wideString(narrowString.length(), L' ');
+    std::copy(narrowString.begin(), narrowString.end(), wideString.begin());
+    return wideString;
+#else
+    return narrowString;
+#endif
+}
