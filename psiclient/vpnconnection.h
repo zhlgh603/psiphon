@@ -22,16 +22,6 @@
 #include "ras.h"
 #include "tstring.h"
 
-//==== VPN state ======================================================
-
-enum VPNState
-{
-    VPN_STATE_STOPPED = 0,
-    VPN_STATE_INITIALIZING,
-    VPN_STATE_STARTING,
-    VPN_STATE_CONNECTED,
-    VPN_STATE_FAILED
-};
 
 class VPNConnection
 {

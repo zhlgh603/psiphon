@@ -21,8 +21,19 @@
 
 #include "vpnconnection.h"
 #include "vpnlist.h"
-#include "serverinfo.h"
+#include "sessioninfo.h"
 #include "psiclient.h"
+
+
+enum VPNState
+{
+    VPN_STATE_STOPPED = 0,
+    VPN_STATE_INITIALIZING,
+    VPN_STATE_STARTING,
+    VPN_STATE_CONNECTED,
+    VPN_STATE_FAILED
+};
+
 
 class VPNManager
 {
@@ -31,17 +42,37 @@ public:
     virtual ~VPNManager(void);
     void Toggle(void);
     void Stop(void);
-    VPNState GetVPNState(void) {AutoMUTEX lock(m_mutex); return m_vpnState;}
     void VPNStateChanged(VPNState newState);
+
+    VPNState GetVPNState(void)
+        {AutoMUTEX lock(m_mutex); return m_vpnState;}
+
+    bool GetUserSignalledStop(void)
+        {AutoMUTEX lock(m_mutex); return m_userSignalledStop;}
 
 private:
     void TryNextServer(void);
     static DWORD WINAPI TryNextServerThread(void* object);
+
+    // NOTE: LoadNextServer, DoHandshake, Establish, HandleHandshakeResponse
+    // are only to be called from TryNextServerThread.
+    bool LoadNextServer(
+        string& serverAddress,
+        int& webPort,
+        string& handshakeRequest);
+    bool DoHandshake(
+        const char* serverAddress,
+        int webPort,
+        const char* handshakeRequest,
+        string& handshakeResponse);
+    bool HandleHandshakeResponse(
+        const char* handshakeResponse);
+    bool Establish(void);
 
     HANDLE m_mutex;
     VPNList m_vpnList;
     VPNConnection m_vpnConnection;
     VPNState m_vpnState;
     bool m_userSignalledStop;
-    std::auto_ptr<ServerInfo> m_serverInfo;
+    SessionInfo m_currentSessionInfo;
 };

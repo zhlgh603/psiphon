@@ -18,30 +18,35 @@
  */
 
 #include "stdafx.h"
-#include "serverinfo.h"
+#include "sessioninfo.h"
+#include "psiclient.h"
+#include "vpnmanager.h"
 
-ServerInfo::ServerInfo(const ServerEntry& serverEntry) :
-    m_serverEntry(serverEntry)
+void SessionInfo::Set(const ServerEntry& serverEntry)
 {
+    m_serverEntry = serverEntry;
+#ifdef _UNICODE
+    wstring serverAddress(serverEntry.serverAddress.length(), L' ');
+    std::copy(serverEntry.serverAddress.begin(), serverEntry.serverAddress.end(), serverAddress.begin());
+#else
+    string serverAddress = serverEntry.serverAddress;
+#endif
+    m_serverAddress = serverAddress;
 }
 
-ServerInfo::~ServerInfo(void)
-{
-}
-
-bool ServerInfo::DoHandshake(void)
+bool SessionInfo::ParseHandshakeResponse(const string& response)
 {
     // TODO: implement
     return true;
 }
 
-tstring ServerInfo::GetPSK(void)
+tstring SessionInfo::GetPSK(void)
 {
     // TODO: this is a stub
     return _T("1q2w3e4r!");
 }
 
-vector<tstring> ServerInfo::GetHomepages(void)
+vector<tstring> SessionInfo::GetHomepages(void)
 {
     // TODO: this is a stub
     vector<tstring> homepages;
@@ -52,7 +57,7 @@ vector<tstring> ServerInfo::GetHomepages(void)
     return homepages;
 }
 
-vector<ServerEntry> ServerInfo::GetDiscoveredServerEntries(void)
+vector<ServerEntry> SessionInfo::GetDiscoveredServerEntries(void)
 {
     // TODO: this is a stub
     ServerEntries discoveredServers;
