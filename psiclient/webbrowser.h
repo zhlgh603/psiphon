@@ -23,4 +23,4 @@
 #include "tstring.h"
 
 void OpenBrowser(const tstring& url);
-void OpenBrowser(const vector<tstring>& urls);
+void OpenBrowser(const vector<string>& urls);

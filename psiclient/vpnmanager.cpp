@@ -263,7 +263,7 @@ bool VPNManager::LoadNextServer(
 
     // Output values used in next TryNextServer step
 
-    serverAddress = m_currentSessionInfo.GetServerAddress();
+    serverAddress = NarrowToTString(serverEntry.serverAddress);
     webPort = serverEntry.webServerPort;
     handshakeRequestPath = HTTP_HANDSHAKE_REQUEST_PATH;
 
@@ -346,7 +346,8 @@ bool VPNManager::Establish(void)
 
     AutoMUTEX lock(m_mutex);
     
-    if (!m_vpnConnection.Establish(m_currentSessionInfo.GetServerAddress(), m_currentSessionInfo.GetPSK()))
+    if (!m_vpnConnection.Establish(NarrowToTString(m_currentSessionInfo.GetServerAddress()),
+                                   NarrowToTString(m_currentSessionInfo.GetPSK())))
     {
         // NOTE: state change assumes we're calling Establish in sequence in TryNextServer thread
         VPNStateChanged(VPN_STATE_STOPPED);
