@@ -1,18 +1,18 @@
-#!/bin/python
+#!/usr/bin/python
 #
 # Copyright (c) 2011, Psiphon Inc.
 # All rights reserved.
-# 
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
@@ -21,12 +21,12 @@
 
 Example output (using test data spreadsheet):
 
-> process_list.py embed
+> list.py embed
 31302e302e302e32302038302046383934463333333930354638333137
 3139322e3136382e302e32302038302038384546324644343332343732353542
 3137322e31362e302e32302038302033464533344238393132423838354242
 
-> process_list.py handshake 127.0.0.1 3A885577DD84EF13 0
+> list.py handshake 127.0.0.1 3A885577DD84EF13 0
 Homepage: http://news.google.com/news?pz=0&hl=en&ned=ca
 Upgrade: /xxx1
 Server: 31302e302e302e32302038302046383934463333333930354638333137
@@ -116,31 +116,32 @@ def get_upgrade(client_version, client_id):
 def handshake(client_ip_address, client_id, client_version):
     # TODO: geolocate client_ip_address
     # TODO: real discovery, etc.
+    output = []
     region = 'CA'
     homepage_url = get_homepage(client_id, region)
     if homepage_url:
-        print 'Homepage: %s' % (homepage_url,)
+        output.append('Homepage: %s' % (homepage_url,))
     upgrade_url = get_upgrade(client_version, client_id)
     if upgrade_url:
-        print 'Upgrade: %s' % (upgrade_url,)
+        output.append('Upgrade: %s' % (upgrade_url,))
     for encoded_server_entry in get_encoded_server_list():
-        print 'Server: %s' % (encoded_server_entry,)
+        output.append('Server: %s' % (encoded_server_entry,))
+    return output
 
 
 def embed():
-    for encoded_server_entry in get_encoded_server_list():
-        print encoded_server_entry
+    return get_encoded_server_list()
 
 
 if __name__ == "__main__":
     # TODO: graceful error handling
     args = sys.argv[1:]
     if args[0] == 'embed':
-        embed()
+        for line in embed(): print line
     elif args[0] == 'handshake':
         client_ip_address = args[1]
         client_id = args[2]
         client_version = args[3]
-        handshake(client_ip_address, client_id, client_version)
+        for line in handshake(client_ip_address, client_id, client_version): print line
     else:
         assert(0)

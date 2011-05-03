@@ -18,8 +18,10 @@
  */
 
 #include "stdafx.h"
-#include "vpnmanager.h"
+#include "config.h"
 #include "psiclient.h"
+#include "vpnmanager.h"
+#include "httpsrequest.h"
 #include "webbrowser.h"
 #include <algorithm>
 
@@ -185,9 +187,9 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
 
     VPNManager* manager = (VPNManager*)data;
 
-    string serverAddress;
+    tstring serverAddress;
     int webPort;
-    string handshakeRequest;
+    tstring handshakeRequest;
     string handshakeResponse;
 
     if (!manager->LoadNextServer(serverAddress, webPort,
@@ -230,9 +232,9 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
 }
 
 bool VPNManager::LoadNextServer(
-        string& serverAddress,
+        tstring& serverAddress,
         int& webPort,
-        string& handshakeRequest)
+        tstring& handshakeRequestPath)
 {
     // Select next server to try to connect to
 
@@ -261,17 +263,17 @@ bool VPNManager::LoadNextServer(
 
     // Output values used in next TryNextServer step
 
-    serverAddress = serverEntry.serverAddress;
+    serverAddress = m_currentSessionInfo.GetServerAddress();
     webPort = serverEntry.webServerPort;
-    handshakeRequest = "/index.html"; // TODO
+    handshakeRequestPath = HTTP_HANDSHAKE_REQUEST_PATH;
 
     return true;
 }
 
 bool VPNManager::DoHandshake(
-        const char* serverAddress,
+        const TCHAR* serverAddress,
         int webPort,
-        const char* handshakeRequest,
+        const TCHAR* handshakeRequestPath,
         string& handshakeResponse)
 {
     // Perform handshake HTTPS request
@@ -284,24 +286,25 @@ bool VPNManager::DoHandshake(
     //       change the state value while the HTTP request
     //       is performed and the VPNManager is unlocked.
 
-    // TODO: make HTTPS request
+    serverAddress = _T("192.168.1.250");
 
-    for (int i=0; i<10; i++)
-    {
-        if (GetUserSignalledStop())
-        {
-            // NOTE: state change assumes we're calling DoHandshake in sequence in TryNextServer thread
-            VPNStateChanged(VPN_STATE_STOPPED);
-            return false;
-        }
-        my_print(false, L"Slow web request step...");
-        Sleep(500);
-    }
-
-    if (false)
+    HTTPSRequest httpsRequest;
+    if (!httpsRequest.GetRequest(
+                        m_userSignalledStop,
+                        serverAddress,
+                        webPort,
+                        handshakeRequestPath,
+                        handshakeResponse))
     {
         // NOTE: state change assumes we're calling DoHandshake in sequence in TryNextServer thread
-        VPNStateChanged(VPN_STATE_FAILED);
+        if (m_userSignalledStop)
+        {
+            VPNStateChanged(VPN_STATE_STOPPED);
+        }
+        else
+        {
+            VPNStateChanged(VPN_STATE_FAILED);
+        }
         return false;
     }
 

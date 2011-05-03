@@ -61,8 +61,8 @@ vector<ServerEntry> SessionInfo::GetDiscoveredServerEntries(void)
 {
     // TODO: this is a stub
     ServerEntries discoveredServers;
-    discoveredServers.push_back(ServerEntry("64.34.96.2", 80, "0123456789ABCDEF"));
     discoveredServers.push_back(ServerEntry("192.168.1.250", 80, "FEDCBA9876543210"));
+    discoveredServers.push_back(ServerEntry("64.34.96.2", 80, "0123456789ABCDEF"));
     
     return discoveredServers;
 }

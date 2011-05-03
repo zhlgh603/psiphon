@@ -31,8 +31,19 @@ HTTPSRequest::~HTTPSRequest(void)
 {
 }
 
-bool HTTPSRequest::GetRequest(const char* url, string& response)
+bool HTTPSRequest::GetRequest(
+        bool& cancel,
+        const TCHAR* serverAddress,
+        int serverWebPort,
+        const TCHAR* requestPath,
+        string& response)
 {
+    // TODO:
+    // Use asynchronous mode for cleaner and more effectively cancel functionality:
+    // http://msdn.microsoft.com/en-us/magazine/cc716528.aspx
+    // http://msdn.microsoft.com/en-us/library/aa383138%28v=vs.85%29.aspx
+    // http://msdn.microsoft.com/en-us/library/aa384115%28v=VS.85%29.aspx
+
     BOOL bRet = FALSE;
     CERT_CONTEXT *pCert = {0};
     HCERTSTORE hCertStore = NULL;
@@ -58,11 +69,16 @@ bool HTTPSRequest::GetRequest(const char* url, string& response)
         return false;
     }
 
+    if (cancel)
+    {
+        return false;
+    }
+
     AutoHINTERNET hConnect =
             WinHttpConnect(
                 hSession,
-	            _T("a.psiphon.ca"),
-	            INTERNET_DEFAULT_HTTPS_PORT,
+	            serverAddress,
+	            serverWebPort,
 	            0);
 
     if (NULL == hConnect)
@@ -71,11 +87,16 @@ bool HTTPSRequest::GetRequest(const char* url, string& response)
         return false;
     }
 
+    if (cancel)
+    {
+        return false;
+    }
+
     AutoHINTERNET hRequest =
             WinHttpOpenRequest(
                     hConnect,
 	                _T("GET"),
-	                _T("/001"),
+	                requestPath,
 	                NULL,
 	                WINHTTP_NO_REFERER,
 	                WINHTTP_DEFAULT_ACCEPT_TYPES,
@@ -84,6 +105,11 @@ bool HTTPSRequest::GetRequest(const char* url, string& response)
     if (NULL == hRequest)
     {
 	    my_print(false, _T("WinHttpOpenRequest failed (%d)"), GetLastError());
+        return false;
+    }
+
+    if (cancel)
+    {
         return false;
     }
 
@@ -96,6 +122,11 @@ bool HTTPSRequest::GetRequest(const char* url, string& response)
     if (FALSE == bRet)
     {
 	    my_print(false, _T("WinHttpSetOption failed (%d)"), GetLastError());
+        return false;
+    }
+
+    if (cancel)
+    {
         return false;
     }
 
@@ -114,11 +145,21 @@ bool HTTPSRequest::GetRequest(const char* url, string& response)
         return false;
     }
 
+    if (cancel)
+    {
+        return false;
+    }
+
     bRet = WinHttpReceiveResponse(hRequest, NULL);
 
     if (FALSE == bRet)
     {
 	    my_print(false, _T("WinHttpReceiveResponse failed (%d)"), GetLastError());
+        return false;
+    }
+
+    if (cancel)
+    {
         return false;
     }
 
@@ -144,11 +185,21 @@ bool HTTPSRequest::GetRequest(const char* url, string& response)
         return false;
     }
 
+    if (cancel)
+    {
+        return false;
+    }
+
     bRet = WinHttpQueryDataAvailable(hRequest, &dwLen);
 
     if (FALSE == bRet)
     {
 	    my_print(false, _T("WinHttpQueryDataAvailable failed (%d)"), GetLastError());
+        return false;
+    }
+
+    if (cancel)
+    {
         return false;
     }
 
@@ -175,6 +226,11 @@ bool HTTPSRequest::GetRequest(const char* url, string& response)
 
     dwLen = sizeof(pCert);
 
+    if (cancel)
+    {
+        return false;
+    }
+
     bRet = WinHttpQueryOption(
 	            hRequest,
 	            WINHTTP_OPTION_SERVER_CERT_CONTEXT,
@@ -184,6 +240,11 @@ bool HTTPSRequest::GetRequest(const char* url, string& response)
     if (NULL == pCert)
     {
 	    my_print(false, _T("WinHttpQueryOption failed (%d)"), GetLastError());
+        return false;
+    }
+
+    if (cancel)
+    {
         return false;
     }
 

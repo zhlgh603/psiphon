@@ -57,13 +57,13 @@ private:
     // NOTE: LoadNextServer, DoHandshake, Establish, HandleHandshakeResponse
     // are only to be called from TryNextServerThread.
     bool LoadNextServer(
-        string& serverAddress,
+        tstring& serverAddress,
         int& webPort,
-        string& handshakeRequest);
+        tstring& handshakeRequestPath);
     bool DoHandshake(
-        const char* serverAddress,
+        const TCHAR* serverAddress,
         int webPort,
-        const char* handshakeRequest,
+        const TCHAR* handshakeRequestPath,
         string& handshakeResponse);
     bool HandleHandshakeResponse(
         const char* handshakeResponse);

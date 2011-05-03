@@ -28,5 +28,10 @@ class HTTPSRequest
 public:
     HTTPSRequest(void);
     virtual ~HTTPSRequest(void);
-    bool GetRequest(const char* url, string& response);
+    bool GetRequest(
+        bool& cancel,
+        const TCHAR* serverAddress,
+        int serverWebPort,
+        const TCHAR* requestPath,
+        string& response);
 };
