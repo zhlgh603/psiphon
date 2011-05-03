@@ -61,8 +61,19 @@ def handshake(environ, start_response):
         start_response('404 Not Found', [])
         return []
     status = '200 OK'
-    lines = [psiphonv_psk.set_psk()]
-    lines += psiphonv_list.handshake(client_ip_address, client_id, client_version)
+    #
+    # NOTE: Change PSK *last*
+    # There's a race condition between setting it and the client connecting:
+    # another client may request /handshake and change the PSK before the
+    # first client authenticates to the VPN.  We accept the risk and the
+    # client is designed to retry.  Still, best to minimize the time
+    # between the PSK change on the server side and the submit by the
+    # client.  See the design notes for why we aren't using multiple PSKs
+    # and why we're using PSKs instead of VPN PKI: basically, lowest
+    # common denominator compatibility.
+    #
+    lines = psiphonv_list.handshake(client_ip_address, client_id, client_version)
+    lines += [psiphonv_psk.set_psk()]
     response_headers = [('Content-type','text/plain')]
     start_response(status, response_headers)
     return ['\n'.join(lines)]
