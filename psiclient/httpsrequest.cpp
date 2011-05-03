@@ -220,7 +220,8 @@ bool HTTPSRequest::GetRequest(
         return false;
     }
 
-    my_print(false, _T("got: %s"), string((const char*)pBuffer, dwLen).c_str());
+    response = string((const char*)pBuffer, dwLen);
+    my_print(false, _T("got: %s"), NarrowToTString(response).c_str());
 
     HeapFree(GetProcessHeap(), 0, pBuffer);
 

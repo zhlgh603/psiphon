@@ -23,6 +23,7 @@
 #include "vpnmanager.h"
 #include "httpsrequest.h"
 #include "webbrowser.h"
+#include "embeddedvalues.h"
 #include <algorithm>
 
 
@@ -265,7 +266,10 @@ bool VPNManager::LoadNextServer(
 
     serverAddress = NarrowToTString(serverEntry.serverAddress);
     webPort = serverEntry.webServerPort;
-    handshakeRequestPath = HTTP_HANDSHAKE_REQUEST_PATH;
+    handshakeRequestPath = tstring(HTTP_HANDSHAKE_REQUEST_PATH) + 
+                           _T("?server_secret=") + NarrowToTString(serverEntry.webServerSecret) +
+                           _T("&client_id=") + NarrowToTString(CLIENT_ID) +
+                           _T("&client_version=") + NarrowToTString(CLIENT_VERSION);
 
     return true;
 }
@@ -286,6 +290,7 @@ bool VPNManager::DoHandshake(
     //       change the state value while the HTTP request
     //       is performed and the VPNManager is unlocked.
 
+    // TODO: remove this
     serverAddress = _T("192.168.1.250");
 
     HTTPSRequest httpsRequest;
@@ -347,7 +352,7 @@ bool VPNManager::Establish(void)
     AutoMUTEX lock(m_mutex);
     
     if (!m_vpnConnection.Establish(NarrowToTString(m_currentSessionInfo.GetServerAddress()),
-                                   NarrowToTString(m_currentSessionInfo.GetPSK())))
+                                   _T("1q2w3e4r!")))// TODO: NarrowToTString(m_currentSessionInfo.GetPSK())))
     {
         // NOTE: state change assumes we're calling Establish in sequence in TryNextServer thread
         VPNStateChanged(VPN_STATE_STOPPED);

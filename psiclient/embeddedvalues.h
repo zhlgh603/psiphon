@@ -19,6 +19,9 @@
 
 #pragma once
 
+// TODO: put this in resources instead
+static const char* CLIENT_VERSION = "1";
+
 static const char* CLIENT_ID = 
     "B0252ED1E54F9466";
 
