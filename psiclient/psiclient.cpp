@@ -282,9 +282,7 @@ void my_print(bool bDebugMessage, const TCHAR* format, ...)
 
 void my_print(bool bDebugMessage, const string& message)
 {
-    tstring tMessage(message.length(), _T(' '));
-    std::copy(message.begin(), message.end(), tMessage.begin());
-    my_print(bDebugMessage, tMessage.c_str());
+    my_print(bDebugMessage, NarrowToTString(message).c_str());
 }
 
 

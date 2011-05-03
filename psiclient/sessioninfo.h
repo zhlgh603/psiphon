@@ -29,15 +29,21 @@ class SessionInfo
 {
 public:
     void Set(const ServerEntry& serverEntry);
-    tstring GetServerAddress(void) {return m_serverAddress;}
-    int GetWebPort(void);
-    string GetHandshakeRequestLine(void);
+
+    string GetServerAddress(void) {return m_serverEntry.serverAddress;}
+    int GetWebPort(void) {return m_serverEntry.webServerPort;}
+    string getUpgradeURL(void) {return m_upgradeURL;}
+    string GetPSK(void) {return m_psk;}
+    vector<string> GetHomepages(void) {return m_homepages;}
+    vector<string> GetDiscoveredServerEntries(void) {return m_servers;}
+
     bool ParseHandshakeResponse(const string& response);
-    tstring GetPSK(void);
-    vector<tstring> GetHomepages(void);
-    ServerEntries GetDiscoveredServerEntries(void);
 
 private:
     ServerEntry m_serverEntry;
-    tstring m_serverAddress;
+
+    string m_upgradeURL;
+    string m_psk;
+    vector<string> m_homepages;
+    vector<string> m_servers;
 };
