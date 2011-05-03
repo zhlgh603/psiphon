@@ -158,7 +158,7 @@ void VPNManager::TryNextServer(void)
     if (!CreateThread(0, 0, TryNextServerThread, (void*)this, 0, 0))
     {
         my_print(false, _T("TryNextServer: CreateThread failed (%d)"), GetLastError());
-        Stop();
+        VPNStateChanged(VPN_STATE_STOPPED);
     }
 }
 
