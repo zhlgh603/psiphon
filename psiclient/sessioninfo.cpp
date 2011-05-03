@@ -21,48 +21,60 @@
 #include "sessioninfo.h"
 #include "psiclient.h"
 #include "vpnmanager.h"
+#include <sstream>
 
 void SessionInfo::Set(const ServerEntry& serverEntry)
 {
     m_serverEntry = serverEntry;
-#ifdef _UNICODE
-    wstring serverAddress(serverEntry.serverAddress.length(), L' ');
-    std::copy(serverEntry.serverAddress.begin(), serverEntry.serverAddress.end(), serverAddress.begin());
-#else
-    string serverAddress = serverEntry.serverAddress;
-#endif
-    m_serverAddress = serverAddress;
 }
 
 bool SessionInfo::ParseHandshakeResponse(const string& response)
 {
-    // TODO: implement
+    // Expected response:
+    //
+    // Upgrade: <url> \n        (zero or one)
+    // PSK: <hexstring>\n
+    // HomePage: <url>\n        (zero or more)
+    // Server: <hexstring>\n    (zero or more)
+
+    static const char* UPGRADE_PREFIX = "Upgrade: ";
+    static const char* PSK_PREFIX = "PSK: ";
+    static const char* HOMEPAGE_PREFIX = "HomePage: ";
+    static const char* SERVER_PREFIX = "Server: ";
+
+    m_upgradeURL.clear();
+    m_psk.clear();
+    m_homepages.clear();
+    m_servers.clear();
+
+    stringstream stream(response);
+    string item;
+
+    while (getline(stream, item, '\n'))
+    {
+        if (0 == item.find(UPGRADE_PREFIX))
+        {
+            item.erase(0, strlen(UPGRADE_PREFIX));
+            m_upgradeURL = item;
+        }
+        else if (0 == item.find(PSK_PREFIX))
+        {
+            item.erase(0, strlen(PSK_PREFIX));
+            m_psk = item;
+        }
+        else if (0 == item.find(HOMEPAGE_PREFIX))
+        {
+            item.erase(0, strlen(HOMEPAGE_PREFIX));
+            m_homepages.push_back(item);
+        }
+        else if  (0 == item.find(SERVER_PREFIX))
+        {
+            item.erase(0, strlen(SERVER_PREFIX));
+            m_servers.push_back(item);
+        }
+    }
+
+    // TODO: more explicit validation?  Eg, got exactly one non-blank PSK
+
     return true;
-}
-
-tstring SessionInfo::GetPSK(void)
-{
-    // TODO: this is a stub
-    return _T("1q2w3e4r!");
-}
-
-vector<tstring> SessionInfo::GetHomepages(void)
-{
-    // TODO: this is a stub
-    vector<tstring> homepages;
-    homepages.push_back(_T("http://www.cnn.com"));
-    homepages.push_back(_T("http://www.bbc.co.uk"));
-    homepages.push_back(_T("http://www.voanews.com"));
-    
-    return homepages;
-}
-
-vector<ServerEntry> SessionInfo::GetDiscoveredServerEntries(void)
-{
-    // TODO: this is a stub
-    ServerEntries discoveredServers;
-    discoveredServers.push_back(ServerEntry("192.168.1.250", 80, "FEDCBA9876543210"));
-    discoveredServers.push_back(ServerEntry("64.34.96.2", 80, "0123456789ABCDEF"));
-    
-    return discoveredServers;
 }

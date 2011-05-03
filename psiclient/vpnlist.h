@@ -42,7 +42,7 @@ class VPNList
 public:
     VPNList(void);
     virtual ~VPNList(void);
-    void AddEntriesToList(const ServerEntries& newServerEntryList);
+    void AddEntriesToList(const vector<string>& newServerEntryList);
     void MarkCurrentServerFailed(void);
     ServerEntry GetNextServer(void);
 
@@ -51,6 +51,7 @@ private:
     ServerEntries GetListFromEmbeddedValues(void);
     ServerEntries GetListFromSystem(void);
     ServerEntries ParseServerEntries(const char* serverEntryListString);
+    ServerEntry ParseServerEntry(const string& serverEntry);
     void WriteListToSystem(const ServerEntries& serverEntryList);
     string EncodeServerEntries(const ServerEntries& serverEntryList);
 };

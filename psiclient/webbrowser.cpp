@@ -36,11 +36,11 @@ void OpenBrowser(const tstring& url)
     }
 }
 
-void OpenBrowser(const vector<tstring>& urls)
+void OpenBrowser(const vector<string>& urls)
 {
-    for (vector<tstring>::const_iterator it = urls.begin();
+    for (vector<string>::const_iterator it = urls.begin();
          it != urls.end(); ++it)
     {
-        OpenBrowser(*it);
+        OpenBrowser(NarrowToTString(*it));
     }
 }
