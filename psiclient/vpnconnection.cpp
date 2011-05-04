@@ -265,7 +265,7 @@ HRASCONN VPNConnection::getActiveRasConnection()
         returnCode = ERROR_BUFFER_TOO_SMALL;
     }
 
-    // TODO: Race condition where a new connection is added between the buffersize check
+    // NOTE: Race condition where a new connection is added between the buffersize check
     //       and the second call.
     if (ERROR_BUFFER_TOO_SMALL != returnCode && connections > 0)
     {

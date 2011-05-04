@@ -61,7 +61,6 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-     // TODO: Place code here.
     MSG msg;
     HACCEL hAccelTable;
 
@@ -187,8 +186,6 @@ void CreateToolbar(HWND hWndParent)
         hInst, MAKEINTRESOURCE(IDB_TOOLBAR_ICONS),
         bitmapSize, numButtons, CLR_DEFAULT, // GetSysColor(COLOR_BTNFACE),
         IMAGE_BITMAP, LR_CREATEDIBSECTION);
-
-    // TODO: transparency
 
     // Set the image list.
     SendMessage(
@@ -401,7 +398,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_PAINT:
         hdc = BeginPaint(hWnd, &ps);
-        // TODO: Add any drawing code here...
         EndPaint(hWnd, &ps);
         break;
 

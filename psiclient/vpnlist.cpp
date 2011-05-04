@@ -54,7 +54,8 @@ void VPNList::AddEntriesToList(const vector<string>& newServerEntryList)
             if (newServerEntry.serverAddress == oldServerEntry->serverAddress)
             {
                 alreadyKnown = true;
-                // TODO: Decide if we should update the values, or discard the update
+                // NOTE: We always update the values for known servers, because we trust the
+                //       discovery mechanisms
                 oldServerEntry->webServerPort = newServerEntry.webServerPort;
                 oldServerEntry->webServerSecret = newServerEntry.webServerSecret;
                 break;
@@ -239,8 +240,7 @@ string Dehexlify(const string& input)
     return output;
 }
 
-// TODO: Should the errors below throw (preventing any VPN connection from starting),
-//       or just continue (throwing out the bad server entry)?
+// The errors below throw (preventing any VPN connection from starting)
 ServerEntries VPNList::ParseServerEntries(const char* serverEntryListString)
 {
     ServerEntries serverEntryList;
