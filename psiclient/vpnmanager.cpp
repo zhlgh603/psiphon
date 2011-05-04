@@ -352,7 +352,7 @@ bool VPNManager::Establish(void)
     AutoMUTEX lock(m_mutex);
     
     if (!m_vpnConnection.Establish(NarrowToTString(m_currentSessionInfo.GetServerAddress()),
-                                   _T("1q2w3e4r!")))// TODO: NarrowToTString(m_currentSessionInfo.GetPSK())))
+                                   NarrowToTString(m_currentSessionInfo.GetPSK())))
     {
         // NOTE: state change assumes we're calling Establish in sequence in TryNextServer thread
         VPNStateChanged(VPN_STATE_STOPPED);
