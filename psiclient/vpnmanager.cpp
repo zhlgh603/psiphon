@@ -338,7 +338,7 @@ bool VPNManager::HandleHandshakeResponse(const char* handshakeResponse)
     }
     catch (std::exception &ex)
     {
-        my_print(false, string("DoHandshake caught exception: ") + ex.what());
+        my_print(false, string("HandleHandshakeResponse caught exception: ") + ex.what());
         // This isn't fatal.  The VPN connection can still be established.
     }
 
