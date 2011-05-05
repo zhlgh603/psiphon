@@ -28,7 +28,7 @@ Example output (using test data spreadsheet):
 
 > list.py handshake 127.0.0.1 3A885577DD84EF13 0
 Homepage: http://news.google.com/news?pz=0&hl=en&ned=ca
-Upgrade: /xxx1
+Upgrade: 1
 Server: 31302e302e302e32302038302046383934463333333930354638333137
 Server: 3139322e3136382e302e32302038302038384546324644343332343732353542
 Server: 3137322e31362e302e32302038302033464533344238393132423838354242
@@ -64,7 +64,6 @@ UPGRADE_LIST_SHEET_NAME = u'Upgrade List'
 UPGRADE_LIST_SHEET_COLUMNS = [
     u'Client Version',
     u'Client ID',
-    u'Upgrade URL',
     u'Notes'
 ]
 
@@ -108,7 +107,7 @@ def get_upgrade(client_version, client_id):
         upgrade_client_id = upgrade[1].value.encode('utf-8')
         if upgrade_client_id == client_id:
             if int(client_version) < int(upgrade_client_version):
-                return upgrade[2].value.encode('utf-8')
+                return upgrade_client_version
             return None
     return None
 
@@ -121,9 +120,9 @@ def handshake(client_ip_address, client_id, client_version):
     homepage_url = get_homepage(client_id, region)
     if homepage_url:
         output.append('Homepage: %s' % (homepage_url,))
-    upgrade_url = get_upgrade(client_version, client_id)
-    if upgrade_url:
-        output.append('Upgrade: %s' % (upgrade_url,))
+    upgrade_client_version = get_upgrade(client_version, client_id)
+    if upgrade_client_version:
+        output.append('Upgrade: %s' % (upgrade_client_version,))
     for encoded_server_entry in get_encoded_server_list():
         output.append('Server: %s' % (encoded_server_entry,))
     return output
