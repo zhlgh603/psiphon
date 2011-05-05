@@ -62,8 +62,8 @@ SPONSOR_LIST_SHEET_COLUMNS = [
 
 UPGRADE_LIST_SHEET_NAME = u'Upgrade List'
 UPGRADE_LIST_SHEET_COLUMNS = [
-    u'Client Version',
     u'Client ID',
+    u'Client Version',
     u'Notes'
 ]
 
