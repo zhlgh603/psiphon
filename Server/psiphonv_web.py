@@ -24,9 +24,11 @@ https://192.168.0.1:80/handshake?server_secret=1234567890&client_id=0987654321&c
 
 '''
 
+import string
 import logging
 import threading
 import time
+import os
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_builtin
 from webob import Request
@@ -38,10 +40,28 @@ SERVER_CERTIFICATE_FILE = '/root/PsiphonV/serverCert.pem'
 SERVER_PRIVATE_KEY_FILE = '/root/PsiphonV/serverKey.pem'
 CA_CERTIFICATE_FILE = '/root/PsiphonV/caCert.pem'
 
+DOWNLOAD_PATH = '/root/PsiphonV/download'
+DOWNLOAD_FILE_NAME = 'psiphonv.exe'
+
+
 # TODO: read from spreadsheet, reference by local bind address
 SERVER_SECRET = 'FEDCBA9876543210'
 
 # TODO: use netifaces to enumerate local ip addresses, start a server for each
+
+
+# see: http://codahale.com/a-lesson-in-timing-attacks/
+def constant_time_compare(a, b):
+    if len(a) != len(b):
+        return False
+    result = 0
+    for x, y in zip(a, b):
+        result |= ord(x) ^ ord(y)
+    return result == 0
+
+
+def consists_of(str, characters):
+    return 0 == len(filter(lambda x : x not in characters, str))
 
 
 class ServerInstance:
@@ -49,7 +69,10 @@ class ServerInstance:
     def __init__(self, ip_address):
         self.server_ip_address = ip_address
 
-    def handshake(self, environ, start_response):
+    class InvalidInputException(Exception):
+        pass
+
+    def __get_inputs(self, environ):
         valid_request = True
         request = Request(environ)
         try:
@@ -57,11 +80,19 @@ class ServerInstance:
             server_secret = request.params['server_secret']
             client_id = request.params['client_id']
             client_version = request.params['client_version']
-            if server_secret != SERVER_SECRET:
-                valid_request = False
+            if (not consists_of(server_secret, string.hexdigits) or
+                not consists_of(client_id, string.hexdigits) or
+                not consists_of(client_version, string.digits) or
+                not constant_time_compare(server_secret, SERVER_SECRET)):
+                raise self.InvalidInputException()
         except KeyError as e:
-            valid_request = False
-        if not valid_request:
+            raise self.InvalidInputException()
+        return (client_ip_address, client_id, client_version)
+
+    def handshake(self, environ, start_response):
+        try:
+            (client_ip_address, client_id, client_version) = self.__get_inputs(environ)
+        except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
         status = '200 OK'
@@ -78,9 +109,29 @@ class ServerInstance:
         #
         lines = psiphonv_list.handshake(client_ip_address, client_id, client_version)
         lines += [psiphonv_psk.set_psk(self.server_ip_address)]
-        response_headers = [('Content-type','text/plain')]
+        response_headers = [('Content-type', 'text/plain')]
         start_response(status, response_headers)
         return ['\n'.join(lines)]
+
+    def download(self, environ, start_response):
+        try:
+            (client_ip_address, client_id, client_version) = self.__get_inputs(environ)
+        except InvalidInputException as e:
+            start_response('404 Not Found', [])
+            return []
+        status = '200 OK'
+        response_headers = [('Content-type', 'application/exe')]
+        start_response(status, response_headers)
+        # e.g., /root/PsiphonV/download/<version>/<client_id>/psiphonv.exe
+        try:
+            path = os.path.join(DOWNLOAD_PATH, client_version, client_id, DOWNLOAD_FILE_NAME)
+            with open(path, 'rb') as file:
+                contents = file.read()
+        # TODO: catch all possible file-related exceptions
+        except IOError as e:
+            start_response('404 Not Found', [])
+            return []
+        return [contents]
 
 
 def main():
@@ -90,7 +141,8 @@ def main():
     server = wsgiserver.CherryPyWSGIServer(
                 (bind_address, 80),
                 wsgiserver.WSGIPathInfoDispatcher(
-                    {'/handshake': server_instance.handshake}))
+                    {'/handshake': server_instance.handshake,
+                     '/download': server_instance.download}))
 
     server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(
                 SERVER_CERTIFICATE_FILE,
