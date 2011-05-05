@@ -120,8 +120,6 @@ class ServerInstance:
             start_response('404 Not Found', [])
             return []
         status = '200 OK'
-        response_headers = [('Content-type', 'application/exe')]
-        start_response(status, response_headers)
         # e.g., /root/PsiphonV/download/<version>/<client_id>/psiphonv.exe
         try:
             path = os.path.join(DOWNLOAD_PATH, client_version, client_id, DOWNLOAD_FILE_NAME)
@@ -131,6 +129,8 @@ class ServerInstance:
         except IOError as e:
             start_response('404 Not Found', [])
             return []
+        response_headers = [('Content-type', 'application/exe')]
+        start_response(status, response_headers)
         return [contents]
 
 
