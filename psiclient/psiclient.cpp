@@ -227,13 +227,20 @@ void UpdateButton(void)
     info.cbSize = sizeof(info);
     info.dwMask = TBIF_IMAGE;
     static int g_nextAnimationIndex = 0;
+    int image = 0;
 
     VPNState state = g_vpnManager.GetVPNState();
-    if (state == VPN_STATE_STOPPED) info.iImage = 0;
-    else if (state == VPN_STATE_CONNECTED) info.iImage = 1;
-    else info.iImage = 2 + (g_nextAnimationIndex++)%4;
-    
-    SendMessage(g_hToolBar, TB_SETBUTTONINFO, IDM_TOGGLE, (LPARAM)&info);
+    if (state == VPN_STATE_STOPPED) image = 0;
+    else if (state == VPN_STATE_CONNECTED) image = 1;
+    else image = 2 + (g_nextAnimationIndex++)%4;
+
+    SendMessage(g_hToolBar, TB_GETBUTTONINFO, IDM_TOGGLE, (LPARAM)&info);
+
+    if (info.iImage != image)
+    {
+        info.iImage = image;
+        SendMessage(g_hToolBar, TB_SETBUTTONINFO, IDM_TOGGLE, (LPARAM)&info);
+    }
 }
 
 
