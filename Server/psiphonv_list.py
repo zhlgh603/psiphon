@@ -103,8 +103,8 @@ def get_upgrade(client_version, client_id):
     assert([cell.value for cell in upgrade_list.row(0)] == UPGRADE_LIST_SHEET_COLUMNS)
     for i in range(1, upgrade_list.nrows):
         upgrade = upgrade_list.row(i)
-        upgrade_client_version = upgrade[0].value.encode('utf-8')
-        upgrade_client_id = upgrade[1].value.encode('utf-8')
+        upgrade_client_id = upgrade[0].value.encode('utf-8')
+        upgrade_client_version = upgrade[1].value.encode('utf-8')
         if upgrade_client_id == client_id:
             if int(client_version) < int(upgrade_client_version):
                 return upgrade_client_version
