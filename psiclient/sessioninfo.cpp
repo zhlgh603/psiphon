@@ -42,7 +42,7 @@ bool SessionInfo::ParseHandshakeResponse(const string& response)
     static const char* HOMEPAGE_PREFIX = "HomePage: ";
     static const char* SERVER_PREFIX = "Server: ";
 
-    m_upgradeURL.clear();
+    m_upgradeVersion.clear();
     m_psk.clear();
     m_homepages.clear();
     m_servers.clear();
@@ -55,7 +55,7 @@ bool SessionInfo::ParseHandshakeResponse(const string& response)
         if (0 == item.find(UPGRADE_PREFIX))
         {
             item.erase(0, strlen(UPGRADE_PREFIX));
-            m_upgradeURL = item;
+            m_upgradeVersion = item;
         }
         else if (0 == item.find(PSK_PREFIX))
         {

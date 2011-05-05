@@ -30,8 +30,10 @@ public:
     virtual ~VPNConnection(void);
     bool Establish(const tstring& serverAddress, const tstring& PSK);
     bool Remove(void);
+    void SuspendTeardownForUpgrade(void) {m_suspendTeardownForUpgrade = true;}
 
 private:
     HRASCONN getActiveRasConnection(void);
     HRASCONN m_rasConnection;
+    bool m_suspendTeardownForUpgrade;
 };

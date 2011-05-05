@@ -18,6 +18,7 @@
  */
 
 #include "stdafx.h"
+#include "shellapi.h"
 #include "config.h"
 #include "psiclient.h"
 #include "vpnmanager.h"
@@ -26,6 +27,8 @@
 #include "embeddedvalues.h"
 #include <algorithm>
 
+// Upgrade process posts a Quit message
+extern HWND g_hWnd;
 
 VPNManager::VPNManager(void) :
     m_vpnState(VPN_STATE_STOPPED),
@@ -190,11 +193,11 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
 
     tstring serverAddress;
     int webPort;
-    tstring handshakeRequest;
+    tstring handshakeRequestPath;
     string handshakeResponse;
 
     if (!manager->LoadNextServer(serverAddress, webPort,
-                                 handshakeRequest))
+                                 handshakeRequestPath))
     {
         // Helper function sets state to STOPPED or FAILED
         return 0;
@@ -204,7 +207,7 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
     // web request transaction.
 
     if (!manager->DoHandshake(serverAddress.c_str(), webPort,
-                              handshakeRequest.c_str(), handshakeResponse))
+                              handshakeRequestPath.c_str(), handshakeResponse))
     {
         // Helper function sets state to STOPPED or FAILED
         return 0;
@@ -221,6 +224,37 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
     {
         manager->VPNStateChanged(VPN_STATE_STOPPED);
         return 0;
+    }
+
+    // Upgrade now if handshake notified of new version
+    tstring downloadRequestPath;
+    string downloadResponse;
+    if (manager->RequireUpgrade(downloadRequestPath))
+    {
+        // Download new binary
+
+        if (!manager->DoDownload(serverAddress.c_str(), webPort,
+                                 downloadRequestPath.c_str(), downloadResponse))
+        {
+            // Helper function sets state to STOPPED or FAILED
+            return 0;
+        }
+
+        // Perform upgrade.
+        
+        // If the upgrade succeeds, it will terminate the process and we don't proceed with Establish.
+        // If it fails, we DO proceed with Establish -- using the old (current) version.  One scenario
+        // in this case is if the binary is on read-only media.
+        // NOTE: means the server should always support old versions... which for now just means
+        // supporting Establish() etc. as we're already past the handshake.
+
+        if (manager->DoUpgrade(downloadResponse))
+        {
+            // NOTE: state will remain INITIALIZING.  The app is terminating.
+            return 0;
+        }
+
+        // Fall through to Establish()
     }
 
     if (!manager->Establish())
@@ -257,6 +291,11 @@ bool VPNManager::LoadNextServer(
         return false;
     }
 
+    // TODO: remove this
+    serverEntry.serverAddress = "192.168.1.250";
+    // TODO: remove this
+    serverEntry.webServerSecret = "FEDCBA9876543210";
+
     // Current session holds server entry info and will also be loaded
     // with homepage and other info.
 
@@ -289,9 +328,6 @@ bool VPNManager::DoHandshake(
     //       An assumption is made that other code won't
     //       change the state value while the HTTP request
     //       is performed and the VPNManager is unlocked.
-
-    // TODO: remove this
-    serverAddress = _T("192.168.1.250");
 
     HTTPSRequest httpsRequest;
     if (!httpsRequest.GetRequest(
@@ -358,6 +394,128 @@ bool VPNManager::Establish(void)
         VPNStateChanged(VPN_STATE_STOPPED);
         return false;
     }
+
+    return true;
+}
+
+bool VPNManager::RequireUpgrade(tstring& downloadRequestPath)
+{
+    AutoMUTEX lock(m_mutex);
+    
+    if (m_currentSessionInfo.GetUpgradeVersion().size() > 0)
+    {
+        downloadRequestPath = tstring(HTTP_DOWNLOAD_REQUEST_PATH) + 
+                              _T("?server_secret=") + NarrowToTString(m_currentSessionInfo.GetWebServerSecret()) +
+                              _T("&client_id=") + NarrowToTString(CLIENT_ID) +
+                              _T("&client_version=") + NarrowToTString(m_currentSessionInfo.GetUpgradeVersion());
+        return true;
+    }
+
+    return false;
+}
+
+bool VPNManager::DoDownload(
+        const TCHAR* serverAddress,
+        int webPort,
+        const TCHAR* downloadRequestPath,
+        string& downloadResponse)
+{
+    // Perform download HTTPS request
+
+    // NOTE: See comment in DoHandshake regarding locking
+
+    HTTPSRequest httpsRequest;
+    if (!httpsRequest.GetRequest(
+                        m_userSignalledStop,
+                        serverAddress,
+                        webPort,
+                        downloadRequestPath,
+                        downloadResponse))
+    {
+        // NOTE: state change assumes we're calling DoDownload in sequence in TryNextServer thread
+        if (m_userSignalledStop)
+        {
+            VPNStateChanged(VPN_STATE_STOPPED);
+        }
+        else
+        {
+            VPNStateChanged(VPN_STATE_FAILED);
+        }
+        return false;
+    }
+
+    return true;
+
+}
+
+bool VPNManager::DoUpgrade(const string& download)
+{
+    AutoMUTEX lock(m_mutex);
+
+    // Find current process binary path
+
+    TCHAR filename[1000];
+    if (!GetModuleFileName(NULL, filename, 1000))
+    {
+        // Abort upgrade: Establish() will proceed.
+        return false;
+    }
+
+    // Rename current binary to archive name
+
+    tstring old_filename(filename);
+    old_filename += _T(".orig");
+
+    // TODO: handle ALREADY_EXISTS
+    // TODO: restore file when failure
+
+    if (!MoveFile(filename, old_filename.c_str()))
+    {
+        my_print(false, _T("Upgrade - MoveFile failed (%d)"), GetLastError());
+
+        // Abort upgrade: Establish() will proceed.
+        return false;
+    }
+
+    // Write new version to current binary file name
+
+    AutoHANDLE file = CreateFile(filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        my_print(false, _T("Upgrade - CreateFile failed (%d)"), GetLastError());
+
+        // Abort upgrade: Establish() will proceed.
+        return false;
+    }
+
+    DWORD written;
+
+    if (!WriteFile(file, download.c_str(), download.length(), &written, NULL) || written != download.length())
+    {
+        my_print(false, _T("Upgrade - WriteFile failed (%d)"), GetLastError());
+
+        // Abort upgrade: Establish() will proceed.
+        return false;
+    }
+
+    if (!FlushFileBuffers(file))
+    {
+        my_print(false, _T("Upgrade - FlushFileBuffers failed (%d)"), GetLastError());
+
+        // Abort upgrade: Establish() will proceed.
+        return false;
+    }
+
+    // Don't teardown connection: see comment in VPNConnection::Remove
+
+    m_vpnConnection.SuspendTeardownForUpgrade();
+
+    // Die & respawn
+    // TODO: if ShellExecute fails, don't die?
+
+    ShellExecute(0, NULL, filename, 0, 0, SW_SHOWNORMAL);
+    PostMessage(g_hWnd, WM_QUIT, 0, 0);
 
     return true;
 }

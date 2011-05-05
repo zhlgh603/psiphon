@@ -23,7 +23,7 @@
 static const char* CLIENT_VERSION = "1";
 
 static const char* CLIENT_ID = 
-    "B0252ED1E54F9466";
+    "3A885577DD84EF13";
 
 static const char* PSIPHON_CA_CERT =
     "-----BEGIN CERTIFICATE-----"

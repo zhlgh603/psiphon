@@ -220,7 +220,12 @@ bool HTTPSRequest::GetRequest(
         return false;
     }
 
-    response = string((const char*)pBuffer, dwLen);
+    // NOTE: response data may be binary; some relevant comments here...
+    // http://stackoverflow.com/questions/441203/proper-way-to-store-binary-data-with-c-stl
+
+    response = string(string::const_pointer(pBuffer), string::const_pointer((char*)pBuffer + dwLen + 1));
+
+    // TODO: remove this or set DEBUG to true
     my_print(false, _T("got: %s"), NarrowToTString(response).c_str());
 
     HeapFree(GetProcessHeap(), 0, pBuffer);

@@ -75,7 +75,8 @@ void CALLBACK RasDialCallback(HRASCONN rasConnection, UINT, RASCONNSTATE rasConn
 }
 
 VPNConnection::VPNConnection(void) :
-    m_rasConnection(0)
+    m_rasConnection(0),
+    m_suspendTeardownForUpgrade(false)
 {
 }
 
@@ -168,6 +169,14 @@ bool VPNConnection::Establish(const tstring& serverAddress, const tstring& PSK)
 
 bool VPNConnection::Remove(void)
 {
+    // Don't remove the connection if we're upgrading -- we expect the
+    // client to restart again and don't want a race between the old and
+    // new processes to potentially mess with the new process's session.
+    if (m_suspendTeardownForUpgrade)
+    {
+        return true;
+    }
+
     DWORD returnCode = ERROR_SUCCESS;
 
     // Disconnect either the stored HRASCONN, or by entry name.

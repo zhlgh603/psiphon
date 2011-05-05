@@ -32,7 +32,8 @@ public:
 
     string GetServerAddress(void) {return m_serverEntry.serverAddress;}
     int GetWebPort(void) {return m_serverEntry.webServerPort;}
-    string getUpgradeURL(void) {return m_upgradeURL;}
+    string GetWebServerSecret(void) {return m_serverEntry.webServerSecret;}
+    string GetUpgradeVersion(void) {return m_upgradeVersion;}
     string GetPSK(void) {return m_psk;}
     vector<string> GetHomepages(void) {return m_homepages;}
     vector<string> GetDiscoveredServerEntries(void) {return m_servers;}
@@ -42,7 +43,7 @@ public:
 private:
     ServerEntry m_serverEntry;
 
-    string m_upgradeURL;
+    string m_upgradeVersion;
     string m_psk;
     vector<string> m_homepages;
     vector<string> m_servers;

@@ -67,6 +67,13 @@ private:
         string& handshakeResponse);
     bool HandleHandshakeResponse(
         const char* handshakeResponse);
+    bool RequireUpgrade(tstring& downloadRequestPath);
+    bool DoDownload(
+        const TCHAR* serverAddress,
+        int webPort,
+        const TCHAR* downloadRequestPath,
+        string& downloadResponse);
+    bool DoUpgrade(const string& download);
     bool Establish(void);
 
     HANDLE m_mutex;
