@@ -19,11 +19,36 @@
 
 import os
 import binascii
-
+import portalocker
+from subprocess import call
 
 PSK_LENGTH = 32
 
+SECRETS_FILENAME = '/etc/ipsec.secrets'
 
-def set_psk():
+def set_psk(server_ip_address):
     psk = binascii.hexlify(os.urandom(32))
+    try:
+        file = open(SECRETS_FILENAME, 'r+')
+        portalocker.lock(file, portalocker.LOCK_EX)
+        lines = file.readlines()
+        newline = '%s : PSK "%s"\n' % (server_ip_address, psk)
+        newlines = []
+        found = False
+        for line in lines:
+            if line.find(server_ip_address) == 0:
+                newlines.append(newline)
+                found = True
+            else:
+                newlines.append(line)
+        if not found:
+            newlines.append(newline)
+        file.seek(0)
+        file.truncate()
+        file.writelines(newlines)
+        file.flush()
+        call (['ipsec', 'rereadsecrets'])
+    finally:
+        file.close()
     return 'PSK: %s' % (psk,)
+
