@@ -172,13 +172,9 @@ bool HTTPSRequest::GetRequest(
 
     if (!ValidateServerCert((PCCERT_CONTEXT)pCert))
     {
-        GlobalFree(pCert);
-
         my_print(false, _T("ValidateServerCert failed"));
         return false;
     }
-
-    GlobalFree(pCert);
 
     if (cancel)
     {
