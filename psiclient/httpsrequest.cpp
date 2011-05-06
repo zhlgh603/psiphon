@@ -154,6 +154,37 @@ bool HTTPSRequest::GetRequest(
         return false;
     }
 
+    // TODO: Should validate cert *before* sending request.
+
+    dwLen = sizeof(pCert);
+
+    bRet = WinHttpQueryOption(
+	            hRequest,
+	            WINHTTP_OPTION_SERVER_CERT_CONTEXT,
+	            &pCert,
+	            &dwLen);
+
+    if (NULL == pCert)
+    {
+	    my_print(false, _T("WinHttpQueryOption failed (%d)"), GetLastError());
+        return false;
+    }
+
+    if (!ValidateServerCert((PCCERT_CONTEXT)pCert))
+    {
+        GlobalFree(pCert);
+
+        my_print(false, _T("ValidateServerCert failed"));
+        return false;
+    }
+
+    GlobalFree(pCert);
+
+    if (cancel)
+    {
+        return false;
+    }
+
     bRet = WinHttpReceiveResponse(hRequest, NULL);
 
     if (FALSE == bRet)
@@ -243,33 +274,7 @@ bool HTTPSRequest::GetRequest(
         HeapFree(GetProcessHeap(), 0, pBuffer);
     }
 
-    dwLen = sizeof(pCert);
-
-    if (cancel)
-    {
-        return false;
-    }
-
-    bRet = WinHttpQueryOption(
-	            hRequest,
-	            WINHTTP_OPTION_SERVER_CERT_CONTEXT,
-	            &pCert,
-	            &dwLen);
-
-    if (NULL == pCert)
-    {
-	    my_print(false, _T("WinHttpQueryOption failed (%d)"), GetLastError());
-        return false;
-    }
-
-    if (cancel)
-    {
-        return false;
-    }
-
-    my_print(false, _T("cert encoding %d %d"), pCert->dwCertEncodingType, pCert->cbCertEncoded);
-    
-    return ValidateServerCert((PCCERT_CONTEXT)pCert);
+    return true;
 }
 
 bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert)
