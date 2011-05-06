@@ -26,6 +26,7 @@
 #include "webbrowser.h"
 #include "embeddedvalues.h"
 #include <algorithm>
+#include <sstream>
 
 // Upgrade process posts a Quit message
 extern HWND g_hWnd;
@@ -463,45 +464,61 @@ bool VPNManager::DoUpgrade(const string& download)
 
     // Rename current binary to archive name
 
-    tstring old_filename(filename);
-    old_filename += _T(".orig");
+    tstring archive_filename(filename);
+    archive_filename += _T(".orig");
 
-    // TODO: handle ALREADY_EXISTS
-    // TODO: restore file when failure
+    bool bArchiveCreated = false;
 
-    if (!MoveFile(filename, old_filename.c_str()))
+    try
     {
-        my_print(false, _T("Upgrade - MoveFile failed (%d)"), GetLastError());
+        // We can't delete/modify the binary for a running Windows process,
+        // so instead we move the running binary to an archive filename and
+        // write the new version to the original filename.
 
-        // Abort upgrade: Establish() will proceed.
-        return false;
+        if (!DeleteFile(archive_filename.c_str()) && GetLastError() != ERROR_FILE_NOT_FOUND)
+        {
+            throw std::exception("Upgrade - DeleteFile failed");
+        }
+
+        if (!MoveFile(filename, archive_filename.c_str()))
+        {
+            throw std::exception("Upgrade - MoveFile failed");
+        }
+
+        bArchiveCreated = true;
+
+        // Write new version to current binary file name
+
+        AutoHANDLE file = CreateFile(filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+        if (file == INVALID_HANDLE_VALUE)
+        {
+            throw std::exception("Upgrade - CreateFile failed");
+        }
+
+        DWORD written;
+
+        if (!WriteFile(file, download.c_str(), download.length(), &written, NULL) || written != download.length())
+        {
+            throw std::exception("Upgrade - WriteFile failed");
+        }
+
+        if (!FlushFileBuffers(file))
+        {
+            throw std::exception("Upgrade - FlushFileBuffers failed");
+        }
     }
-
-    // Write new version to current binary file name
-
-    AutoHANDLE file = CreateFile(filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-
-    if (file == INVALID_HANDLE_VALUE)
+    catch (std::exception& ex)
     {
-        my_print(false, _T("Upgrade - CreateFile failed (%d)"), GetLastError());
-
-        // Abort upgrade: Establish() will proceed.
-        return false;
-    }
-
-    DWORD written;
-
-    if (!WriteFile(file, download.c_str(), download.length(), &written, NULL) || written != download.length())
-    {
-        my_print(false, _T("Upgrade - WriteFile failed (%d)"), GetLastError());
-
-        // Abort upgrade: Establish() will proceed.
-        return false;
-    }
-
-    if (!FlushFileBuffers(file))
-    {
-        my_print(false, _T("Upgrade - FlushFileBuffers failed (%d)"), GetLastError());
+        std::stringstream s;
+        s << ex.what() << " (" << GetLastError() << ")";
+        my_print(false, s.str().c_str());
+        
+        // Try to restore the original version
+        if (bArchiveCreated)
+        {
+            CopyFile(archive_filename.c_str(), filename, FALSE);
+        }
 
         // Abort upgrade: Establish() will proceed.
         return false;
