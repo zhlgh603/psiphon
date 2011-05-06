@@ -116,7 +116,7 @@ class ServerInstance:
     def download(self, environ, start_response):
         try:
             (client_ip_address, client_id, client_version) = self.__get_inputs(environ)
-        except InvalidInputException as e:
+        except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
         status = '200 OK'
@@ -129,7 +129,8 @@ class ServerInstance:
         except IOError as e:
             start_response('404 Not Found', [])
             return []
-        response_headers = [('Content-type', 'application/exe')]
+        response_headers = [('Content-type', 'application/exe'),
+                            ('Content-Length', '%d' % (len(contents),))]
         start_response(status, response_headers)
         return [contents]
 
