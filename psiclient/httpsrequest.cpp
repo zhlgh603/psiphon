@@ -44,6 +44,8 @@ bool HTTPSRequest::GetRequest(
     // http://msdn.microsoft.com/en-us/library/aa383138%28v=vs.85%29.aspx
     // http://msdn.microsoft.com/en-us/library/aa384115%28v=VS.85%29.aspx
 
+    response = "";
+
     BOOL bRet = FALSE;
     CERT_CONTEXT *pCert = {0};
     HCERTSTORE hCertStore = NULL;
@@ -190,45 +192,54 @@ bool HTTPSRequest::GetRequest(
         return false;
     }
 
-    bRet = WinHttpQueryDataAvailable(hRequest, &dwLen);
-
-    if (FALSE == bRet)
+    while (true)
     {
-	    my_print(false, _T("WinHttpQueryDataAvailable failed (%d)"), GetLastError());
-        return false;
-    }
+        bRet = WinHttpQueryDataAvailable(hRequest, &dwLen);
 
-    if (cancel)
-    {
-        return false;
-    }
+        if (FALSE == bRet)
+        {
+	        my_print(false, _T("WinHttpQueryDataAvailable failed (%d)"), GetLastError());
+            return false;
+        }
 
-    pBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwLen);
+        if (dwLen == 0)
+        {
+            // End of response body
+            break;
+        }
 
-    if (!pBuffer)
-    {
-        my_print(false, _T("HeapAlloc failed"));
-        return false;
-    }
+        if (cancel)
+        {
+            return false;
+        }
+
+        pBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwLen);
+
+        if (!pBuffer)
+        {
+            my_print(false, _T("HeapAlloc failed"));
+            return false;
+        }
     
-    bRet = WinHttpReadData(hRequest, pBuffer, dwLen, &dwLen);
+        bRet = WinHttpReadData(hRequest, pBuffer, dwLen, &dwLen);
 
-    if (FALSE == bRet)
-    {
-	    my_print(false, _T("WinHttpReadData failed (%d)"), GetLastError());
+        if (FALSE == bRet)
+        {
+	        my_print(false, _T("WinHttpReadData failed (%d)"), GetLastError());
+            HeapFree(GetProcessHeap(), 0, pBuffer);
+            return false;
+        }
+
+        // NOTE: response data may be binary; some relevant comments here...
+        // http://stackoverflow.com/questions/441203/proper-way-to-store-binary-data-with-c-stl
+
+        response.append(string(string::const_pointer(pBuffer), string::const_pointer((char*)pBuffer + dwLen)));
+
+        // TODO: remove this or set DEBUG to true
+        my_print(false, _T("got: %s"), NarrowToTString(response).c_str());
+
         HeapFree(GetProcessHeap(), 0, pBuffer);
-        return false;
     }
-
-    // NOTE: response data may be binary; some relevant comments here...
-    // http://stackoverflow.com/questions/441203/proper-way-to-store-binary-data-with-c-stl
-
-    response = string(string::const_pointer(pBuffer), string::const_pointer((char*)pBuffer + dwLen + 1));
-
-    // TODO: remove this or set DEBUG to true
-    my_print(false, _T("got: %s"), NarrowToTString(response).c_str());
-
-    HeapFree(GetProcessHeap(), 0, pBuffer);
 
     dwLen = sizeof(pCert);
 
