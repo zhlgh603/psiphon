@@ -20,6 +20,8 @@
 #pragma once
 
 #include <string>
+#include <WinCrypt.h>
+
 
 using namespace std;
 
@@ -34,4 +36,6 @@ public:
         int serverWebPort,
         const TCHAR* requestPath,
         string& response);
+	bool ValidateServerCert(PCCERT_CONTEXT pCert);
+    bool VerifyCert(HCERTSTORE hCertStore, PCCERT_CONTEXT pSubjectContext);
 };
