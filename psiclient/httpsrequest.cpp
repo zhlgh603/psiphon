@@ -281,9 +281,9 @@ bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert)
     bool bResult = false;
 
     // Open the store
-    hCertMemStore =CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0,
-					CERT_STORE_CREATE_NEW_FLAG, NULL);
-
+    hCertMemStore = CertOpenStore(
+                        CERT_STORE_PROV_MEMORY, 0, 0,
+					    CERT_STORE_CREATE_NEW_FLAG, NULL);
 
     if (!(hCertMemStore))
     {
@@ -325,13 +325,13 @@ bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert)
     delete pemStr;
 
     //Add cert to the store
-    BOOL bRes  = CertAddEncodedCertificateToStore(hCertMemStore, 
-        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
-        pbBinary, 
-        cbBinary, 
-        CERT_STORE_ADD_NEW, 
-        NULL);
-
+    BOOL bRes  = CertAddEncodedCertificateToStore(
+                    hCertMemStore, 
+                    X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
+                    pbBinary, 
+                    cbBinary, 
+                    CERT_STORE_ADD_NEW, 
+                    NULL);
 
     if(!bRes)
     {
@@ -349,29 +349,44 @@ bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert)
 
 bool HTTPSRequest::VerifyCert(HCERTSTORE hCertStore, PCCERT_CONTEXT pSubjectContext)
 {
+    // Taken from http://etutorials.org/Programming/secure+programming/Chapter+10.+Public+Key+Infrastructure/10.6+Performing+X.509+Certificate+Verification+with+CryptoAPI/
 
-  //taken from http://etutorials.org/Programming/secure+programming/Chapter+10.+Public+Key+Infrastructure/10.6+Performing+X.509+Certificate+Verification+with+CryptoAPI/
-
-  DWORD           dwFlags;
-  PCCERT_CONTEXT  pIssuerContext;
-   
-  if (!(pSubjectContext = CertDuplicateCertificateContext(pSubjectContext)))
-    return false;
-  do {
-    dwFlags = CERT_STORE_REVOCATION_FLAG | CERT_STORE_SIGNATURE_FLAG |
-              CERT_STORE_TIME_VALIDITY_FLAG;
-    pIssuerContext = CertGetIssuerCertificateFromStore(hCertStore,
-                                                pSubjectContext, 0, &dwFlags);
-    CertFreeCertificateContext(pSubjectContext);
-    if (pIssuerContext) {
-      (PCCERT_CONTEXT)pSubjectContext = pIssuerContext;
-      if (dwFlags & CERT_STORE_NO_CRL_FLAG)
-        dwFlags &= ~(CERT_STORE_NO_CRL_FLAG | CERT_STORE_REVOCATION_FLAG);
-      if (dwFlags) break;
-    } else if (GetLastError(  ) == CRYPT_E_SELF_SIGNED) 
+    DWORD dwFlags;
+    PCCERT_CONTEXT pIssuerContext;
+ 
+    if (!(pSubjectContext = CertDuplicateCertificateContext(pSubjectContext)))
     {
-        return true;
+      return false;
     }
-  } while (pIssuerContext);
-  return false;
+    do
+    {
+        dwFlags = CERT_STORE_REVOCATION_FLAG | CERT_STORE_SIGNATURE_FLAG | CERT_STORE_TIME_VALIDITY_FLAG;
+
+        pIssuerContext = CertGetIssuerCertificateFromStore(
+                                hCertStore, pSubjectContext, 0, &dwFlags);
+
+        CertFreeCertificateContext(pSubjectContext);
+
+        if (pIssuerContext)
+        {
+            (PCCERT_CONTEXT)pSubjectContext = pIssuerContext;
+
+            if (dwFlags & CERT_STORE_NO_CRL_FLAG)
+            {
+              dwFlags &= ~(CERT_STORE_NO_CRL_FLAG | CERT_STORE_REVOCATION_FLAG);
+            }
+
+            if (dwFlags)
+            {
+                break;
+            }
+        }
+        else if (GetLastError() == CRYPT_E_SELF_SIGNED) 
+        {
+            return true;
+        }
+    }
+    while (pIssuerContext);
+
+    return false;
 }
