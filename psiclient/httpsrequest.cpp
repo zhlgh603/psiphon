@@ -22,6 +22,9 @@
 #include "psiclient.h"
 #include <Winhttp.h>
 #include <WinCrypt.h>
+#include "embeddedvalues.h"
+
+#pragma comment (lib, "crypt32.lib")
 
 HTTPSRequest::HTTPSRequest(void)
 {
@@ -46,7 +49,6 @@ bool HTTPSRequest::GetRequest(
 
     BOOL bRet = FALSE;
     CERT_CONTEXT *pCert = {0};
-    HCERTSTORE hCertStore = NULL;
     DWORD dwRet = 0;
     DWORD dwLen = 0;
     DWORD dwStatusCode;
@@ -182,7 +184,7 @@ bool HTTPSRequest::GetRequest(
     if (200 != dwStatusCode)
     {
 	    my_print(false, _T("Bad HTTP GET request status code: %d"), dwStatusCode);
-        return false;
+ //       return false;
     }
 
     if (cancel)
@@ -252,4 +254,107 @@ bool HTTPSRequest::GetRequest(
     my_print(false, _T("cert encoding %d %d"), pCert->dwCertEncodingType, pCert->cbCertEncoded);
 
     return true;
+}
+
+bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert)
+{
+    char* pemStr = NULL; // pem cert string
+    BYTE* pbBinary = NULL; //base64 decoded pem
+    DWORD cbBinary; //base64 decoded pem size
+    HCERTSTORE hCertMemStore = NULL;
+    bool bResult = false;
+
+    // Open the store
+    hCertMemStore =CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0,
+					CERT_STORE_CREATE_NEW_FLAG, NULL);
+
+
+    if (!(hCertMemStore))
+    {
+	    my_print(false, _T("CertOpenStore() failed"));
+        return false;
+    }
+
+    //strip '-----BEGIN CERTIFICATE-----' and '-----END CERTIFICATE-----' from PSIPHON_CA_CERT
+    const char* strBeginCert = "-----BEGIN CERTIFICATE-----";
+    const char* strEndCert = "-----END CERTIFICATE-----";
+
+    const char* pBegin, *pEnd;
+    int nStrLength = 0;
+
+    if ((pBegin = strstr(PSIPHON_CA_CERT,strBeginCert)) &&
+        (pEnd = strstr(PSIPHON_CA_CERT,strEndCert)) &&
+        pEnd > pBegin )
+    {
+        nStrLength = [strlen(PSIPHON_CA_CERT) - strlen(strBeginCert) -  strlen(strBeginCert);
+        pemStr = new char[nStrLength + 1];
+        strncpy(pemStr, pBegin + strlen(strBeginCert), nStrLength);
+    }
+    else
+    {
+	    my_print(false, _T("Couldn't get the pem string"));
+        return false;
+    }
+    
+    //Base64 decode pem string to BYTE*
+    
+    //Get the expected pbBinary length
+    CryptStringToBinaryA( (LPCSTR)pemStr, (DWORD) strlen(pemStr), CRYPT_STRING_BASE64, NULL, &cbBinary, NULL, NULL);
+
+    pbBinary = new BYTE[cbBinary];
+
+    //Perform base64 decode
+    CryptStringToBinaryA( (LPCSTR)pemStr, (DWORD) strlen(pemStr), CRYPT_STRING_BASE64, pbBinary, &cbBinary, NULL, NULL);
+
+    delete pemStr;
+
+    //Add cert to the store
+    bResult = (bool)CertAddEncodedCertificateToStore(hCertMemStore, 
+        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
+        pbBinary, 
+        cbBinary, 
+        CERT_STORE_ADD_NEW, 
+        NULL);
+
+    delete pbBinary;
+
+    if(!bResult)
+    {
+	    my_print(false, _T("CertAddEncodedCertificateToStore() failed"));
+        return false;
+    }
+
+    bResult = VerifyCert(hCertMemStore, pCert);
+    CertCloseStore(hCertMemStore, 0);
+    return bResult;
+}
+
+
+bool HTTPSRequest::VerifyCert(HCERTSTORE hCertStore, PCCERT_CONTEXT pSubjectContext)
+{
+
+  //taken from http://etutorials.org/Programming/secure+programming/Chapter+10.+Public+Key+Infrastructure/10.6+Performing+X.509+Certificate+Verification+with+CryptoAPI/
+
+  DWORD           dwFlags;
+  PCCERT_CONTEXT  pIssuerContext;
+   
+  if (!(pSubjectContext = CertDuplicateCertificateContext(pSubjectContext)))
+    return false;
+  do {
+    dwFlags = CERT_STORE_REVOCATION_FLAG | CERT_STORE_SIGNATURE_FLAG |
+              CERT_STORE_TIME_VALIDITY_FLAG;
+    pIssuerContext = CertGetIssuerCertificateFromStore(hCertStore,
+                                                pSubjectContext, 0, &dwFlags);
+    CertFreeCertificateContext(pSubjectContext);
+    if (pIssuerContext) {
+      (PCCERT_CONTEXT)pSubjectContext = pIssuerContext;
+      if (dwFlags & CERT_STORE_NO_CRL_FLAG)
+        dwFlags &= ~(CERT_STORE_NO_CRL_FLAG | CERT_STORE_REVOCATION_FLAG);
+      if (dwFlags) break;
+    } else if (GetLastError(  ) == CRYPT_E_SELF_SIGNED) 
+    {
+        return true;
+    }
+  } while (pIssuerContext);
+  return false;
 }
