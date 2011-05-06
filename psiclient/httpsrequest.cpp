@@ -335,14 +335,18 @@ bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert)
 
     if(!bRes)
     {
+        CertCloseStore(hCertMemStore, 0);
         delete pbBinary;
-	    my_print(false, _T("CertAddEncodedCertificateToStore() failed"));
+
+        my_print(false, _T("CertAddEncodedCertificateToStore() failed"));
         return false;
     }
 
     bResult = VerifyCert(hCertMemStore, pCert);
+
     CertCloseStore(hCertMemStore, 0);
     delete pbBinary;
+
     return bResult;
 }
 
