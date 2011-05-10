@@ -20,7 +20,7 @@
 #pragma once
 
 // TODO: put this in resources instead
-static const char* CLIENT_VERSION = "1";
+static const char* CLIENT_VERSION = "2";
 
 static const char* CLIENT_ID = 
     "3A885577DD84EF13";

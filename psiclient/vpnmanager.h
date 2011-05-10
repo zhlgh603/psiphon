@@ -85,4 +85,5 @@ private:
     VPNState m_vpnState;
     bool m_userSignalledStop;
     SessionInfo m_currentSessionInfo;
+    HANDLE m_tryNextServerThreadHandle;
 };
