@@ -43,6 +43,13 @@ VPNManager::~VPNManager(void)
 {
     Stop();
 
+    // Wait for TryNextServer thread to exit (otherwise can get access violation when app terminates)
+    if (m_tryNextServerThreadHandle)
+    {
+        WaitForSingleObject(m_tryNextServerThreadHandle, 10000);
+        m_tryNextServerThreadHandle = 0;
+    }
+
     CloseHandle(m_mutex);
 }
 
@@ -103,13 +110,6 @@ void VPNManager::Stop(void)
         //
         //VPNStateChanged(VPN_STATE_STOPPED);
     }
-
-    // Wait for TryNextServer thread to exit (otherwise can get access violation when app terminates)
-    if (m_tryNextServerThreadHandle)
-    {
-        WaitForSingleObject(m_tryNextServerThreadHandle, 10000);
-        m_tryNextServerThreadHandle = 0;
-    }
 }
 
 void VPNManager::VPNStateChanged(VPNState newState)
@@ -166,13 +166,6 @@ void VPNManager::TryNextServer(void)
     // The INITIALIZING state is set here, instead of inside the thread, to prevent a second
     // button click from triggering a second concurrent TryNextServer invocation.
     VPNStateChanged(VPN_STATE_INITIALIZING);
-
-    // NOTE: should never see this due to state checks, but just in case...
-    if (m_tryNextServerThreadHandle)
-    {
-        my_print(false, _T("TryNextServer: already running"), GetLastError());
-        return;
-    }
 
     // This function might not return quickly, because it performs an HTTPS Request.
     // It is run in a thread so that it does not starve the message pump.
