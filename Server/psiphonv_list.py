@@ -22,16 +22,16 @@
 Example output (using test data spreadsheet):
 
 > list.py embed
-31302e302e302e32302038302046383934463333333930354638333137
-3139322e3136382e302e32302038302038384546324644343332343732353542
-3137322e31362e302e32302038302033464533344238393132423838354242
+31302e302e302e3230203830204638393446333333393035463833313720<encoded server cert>
+3139322e3136382e302e3230203830203838454632464434333234373235354220<encoded server cert>
+3137322e31362e302e3230203830203346453334423839313242383835424220<encoded server cert>
 
 > list.py handshake 127.0.0.1 3A885577DD84EF13 0
 Homepage: http://news.google.com/news?pz=0&hl=en&ned=ca
 Upgrade: 1
-Server: 31302e302e302e32302038302046383934463333333930354638333137
-Server: 3139322e3136382e302e32302038302038384546324644343332343732353542
-Server: 3137322e31362e302e32302038302033464533344238393132423838354242
+Server: 31302e302e302e3230203830204638393446333333393035463833313720<encoded server cert>
+Server: 3139322e3136382e302e3230203830203838454632464434333234373235354220<encoded server cert>
+Server: 3137322e31362e302e3230203830203346453334423839313242383835424220<encoded server cert>
 
 '''
 
@@ -47,6 +47,7 @@ SERVER_LIST_SHEET_COLUMNS = [
     u'IP Address',
     u'Web Server Port',
     u'Server Secret',
+    u'Server Certificate',
     u'SSH username',
     u'SSH password',
     u'Notes'
@@ -78,7 +79,8 @@ def get_encoded_server_list():
         ip_address = server[0].value.encode('utf-8')
         web_server_port = server[1].value.encode('utf-8')
         server_secret = server[2].value.encode('utf-8')
-        server_entry = '%s %s %s' % (ip_address, web_server_port, server_secret)
+        server_certificate = server[3].value.encode('utf-8')
+        server_entry = '%s %s %s %s' % (ip_address, web_server_port, server_secret, server_certificate)
         hex_server_entry = binascii.hexlify(server_entry)
         encoded_server_list.append(hex_server_entry)
     return encoded_server_list
