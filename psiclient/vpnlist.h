@@ -26,12 +26,13 @@ using namespace std;
 struct ServerEntry
 {
     ServerEntry(void) {}
-    ServerEntry(const string& serverAddress_, int webServerPort_, const string& webServerSecret_) :
-        serverAddress(serverAddress_), webServerPort(webServerPort_), webServerSecret(webServerSecret_) {}
+    ServerEntry(const string& serverAddress_, int webServerPort_, const string& webServerSecret_, const string& webServerCertificate_) :
+        serverAddress(serverAddress_), webServerPort(webServerPort_), webServerSecret(webServerSecret_) , webServerCertificate(webServerCertificate_) {}
 
     string serverAddress;
     int webServerPort;
     string webServerSecret;
+    string webServerCertificate;
 };
 
 typedef vector<ServerEntry> ServerEntries;

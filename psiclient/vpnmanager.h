@@ -59,10 +59,12 @@ private:
     bool LoadNextServer(
         tstring& serverAddress,
         int& webPort,
+        string& webServerCertificate,
         tstring& handshakeRequestPath);
     bool DoHandshake(
         const TCHAR* serverAddress,
         int webPort,
+        const string& webServerCertificate,
         const TCHAR* handshakeRequestPath,
         string& handshakeResponse);
     bool HandleHandshakeResponse(
@@ -71,6 +73,7 @@ private:
     bool DoDownload(
         const TCHAR* serverAddress,
         int webPort,
+        const string& webServerCertificate,
         const TCHAR* downloadRequestPath,
         string& downloadResponse);
     bool DoUpgrade(const string& download);

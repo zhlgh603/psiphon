@@ -38,6 +38,7 @@ bool HTTPSRequest::GetRequest(
         bool& cancel,
         const TCHAR* serverAddress,
         int serverWebPort,
+        const string& webServerCertificate,
         const TCHAR* requestPath,
         string& response)
 {
@@ -170,7 +171,7 @@ bool HTTPSRequest::GetRequest(
         return false;
     }
 
-    if (!ValidateServerCert((PCCERT_CONTEXT)pCert))
+    if (!ValidateServerCert((PCCERT_CONTEXT)pCert, webServerCertificate))
     {
         CertFreeCertificateContext(pCert);
 
@@ -277,125 +278,43 @@ bool HTTPSRequest::GetRequest(
     return true;
 }
 
-bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert)
+bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert, const string& expectedServerCertificate)
 {
-    char* pemStr = NULL; // pem cert string
     BYTE* pbBinary = NULL; //base64 decoded pem
     DWORD cbBinary; //base64 decoded pem size
-    HCERTSTORE hCertMemStore = NULL;
     bool bResult = false;
 
-    // Open the store
-    hCertMemStore = CertOpenStore(
-                        CERT_STORE_PROV_MEMORY, 0, 0,
-					    CERT_STORE_CREATE_NEW_FLAG, NULL);
-
-    if (!(hCertMemStore))
-    {
-	    my_print(false, _T("CertOpenStore() failed"));
-        return false;
-    }
-
-    //strip '-----BEGIN CERTIFICATE-----' and '-----END CERTIFICATE-----' from PSIPHON_CA_CERT
-    const char* strBeginCert = "-----BEGIN CERTIFICATE-----";
-    const char* strEndCert = "-----END CERTIFICATE-----";
-
-    const char* pBegin, *pEnd;
-    int nStrLength = 0;
-
-    if ((pBegin = strstr(PSIPHON_CA_CERT,strBeginCert)) &&
-        (pEnd = strstr(PSIPHON_CA_CERT,strEndCert)) &&
-        pEnd > pBegin )
-    {
-        nStrLength = strlen(PSIPHON_CA_CERT) - strlen(strBeginCert) -  strlen(strEndCert);
-        pemStr = new char[nStrLength +1];
-        strncpy_s(pemStr, nStrLength, pBegin + strlen(strBeginCert), _TRUNCATE);
-    }
-    else
-    {
-	    my_print(false, _T("Couldn't get the pem string"));
-        return false;
-    }
-    
     //Base64 decode pem string to BYTE*
     
     //Get the expected pbBinary length
-    CryptStringToBinaryA( (LPCSTR)pemStr, (DWORD) strlen(pemStr), CRYPT_STRING_BASE64, NULL, &cbBinary, NULL, NULL);
+    CryptStringToBinaryA( (LPCSTR)expectedServerCertificate.c_str(), expectedServerCertificate.length(), CRYPT_STRING_BASE64, NULL, &cbBinary, NULL, NULL);
 
-    pbBinary = new BYTE[cbBinary];
-
-    //Perform base64 decode
-    CryptStringToBinaryA( (LPCSTR)pemStr, (DWORD) strlen(pemStr), CRYPT_STRING_BASE64, pbBinary, &cbBinary, NULL, NULL);
-
-    delete pemStr;
-
-    //Add cert to the store
-    BOOL bRes  = CertAddEncodedCertificateToStore(
-                    hCertMemStore, 
-                    X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
-                    pbBinary, 
-                    cbBinary, 
-                    CERT_STORE_ADD_NEW, 
-                    NULL);
-
-    if(!bRes)
+    pbBinary = new (std::nothrow) BYTE[cbBinary];
+    if (!pbBinary)
     {
-        CertCloseStore(hCertMemStore, 0);
-        delete pbBinary;
-
-        my_print(false, _T("CertAddEncodedCertificateToStore() failed"));
+        my_print(false, _T("ValidateServerCert: memory allocation failed"));
         return false;
     }
 
-    bResult = VerifyCert(hCertMemStore, pCert);
-
-    CertCloseStore(hCertMemStore, 0);
-    delete pbBinary;
-
-    return bResult;
-}
-
-
-bool HTTPSRequest::VerifyCert(HCERTSTORE hCertStore, PCCERT_CONTEXT pSubjectContext)
-{
-    // Taken from http://etutorials.org/Programming/secure+programming/Chapter+10.+Public+Key+Infrastructure/10.6+Performing+X.509+Certificate+Verification+with+CryptoAPI/
-
-    DWORD dwFlags;
-    PCCERT_CONTEXT pIssuerContext;
- 
-    if (!(pSubjectContext = CertDuplicateCertificateContext(pSubjectContext)))
+    //Perform base64 decode
+    CryptStringToBinaryA( (LPCSTR)expectedServerCertificate.c_str(), expectedServerCertificate.length(), CRYPT_STRING_BASE64, pbBinary, &cbBinary, NULL, NULL);
+    
+    // Check if the certificate in pCert matches the expectedServerCertificate
+    if (pCert->cbCertEncoded == cbBinary)
     {
-      return false;
-    }
-    do
-    {
-        dwFlags = CERT_STORE_REVOCATION_FLAG | CERT_STORE_SIGNATURE_FLAG | CERT_STORE_TIME_VALIDITY_FLAG;
+        bResult = true;
 
-        pIssuerContext = CertGetIssuerCertificateFromStore(
-                                hCertStore, pSubjectContext, 0, &dwFlags);
-
-        CertFreeCertificateContext(pSubjectContext);
-
-        if (pIssuerContext)
+        for (unsigned int i = 0; i < cbBinary; ++i)
         {
-            (PCCERT_CONTEXT)pSubjectContext = pIssuerContext;
-
-            if (dwFlags & CERT_STORE_NO_CRL_FLAG)
+            if (pCert->pbCertEncoded[i] != pbBinary[i])
             {
-              dwFlags &= ~(CERT_STORE_NO_CRL_FLAG | CERT_STORE_REVOCATION_FLAG);
-            }
-
-            if (dwFlags)
-            {
+                bResult = false;
                 break;
             }
         }
-        else if (GetLastError() == CRYPT_E_SELF_SIGNED) 
-        {
-            return true;
-        }
     }
-    while (pIssuerContext);
+    
+    delete pbBinary;
 
-    return false;
+    return bResult;
 }

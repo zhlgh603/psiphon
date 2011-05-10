@@ -33,6 +33,7 @@ public:
     string GetServerAddress(void) {return m_serverEntry.serverAddress;}
     int GetWebPort(void) {return m_serverEntry.webServerPort;}
     string GetWebServerSecret(void) {return m_serverEntry.webServerSecret;}
+    string GetWebServerCertificate(void) { return m_serverEntry.webServerCertificate;}
     string GetUpgradeVersion(void) {return m_upgradeVersion;}
     string GetPSK(void) {return m_psk;}
     vector<string> GetHomepages(void) {return m_homepages;}

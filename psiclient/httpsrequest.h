@@ -34,8 +34,8 @@ public:
         bool& cancel,
         const TCHAR* serverAddress,
         int serverWebPort,
+        const string& webServerCertificate,
         const TCHAR* requestPath,
         string& response);
-	bool ValidateServerCert(PCCERT_CONTEXT pCert);
-    bool VerifyCert(HCERTSTORE hCertStore, PCCERT_CONTEXT pSubjectContext);
+	bool ValidateServerCert(PCCERT_CONTEXT pCert, const string& expectedServerCertificate);
 };

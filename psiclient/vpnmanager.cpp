@@ -194,10 +194,11 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
 
     tstring serverAddress;
     int webPort;
+    string webServerCertificate;
     tstring handshakeRequestPath;
     string handshakeResponse;
 
-    if (!manager->LoadNextServer(serverAddress, webPort,
+    if (!manager->LoadNextServer(serverAddress, webPort, webServerCertificate,
                                  handshakeRequestPath))
     {
         // Helper function sets state to STOPPED or FAILED
@@ -207,7 +208,7 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
     // NOTE: DoHandshake doesn't hold the VPNManager lock for the entire
     // web request transaction.
 
-    if (!manager->DoHandshake(serverAddress.c_str(), webPort,
+    if (!manager->DoHandshake(serverAddress.c_str(), webPort, webServerCertificate,
                               handshakeRequestPath.c_str(), handshakeResponse))
     {
         // Helper function sets state to STOPPED or FAILED
@@ -234,7 +235,7 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
     {
         // Download new binary
 
-        if (!manager->DoDownload(serverAddress.c_str(), webPort,
+        if (!manager->DoDownload(serverAddress.c_str(), webPort, webServerCertificate,
                                  downloadRequestPath.c_str(), downloadResponse))
         {
             // Helper function sets state to STOPPED or FAILED
@@ -270,6 +271,7 @@ DWORD WINAPI VPNManager::TryNextServerThread(void* data)
 bool VPNManager::LoadNextServer(
         tstring& serverAddress,
         int& webPort,
+        string& serverCertificate,
         tstring& handshakeRequestPath)
 {
     // Select next server to try to connect to
@@ -306,6 +308,7 @@ bool VPNManager::LoadNextServer(
 
     serverAddress = NarrowToTString(serverEntry.serverAddress);
     webPort = serverEntry.webServerPort;
+    serverCertificate = serverEntry.webServerCertificate;
     handshakeRequestPath = tstring(HTTP_HANDSHAKE_REQUEST_PATH) + 
                            _T("?server_secret=") + NarrowToTString(serverEntry.webServerSecret) +
                            _T("&client_id=") + NarrowToTString(CLIENT_ID) +
@@ -317,6 +320,7 @@ bool VPNManager::LoadNextServer(
 bool VPNManager::DoHandshake(
         const TCHAR* serverAddress,
         int webPort,
+        const string& webServerCertificate,
         const TCHAR* handshakeRequestPath,
         string& handshakeResponse)
 {
@@ -335,6 +339,7 @@ bool VPNManager::DoHandshake(
                         m_userSignalledStop,
                         serverAddress,
                         webPort,
+                        webServerCertificate,
                         handshakeRequestPath,
                         handshakeResponse))
     {
@@ -418,6 +423,7 @@ bool VPNManager::RequireUpgrade(tstring& downloadRequestPath)
 bool VPNManager::DoDownload(
         const TCHAR* serverAddress,
         int webPort,
+        const string& webServerCertificate,
         const TCHAR* downloadRequestPath,
         string& downloadResponse)
 {
@@ -430,6 +436,7 @@ bool VPNManager::DoDownload(
                         m_userSignalledStop,
                         serverAddress,
                         webPort,
+                        webServerCertificate,
                         downloadRequestPath,
                         downloadResponse))
     {

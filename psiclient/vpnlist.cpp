@@ -58,6 +58,7 @@ void VPNList::AddEntriesToList(const vector<string>& newServerEntryList)
                 //       discovery mechanisms
                 oldServerEntry->webServerPort = newServerEntry.webServerPort;
                 oldServerEntry->webServerSecret = newServerEntry.webServerSecret;
+                oldServerEntry->webServerCertificate = newServerEntry.webServerCertificate;
                 break;
             }
         }
@@ -282,6 +283,12 @@ ServerEntry VPNList::ParseServerEntry(const string& serverEntry)
     }
     entry.webServerSecret = lineItem;
 
+    if (!getline(lineStream, lineItem, ' '))
+    {
+        throw std::exception("Server Entries are corrupt: can't parse Web Server Certificate");
+    }
+    entry.webServerCertificate = lineItem;
+
     return entry;
 }
 
@@ -329,7 +336,7 @@ string VPNList::EncodeServerEntries(const ServerEntries& serverEntryList)
     {
         stringstream port;
         port << it->webServerPort;
-        string serverEntry = it->serverAddress + " " + port.str() + " " + it->webServerSecret;
+        string serverEntry = it->serverAddress + " " + port.str() + " " + it->webServerSecret + " " + it->webServerCertificate;
         encodedServerList += Hexlify(serverEntry) + "\n";
     }
     return encodedServerList;
