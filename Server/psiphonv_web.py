@@ -36,8 +36,8 @@ import psiphonv_list
 import psiphonv_psk
 
 
-SERVER_CERTIFICATE_FILE = '/root/PsiphonV/server1Cert.pem'
-SERVER_PRIVATE_KEY_FILE = '/root/PsiphonV/server1Key.pem'
+SERVER_CERTIFICATE_FILE = '/root/PsiphonV/serverCert.pem'
+SERVER_PRIVATE_KEY_FILE = '/root/PsiphonV/serverKey.pem'
 
 DOWNLOAD_PATH = '/root/PsiphonV/download'
 DOWNLOAD_FILE_NAME = 'psiphonv.exe'
