@@ -39,7 +39,7 @@ bool SessionInfo::ParseHandshakeResponse(const string& response)
 
     static const char* UPGRADE_PREFIX = "Upgrade: ";
     static const char* PSK_PREFIX = "PSK: ";
-    static const char* HOMEPAGE_PREFIX = "HomePage: ";
+    static const char* HOMEPAGE_PREFIX = "Homepage: ";
     static const char* SERVER_PREFIX = "Server: ";
 
     m_upgradeVersion.clear();
