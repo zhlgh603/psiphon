@@ -36,9 +36,8 @@ import psiphonv_list
 import psiphonv_psk
 
 
-SERVER_CERTIFICATE_FILE = '/root/PsiphonV/serverCert.pem'
-SERVER_PRIVATE_KEY_FILE = '/root/PsiphonV/serverKey.pem'
-CA_CERTIFICATE_FILE = '/root/PsiphonV/caCert.pem'
+SERVER_CERTIFICATE_FILE = '/root/PsiphonV/server1Cert.pem'
+SERVER_PRIVATE_KEY_FILE = '/root/PsiphonV/server1Key.pem'
 
 DOWNLOAD_PATH = '/root/PsiphonV/download'
 DOWNLOAD_FILE_NAME = 'psiphonv.exe'
@@ -147,8 +146,7 @@ def main():
 
     server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(
                 SERVER_CERTIFICATE_FILE,
-                SERVER_PRIVATE_KEY_FILE,
-                CA_CERTIFICATE_FILE)
+                SERVER_PRIVATE_KEY_FILE)
 
     thread = threading.Thread(target=server.start)
     thread.start()
