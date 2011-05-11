@@ -157,7 +157,7 @@ def main():
                 # Ignore this SSL raised when a Firefox browser connects
                 # TODO: explanation required
                 if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
-                    print e.strerror
+                    logging.info(e.strerror)
                     raise
             server.stop()
 
