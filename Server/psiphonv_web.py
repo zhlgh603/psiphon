@@ -32,6 +32,7 @@ import os
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_builtin
 from webob import Request
+import ssl
 import psiphonv_list
 import psiphonv_psk
 
@@ -148,16 +149,25 @@ def main():
                 SERVER_CERTIFICATE_FILE,
                 SERVER_PRIVATE_KEY_FILE)
 
-    thread = threading.Thread(target=server.start)
-    thread.start()
+    def run_server():
+        while True:
+            try:
+                server.start()
+            except ssl.SSLError as e:
+                # Ignore this SSL raised when a Firefox browser connects
+                # TODO: explanation required
+                if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
+                    print e.strerror
+                    raise
+            server.stop()
+
     # TODO: daemon
     print 'Server running...'
     try:
-        time.sleep(10000)
+        run_server()
     except KeyboardInterrupt as e:
         pass
     server.stop()
-    thread.join()
 
 
 if __name__ == "__main__":
