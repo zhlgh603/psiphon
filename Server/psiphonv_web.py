@@ -33,22 +33,17 @@ from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_builtin
 from webob import Request
 import ssl
+import tempfile
+import netifaces
 import psiphonv_db
 import psiphonv_psk
 
-
-SERVER_CERTIFICATE_FILE = '/root/PsiphonV/serverCert.pem'
-SERVER_PRIVATE_KEY_FILE = '/root/PsiphonV/serverKey.pem'
 
 DOWNLOAD_PATH = '/root/PsiphonV/download'
 DOWNLOAD_FILE_NAME = 'psiphonv.exe'
 
 
-# TODO: read from spreadsheet, reference by local bind address
-SERVER_SECRET = 'FEDCBA9876543210'
-
-# TODO: use netifaces to enumerate local ip addresses, start a server for each
-
+# ===== Helpers =====
 
 # see: http://codahale.com/a-lesson-in-timing-attacks/
 def constant_time_compare(a, b):
@@ -64,10 +59,18 @@ def consists_of(str, characters):
     return 0 == len(filter(lambda x : x not in characters, str))
 
 
+# see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
+def split_len(seq, length):
+    return [seq[i:i+length] for i in range(0, len(seq), length)]
+
+
+# ===== Main Code =====
+
 class ServerInstance:
 
-    def __init__(self, ip_address):
+    def __init__(self, ip_address, server_secret):
         self.server_ip_address = ip_address
+        self.server_secret = server_secret
 
     class InvalidInputException(Exception):
         pass
@@ -85,7 +88,7 @@ class ServerInstance:
                 not consists_of(sponsor_id, string.hexdigits) or
                 not consists_of(client_version, string.digits) or
                 not consists_of(server_secret, string.hexdigits) or
-                not constant_time_compare(server_secret, SERVER_SECRET)):
+                not constant_time_compare(server_secret, self.server_secret)):
                 raise self.InvalidInputException()
         except KeyError as e:
             raise self.InvalidInputException()
@@ -141,39 +144,84 @@ class ServerInstance:
         return [contents]
 
 
-def main():
-    # TODO: handle multiple local bind addresses
-    bind_address = '0.0.0.0'
-    server_instance = ServerInstance('192.168.1.250')
-    server = wsgiserver.CherryPyWSGIServer(
-                (bind_address, 80),
-                wsgiserver.WSGIPathInfoDispatcher(
-                    {'/handshake': server_instance.handshake,
-                     '/download': server_instance.download}))
+def get_servers():
+    # enumerate all interfaces with an IPv4 address and server entry
+    # return an array of server info for each server to be run
+    servers = []
+    for interface in netifaces.interfaces():
+        if netifaces.ifaddresses(interface).has_key(netifaces.AF_INET):
+            ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
+            server = filter(lambda s : s.IP_Address == ip_address, psiphonv_db.get_servers())
+            if len(server) == 1:
+                servers.append((ip_address,
+                                server[0].Web_Server_Port,
+                                server[0].Web_Server_Secret,
+                                server[0].Web_Server_Certificate,
+                                server[0].Web_Server_Private_Key))
+    return servers
 
-    server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(
-                SERVER_CERTIFICATE_FILE,
-                SERVER_PRIVATE_KEY_FILE)
 
-    def run_server():
-        while True:
-            try:
-                server.start()
-            except ssl.SSLError as e:
-                # Ignore this SSL raised when a Firefox browser connects
-                # TODO: explanation required
-                if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
-                    logging.info(e.strerror)
-                    raise
+def run_server(stop_event, ip_address, port, secret, certificate, private_key):
+    # Thread and while loop is for recovery from 'unknown ca' issue.
+    while True:
+        certificate_temp_file = None
+        server = None
+        try:
+            server_instance = ServerInstance(ip_address, secret)
+            server = wsgiserver.CherryPyWSGIServer(
+                        (ip_address, int(port)),
+                        wsgiserver.WSGIPathInfoDispatcher(
+                            {'/handshake': server_instance.handshake,
+                             '/download': server_instance.download}))
+            # lifetime of cert/private key temp file is lifetime of server
+            # file is closed by ServerInstance, and that auto deletes tempfile
+            certificate_temp_file = tempfile.NamedTemporaryFile()
+            certificate_temp_file.write(
+                '-----BEGIN RSA PRIVATE KEY-----\n' +
+                '\n'.join(split_len(private_key, 64)) +
+                '\n-----END RSA PRIVATE KEY-----\n' +
+                '-----BEGIN CERTIFICATE-----\n' +
+                '\n'.join(split_len(certificate, 64)) +
+                '\n-----END CERTIFICATE-----\n');
+            certificate_temp_file.flush()
+            server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(certificate_temp_file.name, None)
+            server.start()
+            print 'Wait for stop event' # TEMP
+            stop_event.wait()
+            print 'Got stop event' # TEMP
+            break
+        except ssl.SSLError as e:
+            # Ignore this SSL raised when a Firefox browser connects
+            # TODO: explanation required
+            if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
+                logging.info(e.strerror)
+                raise
+        print 'Exiting' # TEMP
+        if certificate_temp_file:
+            certificate_temp_file.close()
+        if server:
             server.stop()
 
+
+def main():
+    stop_event = threading.Event()
+    threads = []
+    # run a web server for each server entry
+    for server_info in get_servers():
+        thread = threading.Thread(target=run_server, args=(stop_event,)+server_info)
+        thread.start()
+        threads.append(thread)
     # TODO: daemon
-    print 'Server running...'
+    print 'Servers running...'
     try:
-        run_server()
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt as e:
         pass
-    server.stop()
+    print 'Stopping...'
+    stop_event.set()
+    for thread in threads:
+        thread.join()
 
 
 if __name__ == "__main__":
