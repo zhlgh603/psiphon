@@ -305,11 +305,6 @@ bool VPNManager::LoadNextServer(
         return false;
     }
 
-    // TODO: remove this
-    serverEntry.serverAddress = "192.168.1.250";
-    // TODO: remove this
-    serverEntry.webServerSecret = "FEDCBA9876543210";
-
     // Current session holds server entry info and will also be loaded
     // with homepage and other info.
 
@@ -321,9 +316,10 @@ bool VPNManager::LoadNextServer(
     webPort = serverEntry.webServerPort;
     serverCertificate = serverEntry.webServerCertificate;
     handshakeRequestPath = tstring(HTTP_HANDSHAKE_REQUEST_PATH) + 
-                           _T("?server_secret=") + NarrowToTString(serverEntry.webServerSecret) +
-                           _T("&client_id=") + NarrowToTString(CLIENT_ID) +
-                           _T("&client_version=") + NarrowToTString(CLIENT_VERSION);
+                           _T("?client_id=") + NarrowToTString(CLIENT_ID) +
+                           _T("&sponsor_id=") + NarrowToTString(SPONSOR_ID) +
+                           _T("&client_version=") + NarrowToTString(CLIENT_VERSION) +
+                           _T("&server_secret=") + NarrowToTString(m_currentSessionInfo.GetWebServerSecret());
 
     return true;
 }
@@ -422,9 +418,10 @@ bool VPNManager::RequireUpgrade(tstring& downloadRequestPath)
     if (m_currentSessionInfo.GetUpgradeVersion().size() > 0)
     {
         downloadRequestPath = tstring(HTTP_DOWNLOAD_REQUEST_PATH) + 
-                              _T("?server_secret=") + NarrowToTString(m_currentSessionInfo.GetWebServerSecret()) +
-                              _T("&client_id=") + NarrowToTString(CLIENT_ID) +
-                              _T("&client_version=") + NarrowToTString(m_currentSessionInfo.GetUpgradeVersion());
+                              _T("?client_id=") + NarrowToTString(CLIENT_ID) +
+                              _T("&sponsor_id=") + NarrowToTString(SPONSOR_ID) +
+                              _T("&client_version=") + NarrowToTString(m_currentSessionInfo.GetUpgradeVersion()) +
+                              _T("&server_secret=") + NarrowToTString(m_currentSessionInfo.GetWebServerSecret());
         return true;
     }
 

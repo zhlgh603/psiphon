@@ -20,7 +20,7 @@
 '''
 
 Example input:
-https://192.168.0.1:80/handshake?server_secret=1234567890&client_id=0987654321&client_version=1
+https://192.168.0.1:80/handshake?client_id=0987654321&sponsor_id=1234554321&client_version=1&server_secret=1234567890
 
 '''
 
@@ -76,21 +76,24 @@ class ServerInstance:
         request = Request(environ)
         try:
             client_ip_address = request.remote_addr
-            server_secret = request.params['server_secret']
             client_id = request.params['client_id']
+            sponsor_id = request.params['sponsor_id']
             client_version = request.params['client_version']
-            if (not consists_of(server_secret, string.hexdigits) or
-                not consists_of(client_id, string.hexdigits) or
+            server_secret = request.params['server_secret']
+            if (not consists_of(client_id, string.hexdigits) or
+                not consists_of(sponsor_id, string.hexdigits) or
                 not consists_of(client_version, string.digits) or
+                not consists_of(server_secret, string.hexdigits) or
                 not constant_time_compare(server_secret, SERVER_SECRET)):
                 raise self.InvalidInputException()
         except KeyError as e:
             raise self.InvalidInputException()
-        return (client_ip_address, client_id, client_version)
+        return (client_ip_address, client_id, sponsor_id, client_version)
 
     def handshake(self, environ, start_response):
         try:
-            (client_ip_address, client_id, client_version) = self.__get_inputs(environ)
+            (client_ip_address, client_id, sponsor_id, client_version) =\
+                self.__get_inputs(environ)
         except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
@@ -106,7 +109,8 @@ class ServerInstance:
         # and why we're using PSKs instead of VPN PKI: basically, lowest
         # common denominator compatibility.
         #
-        lines = psiphonv_list.handshake(client_ip_address, client_id, client_version)
+        lines = psiphonv_list.handshake(
+                    client_ip_address, client_id, sponsor_id, client_version)
         lines += [psiphonv_psk.set_psk(self.server_ip_address)]
         response_headers = [('Content-type', 'text/plain')]
         start_response(status, response_headers)
@@ -114,14 +118,16 @@ class ServerInstance:
 
     def download(self, environ, start_response):
         try:
-            (client_ip_address, client_id, client_version) = self.__get_inputs(environ)
+            # TODO: don't require client_id, sponsor_id if not used
+            (client_ip_address, client_id, sponsor_id, client_version) =\
+                self.__get_inputs(environ)
         except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
         status = '200 OK'
-        # e.g., /root/PsiphonV/download/<version>/<client_id>/psiphonv.exe
+        # e.g., /root/PsiphonV/download/<version>/psiphonv.exe
         try:
-            path = os.path.join(DOWNLOAD_PATH, client_version, client_id, DOWNLOAD_FILE_NAME)
+            path = os.path.join(DOWNLOAD_PATH, client_version, DOWNLOAD_FILE_NAME)
             with open(path, 'rb') as file:
                 contents = file.read()
         # TODO: catch all possible file-related exceptions

@@ -201,7 +201,7 @@ def test_get_upgrade():
     assert(get_upgrade('2') is None)
 
 
-def handshake(client_id, sponsor_id, client_version, client_ip_address):
+def handshake(client_ip_address, client_id, sponsor_id, client_version):
     output = []
     homepage_urls = get_sponsor_home_pages(sponsor_id, client_ip_address)
     for homepage_url in homepage_urls:
