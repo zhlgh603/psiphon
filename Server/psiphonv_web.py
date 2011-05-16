@@ -33,7 +33,7 @@ from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_builtin
 from webob import Request
 import ssl
-import psiphonv_list
+import psiphonv_db
 import psiphonv_psk
 
 
@@ -110,7 +110,7 @@ class ServerInstance:
         # and why we're using PSKs instead of VPN PKI: basically, lowest
         # common denominator compatibility.
         #
-        lines = psiphonv_list.handshake(
+        lines = psiphonv_db.handshake(
                     client_ip_address, client_id, sponsor_id, client_version)
         lines += [psiphonv_psk.set_psk(self.server_ip_address)]
         response_headers = [('Content-type', 'text/plain')]
