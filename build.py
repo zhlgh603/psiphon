@@ -10,4 +10,3 @@ if 0 == build_client():
     print 'Python: SUCCESS'
 else:
     print 'Python: FAIL'
-
