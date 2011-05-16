@@ -117,6 +117,8 @@ def get_encoded_server_list(client_id, client_ip_address=None, discovery_date=da
         # give the client the one server in their bucket
         # TODO: consider more than one server per bucket
         bucket_count = len(servers)
+        if bucket_count == 0:
+            return []
         bucket = struct.unpack('!L',socket.inet_aton(client_ip_address))[0] % bucket_count
         servers = [servers[bucket]]
     return [binascii.hexlify('%s %s %s %s' %
