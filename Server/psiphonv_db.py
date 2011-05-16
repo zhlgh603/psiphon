@@ -43,7 +43,7 @@ HOSTS_SHEET_COLUMNS = u'IP_Address,SSH_Username,SSH_Password,Notes'.split(',')
 Host = namedtuple(u'Host', HOSTS_SHEET_COLUMNS)
 
 SERVERS_SHEET_NAME = u'Servers'
-SERVERS_SHEET_COLUMNS = u'IP_Address,Web_Server_Port,Web_Server_Secret,Web_Server_Certificate,Discovery_Client_ID,Discovery_Time_Start,Discovery_Time_End,Notes'.split(',')
+SERVERS_SHEET_COLUMNS = u'IP_Address,Web_Server_Port,Web_Server_Secret,Web_Server_Certificate,Web_Server_Private_Key,Discovery_Client_ID,Discovery_Time_Start,Discovery_Time_End,Notes'.split(',')
 Server = namedtuple(u'Server', SERVERS_SHEET_COLUMNS)
 
 SPONSORS_SHEET_NAME = u'Sponsors'
