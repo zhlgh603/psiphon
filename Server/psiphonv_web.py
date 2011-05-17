@@ -66,7 +66,7 @@ def split_len(seq, length):
 
 # ===== Main Code =====
 
-class ServerInstance:
+class ServerInstance(object):
 
     def __init__(self, ip_address, server_secret):
         self.server_ip_address = ip_address
@@ -161,66 +161,83 @@ def get_servers():
     return servers
 
 
-def run_server(stop_event, ip_address, port, secret, certificate, private_key):
-    # Thread and while loop is for recovery from 'unknown ca' issue.
-    while True:
-        certificate_temp_file = None
-        server = None
-        try:
-            server_instance = ServerInstance(ip_address, secret)
-            server = wsgiserver.CherryPyWSGIServer(
-                        (ip_address, int(port)),
-                        wsgiserver.WSGIPathInfoDispatcher(
-                            {'/handshake': server_instance.handshake,
-                             '/download': server_instance.download}))
-            # lifetime of cert/private key temp file is lifetime of server
-            # file is closed by ServerInstance, and that auto deletes tempfile
-            certificate_temp_file = tempfile.NamedTemporaryFile()
-            certificate_temp_file.write(
-                '-----BEGIN RSA PRIVATE KEY-----\n' +
-                '\n'.join(split_len(private_key, 64)) +
-                '\n-----END RSA PRIVATE KEY-----\n' +
-                '-----BEGIN CERTIFICATE-----\n' +
-                '\n'.join(split_len(certificate, 64)) +
-                '\n-----END CERTIFICATE-----\n');
-            certificate_temp_file.flush()
-            server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(certificate_temp_file.name, None)
-            server.start()
-            print 'Wait for stop event' # TEMP
-            stop_event.wait()
-            print 'Got stop event' # TEMP
-            break
-        except ssl.SSLError as e:
-            # Ignore this SSL raised when a Firefox browser connects
-            # TODO: explanation required
-            if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
-                logging.info(e.strerror)
-                raise
-        print 'Exiting' # TEMP
-        if certificate_temp_file:
-            certificate_temp_file.close()
-        if server:
-            server.stop()
+class WebServerThread(threading.Thread):
+
+    def __init__(self, ip_address, port, secret, certificate, private_key):
+        #super(WebServerThread, self).__init__(self)
+        threading.Thread.__init__(self)
+        self.ip_address = ip_address
+        self.port = port
+        self.secret = secret
+        self.certificate = certificate
+        self.private_key = private_key
+        self.server = None
+        self.certificate_temp_file = None
+
+    def stop_server(self):
+        if self.server:
+            # blocks until server stops
+            self.server.stop()
+            self.server = None
+        if self.certificate_temp_file:
+            # closing the temp file auto deletes it (NOTE: not secure wipe)
+            self.certificate_temp_file.close()
+            self.certificate_temp_file = None
+
+    def run(self):
+        # While loop is for recovery from 'unknown ca' issue.
+        while True:
+            try:
+                server_instance = ServerInstance(self.ip_address, self.secret)
+                self.server = wsgiserver.CherryPyWSGIServer(
+                                (self.ip_address, int(self.port)),
+                                wsgiserver.WSGIPathInfoDispatcher(
+                                    {'/handshake': server_instance.handshake,
+                                     '/download': server_instance.download}))
+                # lifetime of cert/private key temp file is lifetime of server
+                # file is closed by ServerInstance, and that auto deletes tempfile
+                self.certificate_temp_file = tempfile.NamedTemporaryFile()
+                self.certificate_temp_file.write(
+                    '-----BEGIN RSA PRIVATE KEY-----\n' +
+                    '\n'.join(split_len(self.private_key, 64)) +
+                    '\n-----END RSA PRIVATE KEY-----\n' +
+                    '-----BEGIN CERTIFICATE-----\n' +
+                    '\n'.join(split_len(self.certificate, 64)) +
+                    '\n-----END CERTIFICATE-----\n');
+                self.certificate_temp_file.flush()
+                self.server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(
+                                              self.certificate_temp_file.name, None)
+                # blocks until server stopped
+                self.server.start()
+                break
+            except ssl.SSLError as e:
+                # Ignore this SSL raised when a Firefox browser connects
+                # TODO: explanation required
+                if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
+                    logging.info(e.strerror)
+                    raise
 
 
 def main():
-    stop_event = threading.Event()
     threads = []
     # run a web server for each server entry
+    # (presently web server-per-entry since each has its own certificate;
+    #  we could, in principle, run one web server that presents a different
+    #  cert per IP address)
     for server_info in get_servers():
-        thread = threading.Thread(target=run_server, args=(stop_event,)+server_info)
+        thread = WebServerThread(*server_info)
         thread.start()
         threads.append(thread)
     # TODO: daemon
     print 'Servers running...'
     try:
         while True:
-            time.sleep(1)
+            time.sleep(60)
     except KeyboardInterrupt as e:
         pass
     print 'Stopping...'
-    stop_event.set()
     for thread in threads:
+        thread.stop_server()
         thread.join()
 
 
