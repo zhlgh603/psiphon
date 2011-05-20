@@ -72,7 +72,7 @@ class ServerInstance(object):
     class InvalidInputException(Exception):
         pass
 
-    def __validate_and_log(self, environ, request_name):
+    def __validate_and_log(self, environ, request_name, log_client_ip_address=False):
         valid_request = True
         request = Request(environ)
         try:
@@ -95,12 +95,15 @@ class ServerInstance(object):
                 syslog.LOG_ERR,
                 'Missing input for %s [%s]' % (request_name, str(request.params)))
             raise self.InvalidInputException()
-        region = psi_db.get_region(client_ip_address)
+        if not log_client_ip_address:
+            client_location = psi_db.get_region(client_ip_address)
+        else:
+            client_location = client_ip_address
         syslog.syslog(
             syslog.LOG_INFO,
             '%s %s %s %s %s %s' % (request_name,
                                    self.server_ip_address,
-                                   region,
+                                   client_location,
                                    client_id,
                                    sponsor_id,
                                    client_version))
@@ -158,17 +161,21 @@ class ServerInstance(object):
         start_response(status, response_headers)
         return [contents]
 
-    def connect(self, environ, start_response):
+    def connected(self, environ, start_response):
         try:
-            # TODO: don't require client_id, sponsor_id if not used
+            # Log client IP address: clients should only make this request
+            # when connected to VPN, so this will log the VPN address
+            # which is used to link VPN disconnected events for session
+            # duration reporting.
             (client_ip_address, client_id, sponsor_id, client_version) =\
-                self.__validate_and_log(environ, 'connect')
+                self.__validate_and_log(environ, 'connected',
+                                        log_client_ip_address=True)
         except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
         # No action, this request is just for stats logging
         status = '200 OK'
-        start_response(status)
+        start_response(status, [])
         return []
 
 
@@ -221,7 +228,8 @@ class WebServerThread(threading.Thread):
                                 (self.ip_address, int(self.port)),
                                 wsgiserver.WSGIPathInfoDispatcher(
                                     {'/handshake': server_instance.handshake,
-                                     '/download': server_instance.download}))
+                                     '/download': server_instance.download,
+                                     '/connected': server_instance.connected}))
                 # lifetime of cert/private key temp file is lifetime of server
                 # file is closed by ServerInstance, and that auto deletes tempfile
                 self.certificate_temp_file = tempfile.NamedTemporaryFile()
