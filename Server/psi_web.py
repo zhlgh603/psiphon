@@ -35,12 +35,9 @@ from webob import Request
 import ssl
 import tempfile
 import netifaces
-import psiphonv_db
-import psiphonv_psk
-
-
-DOWNLOAD_PATH = '/root/PsiphonV/download'
-DOWNLOAD_FILE_NAME = 'psiphonv.exe'
+import psi_db
+import psi_psk
+import psi_config
 
 
 # ===== Helpers =====
@@ -113,9 +110,9 @@ class ServerInstance(object):
         # and why we're using PSKs instead of VPN PKI: basically, lowest
         # common denominator compatibility.
         #
-        lines = psiphonv_db.handshake(
+        lines = psi_db.handshake(
                     client_ip_address, client_id, sponsor_id, client_version)
-        lines += [psiphonv_psk.set_psk(self.server_ip_address)]
+        lines += [psi_psk.set_psk(self.server_ip_address)]
         response_headers = [('Content-type', 'text/plain')]
         start_response(status, response_headers)
         return ['\n'.join(lines)]
@@ -131,7 +128,10 @@ class ServerInstance(object):
         status = '200 OK'
         # e.g., /root/PsiphonV/download/<version>/psiphonv.exe
         try:
-            path = os.path.join(DOWNLOAD_PATH, client_version, DOWNLOAD_FILE_NAME)
+            path = os.path.join(
+                        psi_config.UPGRADE_DOWNLOAD_PATH,
+                        client_version,
+                        psi_config.UPGRADE_DOWNLOAD_FILE_NAME)
             with open(path, 'rb') as file:
                 contents = file.read()
         # TODO: catch all possible file-related exceptions
@@ -151,7 +151,7 @@ def get_servers():
     for interface in netifaces.interfaces():
         if netifaces.ifaddresses(interface).has_key(netifaces.AF_INET):
             ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
-            server = filter(lambda s : s.IP_Address == ip_address, psiphonv_db.get_servers())
+            server = filter(lambda s : s.IP_Address == ip_address, psi_db.get_servers())
             if len(server) == 1:
                 servers.append((ip_address,
                                 server[0].Web_Server_Port,

@@ -25,14 +25,13 @@ import datetime
 import socket
 import struct
 import traceback
+import psi_config
 
 try:
     import GeoIP
 except ImportError:
     pass
 
-
-FILENAME = 'psiphonv_db.xls'
 
 CLIENTS_SHEET_NAME = u'Clients'
 CLIENTS_SHEET_COLUMNS = u'Client_ID,Propagation_Channels,Notes'.split(',')
@@ -67,7 +66,7 @@ get_versions = lambda : read_data(VERSIONS_SHEET_NAME, VERSIONS_SHEET_COLUMNS, V
 
 
 def read_data(sheet_name, expected_columns, tupletype):
-    xls = xlrd.open_workbook(FILENAME)
+    xls = xlrd.open_workbook(psi_config.DB_FILENAME)
     sheet = xls.sheet_by_name(sheet_name)
     assert([cell.value for cell in sheet.row(0)] == expected_columns)
     data = []
@@ -130,7 +129,7 @@ def get_encoded_server_list(client_id, client_ip_address=None, discovery_date=da
 
 
 def test_get_encoded_server_list():
-    # NOTE: expects test data as defined in psiphonv_db.xls
+    # NOTE: expects test data as defined in psi_db.xls
     # unknown client ID
     assert(len(get_encoded_server_list('')) == 0)
     # embedded case, known client ID
@@ -171,7 +170,7 @@ def get_sponsor_home_pages(sponsor_id, client_ip_address, region=None):
 
 
 def test_get_sponsor_home_pages():
-    # NOTE: expects test data as defined in psiphonv_db.xls
+    # NOTE: expects test data as defined in psi_db.xls
     assert(len(get_sponsor_home_pages('', None, None)) == 0)
     # multiple home pages
     assert(len(get_sponsor_home_pages('8BB28C1A8E8A9ED9', None, 'CA')) == 2)
@@ -198,7 +197,7 @@ def get_upgrade(client_version):
 
 
 def test_get_upgrade():
-    # NOTE: expects test data as defined in psiphonv_db.xls
+    # NOTE: expects test data as defined in psi_db.xls
     assert(get_upgrade('1') == '2')
     assert(get_upgrade('2') is None)
 
