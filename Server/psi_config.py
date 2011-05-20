@@ -21,12 +21,22 @@
 
 DB_FILENAME = 'psi_db.xls'
 
+
 #==== Web Server ==============================================================
 
 UPGRADE_DOWNLOAD_PATH = '/root/PsiphonV/download'
 UPGRADE_DOWNLOAD_FILE_NAME = 'psiphonv.exe'
 
+
 #==== VPN =====================================================================
 
 IPSEC_PSK_LENGTH = 32
 IPSEC_SECRETS_FILENAME = '/etc/ipsec.secrets'
+
+
+#==== Syslog ==================================================================
+
+import syslog
+
+SYSLOG_IDENT = 'psiphonv'
+SYSLOG_FACILITY = syslog.LOG_USER
