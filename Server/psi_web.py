@@ -25,16 +25,16 @@ https://192.168.0.1:80/handshake?client_id=0987654321&sponsor_id=1234554321&clie
 '''
 
 import string
-import logging
 import threading
 import time
 import os
-from cherrypy import wsgiserver, HTTPError
-from cherrypy.wsgiserver import ssl_builtin
-from webob import Request
+import syslog
 import ssl
 import tempfile
 import netifaces
+from cherrypy import wsgiserver, HTTPError
+from cherrypy.wsgiserver import ssl_builtin
+from webob import Request
 import psi_db
 import psi_psk
 import psi_config
@@ -72,7 +72,7 @@ class ServerInstance(object):
     class InvalidInputException(Exception):
         pass
 
-    def __get_inputs(self, environ):
+    def __validate_and_log(self, environ, request_name):
         valid_request = True
         request = Request(environ)
         try:
@@ -86,19 +86,33 @@ class ServerInstance(object):
                 not consists_of(client_version, string.digits) or
                 not consists_of(server_secret, string.hexdigits) or
                 not constant_time_compare(server_secret, self.server_secret)):
+                syslog.syslog(
+                    syslog.LOG_ERR,
+                    'Invalid input for %s [%s]' % (request_name, str(request.params)))
                 raise self.InvalidInputException()
         except KeyError as e:
+            syslog.syslog(
+                syslog.LOG_ERR,
+                'Missing input for %s [%s]' % (request_name, str(request.params)))
             raise self.InvalidInputException()
+        region = psi_db.get_region(client_ip_address)
+        syslog.syslog(
+            syslog.LOG_INFO,
+            '%s %s %s %s %s %s' % (request_name,
+                                   self.server_ip_address,
+                                   region,
+                                   client_id,
+                                   sponsor_id,
+                                   client_version))
         return (client_ip_address, client_id, sponsor_id, client_version)
 
     def handshake(self, environ, start_response):
         try:
             (client_ip_address, client_id, sponsor_id, client_version) =\
-                self.__get_inputs(environ)
+                self.__validate_and_log(environ, 'handshake')
         except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
-        status = '200 OK'
         #
         # NOTE: Change PSK *last*
         # There's a race condition between setting it and the client connecting:
@@ -110,6 +124,7 @@ class ServerInstance(object):
         # and why we're using PSKs instead of VPN PKI: basically, lowest
         # common denominator compatibility.
         #
+        status = '200 OK'
         lines = psi_db.handshake(
                     client_ip_address, client_id, sponsor_id, client_version)
         lines += [psi_psk.set_psk(self.server_ip_address)]
@@ -121,11 +136,10 @@ class ServerInstance(object):
         try:
             # TODO: don't require client_id, sponsor_id if not used
             (client_ip_address, client_id, sponsor_id, client_version) =\
-                self.__get_inputs(environ)
+                self.__validate_and_log(environ, 'download')
         except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
-        status = '200 OK'
         # e.g., /root/PsiphonV/download/<version>/psiphonv.exe
         try:
             path = os.path.join(
@@ -138,10 +152,24 @@ class ServerInstance(object):
         except IOError as e:
             start_response('404 Not Found', [])
             return []
+        status = '200 OK'
         response_headers = [('Content-type', 'application/exe'),
                             ('Content-Length', '%d' % (len(contents),))]
         start_response(status, response_headers)
         return [contents]
+
+    def connect(self, environ, start_response):
+        try:
+            # TODO: don't require client_id, sponsor_id if not used
+            (client_ip_address, client_id, sponsor_id, client_version) =\
+                self.__validate_and_log(environ, 'connect')
+        except self.InvalidInputException as e:
+            start_response('404 Not Found', [])
+            return []
+        # No action, this request is just for stats logging
+        status = '200 OK'
+        start_response(status)
+        return []
 
 
 def get_servers():
@@ -208,17 +236,19 @@ class WebServerThread(threading.Thread):
                 self.server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(
                                               self.certificate_temp_file.name, None)
                 # blocks until server stopped
+                syslog.syslog(syslog.LOG_INFO, 'Started server for %s' % (self.ip_address,))
                 self.server.start()
                 break
             except ssl.SSLError as e:
                 # Ignore this SSL raised when a Firefox browser connects
                 # TODO: explanation required
                 if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
-                    logging.info(e.strerror)
+                    syslog.syslog(syslog.LOG_ERR, e.strerror)
                     raise
 
 
 def main():
+    syslog.openlog(psi_config.SYSLOG_IDENT, syslog.LOG_NDELAY, psi_config.SYSLOG_FACILITY)
     threads = []
     # run a web server for each server entry
     # (presently web server-per-entry since each has its own certificate;
