@@ -17,16 +17,4 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-#==== Database ================================================================
-
-DB_FILENAME = 'psi_db.xls'
-
-#==== Web Server ==============================================================
-
-UPGRADE_DOWNLOAD_PATH = '/root/PsiphonV/download'
-UPGRADE_DOWNLOAD_FILE_NAME = 'psiphonv.exe'
-
-#==== VPN =====================================================================
-
-IPSEC_PSK_LENGTH = 32
-IPSEC_SECRETS_FILENAME = '/etc/ipsec.secrets'
+# TODO: script to pull stats from all servers
