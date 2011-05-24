@@ -19,19 +19,20 @@
 
 import xlrd
 import binascii
+import os
 import sys
 from collections import namedtuple
 import datetime
 import socket
 import struct
 import traceback
-import psi_config
-
 try:
     import GeoIP
 except ImportError:
     pass
 
+
+DB_FILENAME = os.path.join(os.path.dirname(__file__), 'psi_db.xls')
 
 CLIENTS_SHEET_NAME = u'Clients'
 CLIENTS_SHEET_COLUMNS = u'Client_ID,Propagation_Channels,Notes'.split(',')
@@ -66,7 +67,7 @@ get_versions = lambda : read_data(VERSIONS_SHEET_NAME, VERSIONS_SHEET_COLUMNS, V
 
 
 def read_data(sheet_name, expected_columns, tupletype):
-    xls = xlrd.open_workbook(psi_config.DB_FILENAME)
+    xls = xlrd.open_workbook(DB_FILENAME)
     sheet = xls.sheet_by_name(sheet_name)
     assert([cell.value for cell in sheet.row(0)] == expected_columns)
     data = []

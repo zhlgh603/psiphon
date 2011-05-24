@@ -35,9 +35,11 @@ import netifaces
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_builtin
 from webob import Request
-import psi_db
 import psi_psk
 import psi_config
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join('..', 'Data')))
+import psi_db
 
 
 # ===== Helpers =====
