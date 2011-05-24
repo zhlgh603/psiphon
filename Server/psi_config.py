@@ -17,11 +17,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-#==== Database ================================================================
-
-DB_FILENAME = 'psi_db.xls'
-
-
 #==== Web Server ==============================================================
 
 UPGRADE_DOWNLOAD_PATH = '/root/PsiphonV/download'
