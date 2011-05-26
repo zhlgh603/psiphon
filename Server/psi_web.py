@@ -32,6 +32,7 @@ import syslog
 import ssl
 import tempfile
 import netifaces
+import socket
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_builtin
 from webob import Request
@@ -58,6 +59,14 @@ def consists_of(str, characters):
     return 0 == len(filter(lambda x : x not in characters, str))
 
 
+def is_valid_ip_address(str):
+    try:
+        socket.inet_aton(str)
+        return True
+    except socket.error:
+        return False
+
+
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
@@ -74,7 +83,7 @@ class ServerInstance(object):
     class InvalidInputException(Exception):
         pass
 
-    def __validate_and_log(self, environ, request_name, log_client_ip_address=False):
+    def __validate_and_log(self, environ, request_name, log_vpn_client_ip_address=False):
         valid_request = True
         request = Request(environ)
         try:
@@ -83,10 +92,13 @@ class ServerInstance(object):
             sponsor_id = request.params['sponsor_id']
             client_version = request.params['client_version']
             server_secret = request.params['server_secret']
+            if log_vpn_client_ip_address:
+                vpn_client_ip_address = request.params['vpn_client_ip_address']
             if (not consists_of(client_id, string.hexdigits) or
                 not consists_of(sponsor_id, string.hexdigits) or
                 not consists_of(client_version, string.digits) or
                 not consists_of(server_secret, string.hexdigits) or
+                not (is_valid_ip_address(vpn_client_ip_address) if log_vpn_client_ip_address else True) or
                 not constant_time_compare(server_secret, self.server_secret)):
                 syslog.syslog(
                     syslog.LOG_ERR,
@@ -97,10 +109,10 @@ class ServerInstance(object):
                 syslog.LOG_ERR,
                 'Missing input for %s [%s]' % (request_name, str(request.params)))
             raise self.InvalidInputException()
-        if not log_client_ip_address:
-            client_location = psi_db.get_region(client_ip_address)
+        if log_vpn_client_ip_address:
+            client_location = vpn_client_ip_address
         else:
-            client_location = client_ip_address
+            client_location = psi_db.get_region(client_ip_address)
         syslog.syslog(
             syslog.LOG_INFO,
             '%s %s %s %s %s %s' % (request_name,
@@ -169,9 +181,8 @@ class ServerInstance(object):
             # when connected to VPN, so this will log the VPN address
             # which is used to link VPN disconnected events for session
             # duration reporting.
-            (client_ip_address, client_id, sponsor_id, client_version) =\
-                self.__validate_and_log(environ, 'connected',
-                                        log_client_ip_address=True)
+            _ = self.__validate_and_log(environ, 'connected',
+                                        log_vpn_client_ip_address=True)
         except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
