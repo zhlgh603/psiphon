@@ -160,7 +160,7 @@ class ServerInstance(object):
             return []
         # e.g., /root/PsiphonV/download/<version>/psiphon-<client_id>-<sponsor_id>.exe
         try:
-            filename = 'psiphon-%s-%s.exe' % (client_id, sponsor_id))
+            filename = 'psiphon-%s-%s.exe' % (client_id, sponsor_id)
             path = os.path.join(psi_config.UPGRADE_DOWNLOAD_PATH, filename)
             with open(path, 'rb') as file:
                 contents = file.read()
