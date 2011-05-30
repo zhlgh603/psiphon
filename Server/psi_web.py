@@ -39,6 +39,7 @@ from webob import Request
 import psi_psk
 import psi_config
 import sys
+
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Data')))
 import psi_db
 
@@ -150,19 +151,17 @@ class ServerInstance(object):
         return ['\n'.join(lines)]
 
     def download(self, environ, start_response):
+        # TODO: use client_version and maintain multiple versions for download?
         try:
-            # TODO: don't require client_id, sponsor_id if not used
             (client_ip_address, client_id, sponsor_id, client_version) =\
                 self.__validate_and_log(environ, 'download')
         except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
-        # e.g., /root/PsiphonV/download/<version>/psiphonv.exe
+        # e.g., /root/PsiphonV/download/<version>/psiphon-<client_id>-<sponsor_id>.exe
         try:
-            path = os.path.join(
-                        psi_config.UPGRADE_DOWNLOAD_PATH,
-                        client_version,
-                        psi_config.UPGRADE_DOWNLOAD_FILE_NAME)
+            filename = 'psiphon-%s-%s.exe' % (client_id, sponsor_id))
+            path = os.path.join(psi_config.UPGRADE_DOWNLOAD_PATH, filename)
             with open(path, 'rb') as file:
                 contents = file.read()
         # TODO: catch all possible file-related exceptions

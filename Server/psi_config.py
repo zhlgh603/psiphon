@@ -20,7 +20,6 @@
 #==== Web Server ==============================================================
 
 UPGRADE_DOWNLOAD_PATH = '/root/PsiphonV/download'
-UPGRADE_DOWNLOAD_FILE_NAME = 'psiphonv.exe'
 
 
 #==== VPN =====================================================================
@@ -31,7 +30,11 @@ IPSEC_SECRETS_FILENAME = '/etc/ipsec.secrets'
 
 #==== Syslog ==================================================================
 
-import syslog
+try:
+    import syslog
 
-SYSLOG_IDENT = 'psiphonv'
-SYSLOG_FACILITY = syslog.LOG_USER
+    SYSLOG_IDENT = 'psiphonv'
+    SYSLOG_FACILITY = syslog.LOG_USER
+
+except ImportError:
+    pass
