@@ -32,7 +32,7 @@ case "$1" in
 	;;
   stop)
 	echo -n "Stopping $DESC: "
-	start-stop-daemon -K -q -p $PIDFILE
+	start-stop-daemon -K -q -p $PIDFILE --oknodo
 	echo "$NAME."
 	;;
   restart)
