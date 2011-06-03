@@ -19,7 +19,7 @@
 
 #==== Web Server ==============================================================
 
-UPGRADE_DOWNLOAD_PATH = '/root/PsiphonV/download'
+UPGRADE_DOWNLOAD_PATH = '/opt/PsiphonV/download'
 
 
 #==== VPN =====================================================================
