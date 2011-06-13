@@ -1,42 +1,117 @@
---------------------
+--------------------------------------------------------------------------------
 PsiphonY README
---------------------
+--------------------------------------------------------------------------------
 
 
 PsiphonY
---------------------------------------------------
+--------------------------------------------------------------------------------
 
 ...
 
 
 The Latest Version
---------------------
+--------------------------------------------------------------------------------
 
 ...
 
 
 Documentation
-----------------
+--------------------------------------------------------------------------------
 
 ...[design paper]...
 
 
 Installation
-------------
+--------------------------------------------------------------------------------
 
-Please see the file called INSTALL.  Platform specific notes can be found in
-README.platforms.
+Please see the INSTALL file.
+
+
+Source Tree
+--------------------------------------------------------------------------------
+
+...\CHANGES
+...\INSTALL
+...\LICENSE
+...\README
+...\Automation
+
+psi_build.py
+psi_deploy.py
+psi_pull_stats.py
+psi_ssh.py
+
+...\Automation\Tools
+
+...\Client -- windows client
+
+psiclient.sln
+
+...\Client\psiclient
+
+banner.bmp
+config.h
+embeddedvalues.h
+httpsrequest.cpp
+httpsrequest.h
+psiclient.cpp
+psiclient.h
+psiclient.ico
+psiclient.rc
+psiclient.vcxproj
+Resource.h
+sessioninfo.cpp
+sessioninfo.h
+small.ico
+stdafx.cpp
+stdafx.h
+targetver.h
+toolbar.bmp
+tstring.h
+vpnconnection.cpp
+vpnconnection.h
+vpnlist.cpp
+vpnlist.h
+vpnmanager.cpp
+vpnmanager.h
+webbrowser.cpp
+webbrowser.h
+
+...\Data
+
+psi_db.py
+psi_db.xls
+
+...\Data\Banners
+
+banner1.bmp
+banner2.bmp
+
+...\Data\CodeSigning
+
+README
+test-code-signing-cert.spc
+test-code-signing-key.pvk
+test-code-signing-package.pfx
+
+...\Server
+
+psi_config.py
+psi_psk.py
+psi_web.py
+psi-init
+psi-ip-down
 
 
 Licensing
-----------
+--------------------------------------------------------------------------------
 
-Please see the file called LICENSE.
+Please see the LICENSE file.
 
 
 Contacts
----------
+--------------------------------------------------------------------------------
 
 For more information on Psiphon Inc, please visit our web-site at:
 
-     www.psiphon.ca
+www.psiphon.ca
