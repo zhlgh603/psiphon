@@ -196,15 +196,20 @@ def get_servers():
     # return an array of server info for each server to be run
     servers = []
     for interface in netifaces.interfaces():
-        if netifaces.ifaddresses(interface).has_key(netifaces.AF_INET):
-            ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
-            server = filter(lambda s : s.IP_Address == ip_address, psi_db.get_servers())
-            if len(server) == 1:
-                servers.append((ip_address,
-                                server[0].Web_Server_Port,
-                                server[0].Web_Server_Secret,
-                                server[0].Web_Server_Certificate,
-                                server[0].Web_Server_Private_Key))
+        try:
+            if (interface.find('ipsec') == -1 and interface.find('mast') == -1 and
+                    netifaces.ifaddresses(interface).has_key(netifaces.AF_INET)):
+                ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
+                server = filter(lambda s : s.IP_Address == ip_address, psi_db.get_servers())
+                if len(server) == 1:
+                    servers.append((ip_address,
+                                    server[0].Web_Server_Port,
+                                    server[0].Web_Server_Secret,
+                                    server[0].Web_Server_Certificate,
+                                    server[0].Web_Server_Private_Key))
+        except ValueError as e:
+            if str(e) != 'You must specify a valid interface name.':
+                raise
     return servers
 
 
