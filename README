@@ -1,24 +1,34 @@
 --------------------------------------------------------------------------------
-PsiphonY README
+Psiphon Circumvention Tool README
 --------------------------------------------------------------------------------
 
 
-PsiphonY
---------------------------------------------------------------------------------
-
-...
-
-
-The Latest Version
+Overview
 --------------------------------------------------------------------------------
 
 ...
+
+Agile transport. PsiphonX/V features a pluggable architecture with multiple transport mechanisms, including VPN and SSH tunneling. In the case where one transport protocol is blocked by a censor, Psiphon X/V automatically switches over to another mechanism.
+
+Automatic discovery. PsiphonX/V clients ship with a set of known Psiphon servers to connect to. Over time, clients discover additional servers that are added to a backup server list. As older servers become blocked, each client will have a reserve list of new servers to draw from as it reconnects. To ensure that an adversary cannot enumerate and block a large number of servers, the Psiphon system takes special measures to control how many servers may be discovered by a single client.
+
+Mobile ready. And PsiphonX/V client Android app will be available as part of the beta launch, and other mobile platforms are in the works.
+
+Zero install. PsiphonX/V is delivered to users as a minimal footprint, zero install application that can be downloaded from any webpage, file sharing site or shared by e-mail and passed around on a USB key.  We keeps the file size small and avoid the overhead of having to install an application.
+
+Custom branding.  PsiphonV offers a flexible sponsorship system which includes customer branded clients.  Psiphon Inc. will propagate clients branded for individual customers. Branding includes graphics and text on the client UI; and a regionally-specific dynamic homepage mechanism that allows the customer to specify a different home page to open depending on where in the world the client is run.
+
+Security. Each client app is digitally signed by Psiphon Inc. to certify its authenticity. We embed server certificates to certify that Psiphon servers the client connects to are authentic Psiphon Inc. servers.
+
+Privacy. PsiphonV is designed to protect user privacy. User statistics are logged in aggregate, but no individual personally identifying information, such as user IP addresses, are retained in PsiphonV log files.
+
+IPv6 compatibility.  PsiphonV is designed from the ground up to be fully IPv6 compatible. This ensures the system is ready for the next generation Internet, and in the immediate term offers some additional circumvention capabilities as IPv6-based censorship lags behind the tools used to censor IPv4 traffic.
 
 
 Documentation
 --------------------------------------------------------------------------------
 
-...[design paper]...
+[TODO: reference design paper]
 
 
 Installation
@@ -30,77 +40,73 @@ Please see the INSTALL file.
 Source Tree
 --------------------------------------------------------------------------------
 
-...\CHANGES
-...\INSTALL
-...\LICENSE
-...\README
-...\Automation
+\...
+ CHANGES
+ INSTALL
+ LICENSE
+ README
 
-psi_build.py
-psi_deploy.py
-psi_pull_stats.py
-psi_ssh.py
+ Automation\...                                            Build & Deploy
+            psi_build.py
+            psi_deploy.py
+            psi_pull_stats.py
+            psi_ssh.py
 
-...\Automation\Tools
+ Automation\Tools\...
+                 [3rd party tools]
 
-...\Client -- windows client
+ Client\...                                                Windows Client
+        psiclient.sln
 
-psiclient.sln
+ Client\psiclient\...
+                  banner.bmp
+                  config.h
+                  embeddedvalues.h
+                  httpsrequest.cpp
+                  httpsrequest.h
+                  psiclient.cpp
+                  psiclient.h
+                  psiclient.ico
+                  psiclient.rc
+                  psiclient.vcxproj
+                  Resource.h
+                  sessioninfo.cpp
+                  sessioninfo.h
+                  small.ico
+                  stdafx.cpp
+                  stdafx.h
+                  targetver.h
+                  toolbar.bmp
+                  tstring.h
+                  vpnconnection.cpp
+                  vpnconnection.h
+                  vpnlist.cpp
+                  vpnlist.h
+                  vpnmanager.cpp
+                  vpnmanager.h
+                  webbrowser.cpp
+                  webbrowser.h
 
-...\Client\psiclient
+ Data\...                                                  Network Database
+      psi_db.py
+      psi_db.xls
 
-banner.bmp
-config.h
-embeddedvalues.h
-httpsrequest.cpp
-httpsrequest.h
-psiclient.cpp
-psiclient.h
-psiclient.ico
-psiclient.rc
-psiclient.vcxproj
-Resource.h
-sessioninfo.cpp
-sessioninfo.h
-small.ico
-stdafx.cpp
-stdafx.h
-targetver.h
-toolbar.bmp
-tstring.h
-vpnconnection.cpp
-vpnconnection.h
-vpnlist.cpp
-vpnlist.h
-vpnmanager.cpp
-vpnmanager.h
-webbrowser.cpp
-webbrowser.h
+ \Data\Banners\...                                         Branding Assets
+               banner1.bmp
+               banner2.bmp
 
-...\Data
+ \Data\CodeSigning\...                                     Authenticode Keys
+                   README
+                   test-code-signing-cert.spc
+                   test-code-signing-key.pvk
+                   test-code-signing-package.pfx
 
-psi_db.py
-psi_db.xls
-
-...\Data\Banners
-
-banner1.bmp
-banner2.bmp
-
-...\Data\CodeSigning
-
-README
-test-code-signing-cert.spc
-test-code-signing-key.pvk
-test-code-signing-package.pfx
-
-...\Server
-
-psi_config.py
-psi_psk.py
-psi_web.py
-psi-init
-psi-ip-down
+ \Server\...                                               Web Server
+         psi_config.py
+         psi_psk.py
+         psi_web.py
+         psi-init
+         psi-ip-down
 
 
 Licensing
