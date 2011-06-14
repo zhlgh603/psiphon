@@ -6,29 +6,84 @@ Psiphon Circumvention Tool README
 Overview
 --------------------------------------------------------------------------------
 
-...
+The Psiphon Circumvention Tool is a simple, proxy-based system designed to
+circumvent Internet censorship.
 
-Agile transport. PsiphonX/V features a pluggable architecture with multiple transport mechanisms, including VPN and SSH tunneling. In the case where one transport protocol is blocked by a censor, Psiphon X/V automatically switches over to another mechanism.
+The system consists of a client application, which configures a users computer
+to direct Internet traffic; and a set of servers, which proxy client traffic to
+the Internet. As long as a client can connect to a Psiphon server, it can
+access Internet services that may be blocked to the user via direct connection.
 
-Automatic discovery. PsiphonX/V clients ship with a set of known Psiphon servers to connect to. Over time, clients discover additional servers that are added to a backup server list. As older servers become blocked, each client will have a reserve list of new servers to draw from as it reconnects. To ensure that an adversary cannot enumerate and block a large number of servers, the Psiphon system takes special measures to control how many servers may be discovered by a single client.
+Features:
 
-Mobile ready. And PsiphonX/V client Android app will be available as part of the beta launch, and other mobile platforms are in the works.
+- Agile transport. Psiphon features a pluggable architecture with multiple
+transport mechanisms, including VPN and SSH tunneling. In the case where one
+transport protocol is blocked by a censor, Psiphon automatically switches over
+to another mechanism.
 
-Zero install. PsiphonX/V is delivered to users as a minimal footprint, zero install application that can be downloaded from any webpage, file sharing site or shared by e-mail and passed around on a USB key.  We keeps the file size small and avoid the overhead of having to install an application.
+- Automatic discovery. Psiphon clients ship with a set of known Psiphon servers
+to connect to. Over time, clients discover additional servers that are added to
+a backup server list. As older servers become blocked, each client will have a
+reserve list of new servers to draw from as it reconnects. To ensure that an
+adversary cannot enumerate and block a large number of servers, the Psiphon
+system takes special measures to control how many servers may be discovered by
+a single client.
 
-Custom branding.  PsiphonV offers a flexible sponsorship system which includes customer branded clients.  Psiphon Inc. will propagate clients branded for individual customers. Branding includes graphics and text on the client UI; and a regionally-specific dynamic homepage mechanism that allows the customer to specify a different home page to open depending on where in the world the client is run.
+- Mobile ready. A Psiphon client Android app will be available as part of the
+beta launch, and other mobile platforms are in the works.
 
-Security. Each client app is digitally signed by Psiphon Inc. to certify its authenticity. We embed server certificates to certify that Psiphon servers the client connects to are authentic Psiphon Inc. servers.
+- Zero install. Psiphon is delivered to users as a minimal footprint, zero
+install application that can be downloaded from any webpage, file sharing site
+or shared by e-mail and passed around on a USB key. We keeps the file size small
+and avoid the overhead of having to install an application.
 
-Privacy. PsiphonV is designed to protect user privacy. User statistics are logged in aggregate, but no individual personally identifying information, such as user IP addresses, are retained in PsiphonV log files.
+- Custom branding.  Psiphon offers a flexible sponsorship system which includes
+sponsor-branded clients. Dynamic branding includes graphics and text on the
+client UI; and a region-specific dynamic homepage mechanism that allows a
+different home page to open depending on where in the world the client is run.
 
-IPv6 compatibility.  PsiphonV is designed from the ground up to be fully IPv6 compatible. This ensures the system is ready for the next generation Internet, and in the immediate term offers some additional circumvention capabilities as IPv6-based censorship lags behind the tools used to censor IPv4 traffic.
+- Chain of trust. Each client instance may bedigitally signed by to certify its
+authenticity. Embedded server certificates to certify that Psiphon servers the
+client connects to are the authentic servers for that client.
+
+- Privacy. Psiphon is designed to respect user privacy. User statistics are
+logged in aggregate, but no individual personally identifying information, such
+as user IP addresses, are retained in PsiphonV log files.
+
+- IPv6 compatibility.  Psiphon is designed to be IPv6 compatible. This ensures
+the system is ready for the next generation Internet, and in the immediate term
+offers some additional circumvention capabilities as IPv6-based censorship lags
+behind the tools used to censor IPv4 traffic.
 
 
 Documentation
 --------------------------------------------------------------------------------
 
+IMPORTANT: See the design paper for important information regarding security
+limitations and user privacy issues.
+
 [TODO: reference design paper]
+
+
+Feature Status
+--------------------------------------------------------------------------------
+
+Supported transport mechanisms:
+- L2TP/IPSec VPN
+
+Planned transport mechanisms:
+- PPTP VPN
+- SSH tunnel
+
+Supported client platforms:
+- Windows XP/Vista/7
+- Android [TODO: version]
+
+Planned client platforms:
+-Mac OS X
+
+Server platform:
+- Debian 6.0
 
 
 Installation
@@ -118,6 +173,6 @@ Please see the LICENSE file.
 Contacts
 --------------------------------------------------------------------------------
 
-For more information on Psiphon Inc, please visit our web-site at:
+For more information on Psiphon Inc, please visit our web site at:
 
 www.psiphon.ca
