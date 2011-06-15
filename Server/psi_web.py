@@ -151,20 +151,23 @@ class ServerInstance(object):
         return ['\n'.join(lines)]
 
     def download(self, environ, start_response):
-        # TODO: use client_version and maintain multiple versions for download?
+        # NOTE: currently we ignore client_version and just download whatever
+        # version is currently in place for the client ID and sponsor ID.
         try:
             (client_ip_address, client_id, sponsor_id, client_version) =\
                 self.__validate_and_log(environ, 'download')
         except self.InvalidInputException as e:
             start_response('404 Not Found', [])
             return []
-        # e.g., /root/PsiphonV/download/<version>/psiphon-<client_id>-<sponsor_id>.exe
+        # e.g., /root/PsiphonV/download/psiphon-<client_id>-<sponsor_id>.exe
         try:
             filename = 'psiphon-%s-%s.exe' % (client_id, sponsor_id)
             path = os.path.join(psi_config.UPGRADE_DOWNLOAD_PATH, filename)
             with open(path, 'rb') as file:
                 contents = file.read()
-        # TODO: catch all possible file-related exceptions
+        # NOTE: exceptions other than IOError will kill the server thread, but
+        # we expect only IOError in normal circumstances ("normal" being,
+        # for example, an invalid ID so no file exists)
         except IOError as e:
             start_response('404 Not Found', [])
             return []
@@ -265,7 +268,7 @@ class WebServerThread(threading.Thread):
                 self.server.start()
                 break
             except ssl.SSLError as e:
-                # Ignore this SSL raised when a Firefox browser connects
+                # Ignore this SSL error raised when a Firefox browser connects
                 # TODO: explanation required
                 if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
                     syslog.syslog(syslog.LOG_ERR, e.strerror)
@@ -283,7 +286,6 @@ def main():
         thread = WebServerThread(*server_info)
         thread.start()
         threads.append(thread)
-    # TODO: daemon
     print 'Servers running...'
     try:
         while True:
