@@ -16,11 +16,6 @@ access Internet services that may be blocked to the user via direct connection.
 
 Features:
 
-- Agile transport. Psiphon features a pluggable architecture with multiple
-transport mechanisms, including VPN and SSH tunneling. In the case where one
-transport protocol is blocked by a censor, Psiphon automatically switches over
-to another mechanism.
-
 - Automatic discovery. Psiphon clients ship with a set of known Psiphon servers
 to connect to. Over time, clients discover additional servers that are added to
 a backup server list. As older servers become blocked, each client will have a
@@ -34,7 +29,7 @@ beta launch, and other mobile platforms are in the works.
 
 - Zero install. Psiphon is delivered to users as a minimal footprint, zero
 install application that can be downloaded from any webpage, file sharing site
-or shared by e-mail and passed around on a USB key. We keeps the file size small
+or shared by e-mail and passed around on a USB key. We keep the file size small
 and avoid the overhead of having to install an application.
 
 - Custom branding.  Psiphon offers a flexible sponsorship system which includes
@@ -42,13 +37,20 @@ sponsor-branded clients. Dynamic branding includes graphics and text on the
 client UI; and a region-specific dynamic homepage mechanism that allows a
 different home page to open depending on where in the world the client is run.
 
-- Chain of trust. Each client instance may bedigitally signed by to certify its
-authenticity. Embedded server certificates to certify that Psiphon servers the
+- Chain of trust. Each client instance may be digitally signed to certify its
+authenticity. Embedded server certificates certify that Psiphon servers the
 client connects to are the authentic servers for that client.
 
 - Privacy. Psiphon is designed to respect user privacy. User statistics are
 logged in aggregate, but no individual personally identifying information, such
 as user IP addresses, are retained in PsiphonV log files.
+
+Coming soon:
+
+- Agile transport. Psiphon features a pluggable architecture with multiple
+transport mechanisms, including VPN and SSH tunneling. In the case where one
+transport protocol is blocked by a censor, Psiphon automatically switches over
+to another mechanism.
 
 - IPv6 compatibility.  Psiphon is designed to be IPv6 compatible. This ensures
 the system is ready for the next generation Internet, and in the immediate term
@@ -59,13 +61,11 @@ behind the tools used to censor IPv4 traffic.
 Documentation
 --------------------------------------------------------------------------------
 
-IMPORTANT: See the design paper for important information regarding security
-limitations and user privacy issues.
-
-[TODO: reference design paper]
+IMPORTANT: See the design paper, incuded with this software distribution, for
+important information regarding security limitations and user privacy issues.
 
 
-Feature Status
+Compatibility
 --------------------------------------------------------------------------------
 
 Supported transport mechanisms:
