@@ -267,12 +267,11 @@ class WebServerThread(threading.Thread):
                 syslog.syslog(syslog.LOG_INFO, 'Started server for %s' % (self.ip_address,))
                 self.server.start()
                 break
-            except ssl.SSLError as e:
-                # Ignore this SSL error raised when a Firefox browser connects
-                # TODO: explanation required
-                if e.strerror != '_ssl.c:490: error:14094418:SSL routines:SSL3_READ_BYTES:tlsv1 alert unknown ca':
-                    syslog.syslog(syslog.LOG_ERR, e.strerror)
-                    raise
+            except (ssl.SSLError, socket.error) as e:
+                # log socket/SSL errors and try again
+                syslog.syslog(syslog.LOG_ERR, str(e))
+                if self.server:
+                    self.server.stop()
 
 
 def main():
