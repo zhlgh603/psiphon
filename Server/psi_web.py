@@ -129,7 +129,19 @@ class ServerInstance(object):
         if not inputs:
             start_response('404 Not Found', [])
             return []
-        self.__log_event('handshake', inputs)
+        # Client submits a list of known servers which is used to
+        # flag "new" discoveries in the stats logging
+        # NOTE: not validating that server IP addresses are part of the network
+        #       (if we do add this, be careful to not introduce a timing based
+        #        attack that could be used to enumerate valid server IPs)
+        known_servers = request.str_params.getall('known_server')
+        for known_server in known_servers:
+            if not is_valid_ip_address(known_server):
+                syslog.syslog(
+                    syslog.LOG_ERR,
+                    'Invalid known server in handshake [%s]' % (str(request.params),))
+                start_response('404 Not Found', [])
+                return []
         #
         # NOTE: Change PSK *last*
         # There's a race condition between setting it and the client connecting:
@@ -141,16 +153,22 @@ class ServerInstance(object):
         # and why we're using PSKs instead of VPN PKI: basically, lowest
         # common denominator compatibility.
         #
+        self.__log_event('handshake', inputs)
         status = '200 OK'
         client_ip_address = request.remote_addr
         inputs_lookup = dict(inputs)
         # logger callback will add log entry for each server IP address discovered
+        def discovery_logger(server_ip_address):
+            unknown = '0' if server_ip_address in known_servers else '1'
+            self.__log_event('discovery',
+                             inputs + [('server_ip_address', server_ip_address),
+                                       ('unknown', unknown)])
         lines = psi_db.handshake(
                     client_ip_address,
                     inputs_lookup['client_id'],
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_version'],
-                    logger=lambda x: self.__log_event('discovery', inputs + [('server_ip_address', x)]))
+                    logger=discovery_logger)
         lines += [psi_psk.set_psk(self.server_ip_address)]
         response_headers = [('Content-type', 'text/plain')]
         start_response(status, response_headers)
@@ -191,8 +209,8 @@ class ServerInstance(object):
         if not inputs:
             start_response('404 Not Found', [])
             return []
-        # No action, this request is just for stats logging
         self.__log_event('connected', inputs)
+        # No action, this request is just for stats logging
         status = '200 OK'
         start_response(status, [])
         return []
