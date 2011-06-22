@@ -80,57 +80,56 @@ class ServerInstance(object):
     def __init__(self, ip_address, server_secret):
         self.server_ip_address = ip_address
         self.server_secret = server_secret
+        self.COMMON_INPUTS = [
+            ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
+            ('client_id', lambda x: consists_of(x, string.hexdigits)),
+            ('sponsor_id', lambda x: consists_of(x, string.hexdigits)),
+            ('client_version', lambda x: consists_of(x, string.digits))]
 
-    class InvalidInputException(Exception):
-        pass
+    def __get_inputs(self, request, request_name, additional_inputs=None):
+        if additional_inputs is None:
+            additional_inputs = []
 
-    def __validate_and_log(self, environ, request_name, log_vpn_client_ip_address=False):
-        valid_request = True
-        request = Request(environ)
-        try:
-            client_ip_address = request.remote_addr
-            client_id = request.params['client_id']
-            sponsor_id = request.params['sponsor_id']
-            client_version = request.params['client_version']
-            server_secret = request.params['server_secret']
-            if log_vpn_client_ip_address:
-                vpn_client_ip_address = request.params['vpn_client_ip_address']
-            if (not consists_of(client_id, string.hexdigits) or
-                not consists_of(sponsor_id, string.hexdigits) or
-                not consists_of(client_version, string.digits) or
-                not consists_of(server_secret, string.hexdigits) or
-                not (is_valid_ip_address(vpn_client_ip_address) if log_vpn_client_ip_address else True) or
-                not constant_time_compare(server_secret, self.server_secret)):
+        input_values = []
+
+        # Add server IP address and client region for logging
+        input_values.append(('server_ip_address', self.server_ip_address))
+        client_ip_address = request.remote_addr
+        input_values.append(('client_region', psi_db.get_region(client_ip_address)))
+
+        # Check for each expected input
+        for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
+            try:
+                value = request.params[input_name]
+            except KeyError as e:
                 syslog.syslog(
                     syslog.LOG_ERR,
-                    'Invalid input for %s [%s]' % (request_name, str(request.params)))
-                raise self.InvalidInputException()
-        except KeyError as e:
-            syslog.syslog(
-                syslog.LOG_ERR,
-                'Missing input for %s [%s]' % (request_name, str(request.params)))
-            raise self.InvalidInputException()
-        if log_vpn_client_ip_address:
-            client_location = vpn_client_ip_address
-        else:
-            client_location = psi_db.get_region(client_ip_address)
+                    'Missing %s in %s [%s]' % (input_name, request_name, str(request.params)))
+                return False
+            if not validator(value):
+                syslog.syslog(
+                    syslog.LOG_ERR,
+                    'Invalid %s in %s [%s]' % (input_name, request_name, str(request.params)))
+                return False
+            # Special case: omit server_secret from logging
+            if input_name != 'server_secret':
+                input_values.append((input_name, value))
+
+        # Caller gets a list of name/value input tuples, used for logging etc.
+        return input_values
+
+    def __log_event(self, event_name, log_values):
         syslog.syslog(
             syslog.LOG_INFO,
-            '%s %s %s %s %s %s' % (request_name,
-                                   self.server_ip_address,
-                                   client_location,
-                                   client_id,
-                                   sponsor_id,
-                                   client_version))
-        return (client_ip_address, client_id, sponsor_id, client_version)
+            ' '.join([event_name] + [value for (_, value) in log_values]))
 
     def handshake(self, environ, start_response):
-        try:
-            (client_ip_address, client_id, sponsor_id, client_version) =\
-                self.__validate_and_log(environ, 'handshake')
-        except self.InvalidInputException as e:
+        request = Request(environ)
+        inputs = self.__get_inputs(request, 'handshake')
+        if not inputs:
             start_response('404 Not Found', [])
             return []
+        self.__log_event('handshake', inputs)
         #
         # NOTE: Change PSK *last*
         # There's a race condition between setting it and the client connecting:
@@ -143,8 +142,15 @@ class ServerInstance(object):
         # common denominator compatibility.
         #
         status = '200 OK'
+        client_ip_address = request.remote_addr
+        inputs_lookup = dict(inputs)
+        # logger callback will add log entry for each server IP address discovered
         lines = psi_db.handshake(
-                    client_ip_address, client_id, sponsor_id, client_version)
+                    client_ip_address,
+                    inputs_lookup['client_id'],
+                    inputs_lookup['sponsor_id'],
+                    inputs_lookup['client_version'],
+                    logger=lambda x: self.__log_event('discovery', inputs + [('server_ip_address', x)]))
         lines += [psi_psk.set_psk(self.server_ip_address)]
         response_headers = [('Content-type', 'text/plain')]
         start_response(status, response_headers)
@@ -153,15 +159,15 @@ class ServerInstance(object):
     def download(self, environ, start_response):
         # NOTE: currently we ignore client_version and just download whatever
         # version is currently in place for the client ID and sponsor ID.
-        try:
-            (client_ip_address, client_id, sponsor_id, client_version) =\
-                self.__validate_and_log(environ, 'download')
-        except self.InvalidInputException as e:
+        inputs = self.__get_inputs(Request(environ), 'download')
+        if not inputs:
             start_response('404 Not Found', [])
             return []
+        self.__log_event('download', inputs)
         # e.g., /root/PsiphonV/download/psiphon-<client_id>-<sponsor_id>.exe
+        inputs_lookup = dict(inputs)
         try:
-            filename = 'psiphon-%s-%s.exe' % (client_id, sponsor_id)
+            filename = 'psiphon-%s-%s.exe' % (inputs_lookup['client_id'], inputs_lookup['sponsor_id'])
             path = os.path.join(psi_config.UPGRADE_DOWNLOAD_PATH, filename)
             with open(path, 'rb') as file:
                 contents = file.read()
@@ -178,17 +184,15 @@ class ServerInstance(object):
         return [contents]
 
     def connected(self, environ, start_response):
-        try:
-            # Log client IP address: clients should only make this request
-            # when connected to VPN, so this will log the VPN address
-            # which is used to link VPN disconnected events for session
-            # duration reporting.
-            _ = self.__validate_and_log(environ, 'connected',
-                                        log_vpn_client_ip_address=True)
-        except self.InvalidInputException as e:
+        request = Request(environ)
+        additional_inputs = [('vpn_client_ip_address', lambda x: is_valid_ip_address(x))]
+        inputs = self.__get_inputs(
+                        request, 'connected', additional_inputs)
+        if not inputs:
             start_response('404 Not Found', [])
             return []
         # No action, this request is just for stats logging
+        self.__log_event('connected', inputs)
         status = '200 OK'
         start_response(status, [])
         return []
