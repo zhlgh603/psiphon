@@ -272,7 +272,12 @@ class WebServerThread(threading.Thread):
                                     {'/handshake': server_instance.handshake,
                                      '/download': server_instance.download,
                                      '/connected': server_instance.connected}))
-                # lifetime of cert/private key temp file is lifetime of server
+
+                # Set maximum request input sizes to avoid processing DoS inputs
+                self.server.max_request_header_size = 100000
+                self.server.max_request_body_size = 100000
+
+                # Lifetime of cert/private key temp file is lifetime of server
                 # file is closed by ServerInstance, and that auto deletes tempfile
                 self.certificate_temp_file = tempfile.NamedTemporaryFile()
                 self.certificate_temp_file.write(
@@ -285,12 +290,12 @@ class WebServerThread(threading.Thread):
                 self.certificate_temp_file.flush()
                 self.server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(
                                               self.certificate_temp_file.name, None)
-                # blocks until server stopped
+                # Blocks until server stopped
                 syslog.syslog(syslog.LOG_INFO, 'Started server for %s' % (self.ip_address,))
                 self.server.start()
                 break
             except (ssl.SSLError, socket.error) as e:
-                # log socket/SSL errors and try again
+                # Log socket/SSL errors and try again
                 syslog.syslog(syslog.LOG_ERR, str(e))
                 if self.server:
                     self.server.stop()
