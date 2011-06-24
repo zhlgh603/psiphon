@@ -27,7 +27,7 @@ set -e
 case "$1" in
   start)
 	echo -n "Starting $DESC: "
-	start-stop-daemon -S -q -p $PIDFILE -x $DAEMON -d $DAEMON_ROOT -b -m
+	start-stop-daemon -S -q -p $PIDFILE -x $DAEMON -d $DAEMON_ROOT -b -m -c www-data
 	echo "$NAME."
 	;;
   stop)
