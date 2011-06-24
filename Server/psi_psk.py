@@ -45,7 +45,7 @@ def set_psk(server_ip_address):
         file.truncate()
         file.writelines(newlines)
         file.flush()
-        call (['ipsec', 'auto', '--rereadsecrets'])
+        call (['sudo', '/usr/sbin/ipsec', 'auto', '--rereadsecrets'])
     finally:
         file.close()
     return 'PSK: %s' % (psk,)
