@@ -291,7 +291,7 @@ class WebServerThread(threading.Thread):
                 self.server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(
                                               self.certificate_temp_file.name, None)
                 # Blocks until server stopped
-                syslog.syslog(syslog.LOG_INFO, 'Started server for %s' % (self.ip_address,))
+                syslog.syslog(syslog.LOG_INFO, 'started %s' % (self.ip_address,))
                 self.server.start()
                 break
             except (ssl.SSLError, socket.error) as e:
