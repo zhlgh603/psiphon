@@ -20,7 +20,7 @@
 '''
 
 Example input:
-https://192.168.0.1:80/handshake?client_id=0987654321&sponsor_id=1234554321&client_version=1&server_secret=1234567890
+https://192.168.0.1:80/handshake?propagation_channel_id=0987654321&sponsor_id=1234554321&client_version=1&server_secret=1234567890
 
 '''
 
@@ -82,7 +82,7 @@ class ServerInstance(object):
         self.server_secret = server_secret
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
-            ('client_id', lambda x: consists_of(x, string.hexdigits)),
+            ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits)),
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits)),
             ('client_version', lambda x: consists_of(x, string.digits))]
 
@@ -165,7 +165,7 @@ class ServerInstance(object):
                                        ('unknown', unknown)])
         lines = psi_db.handshake(
                     client_ip_address,
-                    inputs_lookup['client_id'],
+                    inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_version'],
                     logger=discovery_logger)
@@ -176,16 +176,18 @@ class ServerInstance(object):
 
     def download(self, environ, start_response):
         # NOTE: currently we ignore client_version and just download whatever
-        # version is currently in place for the client ID and sponsor ID.
+        # version is currently in place for the propagation channel ID and sponsor ID.
         inputs = self.__get_inputs(Request(environ), 'download')
         if not inputs:
             start_response('404 Not Found', [])
             return []
         self.__log_event('download', inputs)
-        # e.g., /root/PsiphonV/download/psiphon-<client_id>-<sponsor_id>.exe
+        # e.g., /root/PsiphonV/download/psiphon-<propagation_channel_id>-<sponsor_id>.exe
         inputs_lookup = dict(inputs)
         try:
-            filename = 'psiphon-%s-%s.exe' % (inputs_lookup['client_id'], inputs_lookup['sponsor_id'])
+            filename = 'psiphon-%s-%s.exe' % (
+                            inputs_lookup['propagation_channel_id'],
+                            inputs_lookup['sponsor_id'])
             path = os.path.join(psi_config.UPGRADE_DOWNLOAD_PATH, filename)
             with open(path, 'rb') as file:
                 contents = file.read()
