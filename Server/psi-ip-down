@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# $5 is peer VPN IP address supplied by ppp ip-down
+
+logger -p 'user.info' -t psiphonv disconnected $5
+
