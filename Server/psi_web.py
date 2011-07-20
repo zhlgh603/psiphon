@@ -206,12 +206,24 @@ class ServerInstance(object):
     def connected(self, environ, start_response):
         request = Request(environ)
         additional_inputs = [('vpn_client_ip_address', lambda x: is_valid_ip_address(x))]
-        inputs = self.__get_inputs(
-                        request, 'connected', additional_inputs)
+        inputs = self.__get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
             return []
         self.__log_event('connected', inputs)
+        # No action, this request is just for stats logging
+        status = '200 OK'
+        start_response(status, [])
+        return []
+
+    def failed(self, environ, start_response):
+        request = Request(environ)
+        additional_inputs = [('error_code', lambda x: consists_of(x, string.digits))]
+        inputs = self.__get_inputs(request, 'failed', additional_inputs)
+        if not inputs:
+            start_response('404 Not Found', [])
+            return []
+        self.__log_event('failed', inputs)
         # No action, this request is just for stats logging
         status = '200 OK'
         start_response(status, [])
@@ -273,7 +285,8 @@ class WebServerThread(threading.Thread):
                                 wsgiserver.WSGIPathInfoDispatcher(
                                     {'/handshake': server_instance.handshake,
                                      '/download': server_instance.download,
-                                     '/connected': server_instance.connected}))
+                                     '/connected': server_instance.connected,
+                                     '/failed': server_instance.failed}))
 
                 # Set maximum request input sizes to avoid processing DoS inputs
                 self.server.max_request_header_size = 100000
