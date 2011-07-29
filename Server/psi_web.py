@@ -164,6 +164,7 @@ class ServerInstance(object):
                              inputs + [('server_ip_address', server_ip_address),
                                        ('unknown', unknown)])
         lines = psi_db.handshake(
+                    self.server_ip_address,
                     client_ip_address,
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
