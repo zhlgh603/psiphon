@@ -102,10 +102,18 @@ class ServerInstance(object):
             try:
                 value = request.params[input_name]
             except KeyError as e:
-                syslog.syslog(
-                    syslog.LOG_ERR,
-                    'Missing %s in %s [%s]' % (input_name, request_name, str(request.params)))
-                return False
+                # Backwards compatibility patches
+                # - Older clients don't specifiy relay_protcol, default to VPN
+                # - Older clients specify client_vpn_ip_address for session ID
+                if input_name == 'relay_protocol':
+                    value = 'VPN'
+                elif input_name == 'session_id' and request.params.has_key('client_vpn_ip_address'):
+                    value = request.params['client_vpn_ip_address']
+                else:
+                    syslog.syslog(
+                        syslog.LOG_ERR,
+                        'Missing %s in %s [%s]' % (input_name, request_name, str(request.params)))
+                    return False
             if not validator(value):
                 syslog.syslog(
                     syslog.LOG_ERR,
@@ -206,7 +214,11 @@ class ServerInstance(object):
 
     def connected(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('vpn_client_ip_address', lambda x: is_valid_ip_address(x))]
+        # Peek at input to determine required parameters
+        # We assume VPN for backwards compatibility
+        # Note: session ID is a VPN client IP address for backwards compatibility
+        additional_inputs = [('relay_protocol', lambda x: x in ['VPN', 'SSH']),
+                             ('session_id', lambda x: is_valid_ip_address(x))]
         inputs = self.__get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -219,7 +231,8 @@ class ServerInstance(object):
 
     def failed(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('error_code', lambda x: consists_of(x, string.digits))]
+        additional_inputs = [('relay_protocol', lambda x: x in ['VPN', 'SSH']),
+                             ('error_code', lambda x: consists_of(x, string.digits))]
         inputs = self.__get_inputs(request, 'failed', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
