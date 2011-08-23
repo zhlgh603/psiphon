@@ -45,12 +45,12 @@ client connects to are the authentic servers for that client.
 logged in aggregate, but no individual personally identifying information, such
 as user IP addresses, are retained in PsiphonV log files.
 
-Coming soon:
-
 - Agile transport. Psiphon 3 features a pluggable architecture with multiple
 transport mechanisms, including VPN and SSH tunneling. In the case where one
 transport protocol is blocked by a censor, Psiphon automatically switches over
 to another mechanism.
+
+Coming soon:
 
 - IPv6 compatibility.  Psiphon 3 is designed to be IPv6 compatible. This ensures
 the system is ready for the next generation Internet, and in the immediate term
@@ -72,10 +72,11 @@ Compatibility
 
 Supported transport mechanisms:
 - L2TP/IPSec VPN
+- HTTP/SOCKS Proxy over SSH Tunnel
 
 Planned transport mechanisms:
 - PPTP VPN
-- SSH tunnel
+- DNS tunnel
 
 Supported client platforms:
 - Windows XP/Vista/7
