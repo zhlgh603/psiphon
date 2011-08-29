@@ -28,8 +28,8 @@ set -e
 case "$1" in
   start)
 	echo -n "Starting $DESC: "
-    mkdir -p /var/cache/dns-pcaps
-    chown www-data:www-data /var/cache/dns-pcaps
+	mkdir -p /var/cache/dns-pcaps
+	chown www-data:www-data /var/cache/dns-pcaps
 	start-stop-daemon -S -q -p $PIDFILE -b -m -x $DAEMON -- $DAEMON_ARGS
 	echo "$NAME."
 	;;
