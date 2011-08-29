@@ -16,7 +16,7 @@
 
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 DAEMON=/usr/sbin/tcpdump
-DAEMON_ARGS="-Z www-data -w /var/cache/dns-pcaps/dnspcap_%Y%m%d-%H%M%S.pcap -G 360 -z gzip -n -i eth0 port 53"
+DAEMON_ARGS="-Z www-data -w /var/cache/dns-pcaps/dnspcap_%Y%m%d-%H%M%S.pcap -G 3600 -z gzip -n -i eth0 port 53"
 NAME=psi-dns-capture
 DESC="Psiphon 3 DNS capture"
 test -x $DAEMON || exit 0
@@ -29,6 +29,7 @@ case "$1" in
   start)
 	echo -n "Starting $DESC: "
     mkdir -p /var/cache/dns-pcaps
+    chown www-data:www-data /var/cache/dns-pcaps
 	start-stop-daemon -S -q -p $PIDFILE -b -m -x $DAEMON -- $DAEMON_ARGS
 	echo "$NAME."
 	;;
