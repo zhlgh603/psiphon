@@ -1,3 +1,4 @@
 #!/bin/sh
 
 /usr/sbin/wondershaper clear $1
+
