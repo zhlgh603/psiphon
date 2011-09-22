@@ -27,7 +27,6 @@ from OpenSSL import crypto
 
 import psi_ssh
 import psi_deploy
-import psi_test
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Data')))
 import psi_db
@@ -387,6 +386,9 @@ if __name__ == "__main__":
         # Generate and upload xl2tpd config files and init script
         #
 
+        # Stop the default instance first
+        ssh.exec_command('/etc/init.d/xl2tpd stop')
+
         for index, server in enumerate(host_servers):
             ssh.exec_command(make_xl2tpd_config_file_command(index, server.IP_Address))
 
@@ -519,6 +521,3 @@ if __name__ == "__main__":
 
         # Deploy will upload web server source database data and client builds
         psi_deploy.deploy(host)
-
-    # Test handshake and VPN connection to each server
-    psi_test.test_servers()
