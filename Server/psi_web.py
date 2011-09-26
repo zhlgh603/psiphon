@@ -323,11 +323,20 @@ class WebServerThread(threading.Thread):
                 syslog.syslog(syslog.LOG_INFO, 'started %s' % (self.ip_address,))
                 self.server.start()
                 break
-            except (ssl.SSLError, socket.error) as e:
-                # Log socket/SSL errors and try again
+            except (EnvironmentError,
+                    EOFError,
+                    SystemError,
+                    ValueError,
+                    ssl.SSLError,
+                    socket.error) as e:
+                # Log recoverable errors and try again
                 syslog.syslog(syslog.LOG_ERR, str(e))
                 if self.server:
                     self.server.stop()
+            except Exception as e:
+                # Log other errors and abort
+                syslog.syslog(syslog.LOG_ERR, str(e))
+                raise
 
 
 def main():
