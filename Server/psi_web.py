@@ -39,6 +39,7 @@ from webob import Request
 import psi_psk
 import psi_config
 import sys
+import traceback
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Data')))
 import psi_db
@@ -335,7 +336,8 @@ class WebServerThread(threading.Thread):
                     self.server.stop()
             except Exception as e:
                 # Log other errors and abort
-                syslog.syslog(syslog.LOG_ERR, str(e))
+                for line in traceback.format_exc().split('\n'):
+                    syslog.syslog(syslog.LOG_ERR, line)
                 raise
 
 
