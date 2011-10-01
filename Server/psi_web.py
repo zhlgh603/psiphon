@@ -334,6 +334,15 @@ class WebServerThread(threading.Thread):
                 syslog.syslog(syslog.LOG_ERR, str(e))
                 if self.server:
                     self.server.stop()
+            except TypeError as e:
+                # Recover on this specific error -- keep the server up while we troubleshoot
+                for line in traceback.format_exc().split('\n'):
+                    syslog.syslog(syslog.LOG_ERR, line)
+                if str(e).find("'NoneType' object") == 0:
+                    if self.server:
+                        self.server.stop()
+                else:
+                    raise
             except Exception as e:
                 # Log other errors and abort
                 for line in traceback.format_exc().split('\n'):
