@@ -105,11 +105,14 @@ class ServerInstance(object):
             except KeyError as e:
                 # Backwards compatibility patches
                 # - Older clients don't specifiy relay_protcol, default to VPN
-                # - Older clients specify client_vpn_ip_address for session ID
+                # - Older clients specify vpn_client_ip_address for session ID
+                # - Older clients specify client_id for propagation_channel_id
                 if input_name == 'relay_protocol':
                     value = 'VPN'
-                elif input_name == 'session_id' and request.params.has_key('client_vpn_ip_address'):
-                    value = request.params['client_vpn_ip_address']
+                elif input_name == 'session_id' and request.params.has_key('vpn_client_ip_address'):
+                    value = request.params['vpn_client_ip_address']
+                elif input_name == 'propagation_channel_id' and request.params.has_key('client_id'):
+                    value = request.params['client_id']
                 else:
                     syslog.syslog(
                         syslog.LOG_ERR,
