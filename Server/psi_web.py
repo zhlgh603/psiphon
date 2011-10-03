@@ -334,14 +334,18 @@ class WebServerThread(threading.Thread):
                     ssl.SSLError,
                     socket.error) as e:
                 # Log recoverable errors and try again
-                syslog.syslog(syslog.LOG_ERR, str(e))
+                for line in traceback.format_exc().split('\n'):
+                    syslog.syslog(syslog.LOG_ERR, line)
                 if self.server:
                     self.server.stop()
             except TypeError as e:
-                # Recover on this specific error -- keep the server up while we troubleshoot
-                for line in traceback.format_exc().split('\n'):
+                trace = traceback.format_exc()
+                for line in trace.split('\n'):
                     syslog.syslog(syslog.LOG_ERR, line)
-                if str(e).find("'NoneType' object") == 0:
+                # Recover on this Cherrypy internal error
+                # See bitbucket Issue 59
+                if (str(e).find("'NoneType' object") == 0 and
+                    trace.find("'SSL_PROTOCOL': cipher[1]") != -1):
                     if self.server:
                         self.server.stop()
                 else:
