@@ -19,8 +19,10 @@
 
 #==== Web Server ==============================================================
 
+import os
+
 UPGRADE_DOWNLOAD_PATH = '/opt/PsiphonV/download'
-DATA_FILE_NAME = 'psi_ops.dat'
+DATA_FILE_NAME = os.path.abspath(os.path.join('..', 'Automation', 'psi_ops.dat'))
 
 
 #==== VPN =====================================================================
