@@ -72,6 +72,7 @@ if os.path.isfile(os.path.join('..', 'Data', 'psi_db.py')):
                                 server[0].Web_Server_Private_Key))
 
 else:
+    sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
     import psi_ops
 
     psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
