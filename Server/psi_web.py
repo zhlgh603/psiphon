@@ -61,15 +61,15 @@ if os.path.isfile(os.path.join('..', 'Data', 'psi_db.py')):
                     client_version,
                     logger)
 
-    def db_get_servers(interface_ip_addresses):
-        for ip_address in interface_ip_addresses:
-            server = filter(lambda s : s.IP_Address == ip_address, psi_db.get_servers())
-            if len(server) == 1:
-                servers.append((ip_address,
-                                server[0].Web_Server_Port,
-                                server[0].Web_Server_Secret,
-                                server[0].Web_Server_Certificate,
-                                server[0].Web_Server_Private_Key))
+    def db_get_server(ip_address):
+        server = filter(lambda s : s.IP_Address == ip_address, psi_db.get_servers())
+        if len(server) == 1:
+            return (ip_address,
+                    server[0].Web_Server_Port,
+                    server[0].Web_Server_Secret,
+                    server[0].Web_Server_Certificate,
+                    server[0].Web_Server_Private_Key)
+        return None
 
 else:
     sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
@@ -89,16 +89,15 @@ else:
                     client_version,
                     logger)
 
-    def db_get_servers(interface_ip_addresses):
-        for ip_address in interface_ip_addresses:
-            server = psinet.get_server_by_ip_address(ip_address)
-            if server:
-                servers.append(
-                            (ip_address,
-                             server.web_server_port,
-                             server.web_server_secret,
-                             server.web_server_certificate,
-                             server.web_server_private_key))
+    def db_get_server(ip_address):
+        server = psinet.get_server_by_ip_address(ip_address)
+        if server:
+            return (ip_address,
+                    server.web_server_port,
+                    server.web_server_secret,
+                    server.web_server_certificate,
+                    server.web_server_private_key)
+        return None
     
 
 # ===== Helpers =====
@@ -310,11 +309,12 @@ def get_servers():
     servers = []
     for interface in netifaces.interfaces():
         try:
-            interface_ip_addresses = []
             if (interface.find('ipsec') == -1 and interface.find('mast') == -1 and
                     netifaces.ifaddresses(interface).has_key(netifaces.AF_INET)):
-                interface_ip_addresses.append(netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr'])
-            servers = db_get_servers(interface_ip_addresses)
+                interface_ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
+                server = db_get_server(interface_ip_address)
+                if server:
+                    servers.append(server)
         except ValueError as e:
             if str(e) != 'You must specify a valid interface name.':
                 raise
