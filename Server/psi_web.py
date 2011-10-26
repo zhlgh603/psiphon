@@ -50,7 +50,7 @@ if os.path.isfile(os.path.join('..', 'Data', 'psi_db.py')):
     import psi_db
 
     def db_get_region(client_ip_address):        
-        psi_db.get_region(client_ip_address)
+        return psi_db.get_region(client_ip_address)
 
     def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
         return psi_db.handshake(
@@ -78,7 +78,7 @@ else:
     psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
     def db_get_region(client_ip_address):
-        psinet.get_region(client_ip_address)
+        return psinet.get_region(client_ip_address)
 
     def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
         return psinet.handshake(
