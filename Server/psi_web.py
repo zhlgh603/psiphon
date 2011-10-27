@@ -41,9 +41,64 @@ import psi_config
 import sys
 import traceback
 
-sys.path.insert(0, os.path.abspath(os.path.join('..', 'Data')))
-import psi_db
+# ===== DB abstraction layer ===================================================
 
+# This bridges compatibility between the old and new database subsystems
+
+if os.path.isfile(os.path.join('..', 'Data', 'psi_db.py')):
+    sys.path.insert(0, os.path.abspath(os.path.join('..', 'Data')))
+    import psi_db
+
+    def db_get_region(client_ip_address):        
+        return psi_db.get_region(client_ip_address)
+
+    def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
+        return psi_db.handshake(
+                    server_ip_address,
+                    client_ip_address,
+                    propagation_channel_id,
+                    sponsor_id,
+                    client_version,
+                    logger)
+
+    def db_get_server(ip_address):
+        server = filter(lambda s : s.IP_Address == ip_address, psi_db.get_servers())
+        if len(server) == 1:
+            return (ip_address,
+                    server[0].Web_Server_Port,
+                    server[0].Web_Server_Secret,
+                    server[0].Web_Server_Certificate,
+                    server[0].Web_Server_Private_Key)
+        return None
+
+else:
+    sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
+    import psi_ops
+
+    psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
+
+    def db_get_region(client_ip_address):
+        return psinet.get_region(client_ip_address)
+
+    def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
+        return psinet.handshake(
+                    server_ip_address,
+                    client_ip_address,
+                    propagation_channel_id,
+                    sponsor_id,
+                    client_version,
+                    logger)
+
+    def db_get_server(ip_address):
+        server = psinet.get_server_by_ip_address(ip_address)
+        if server:
+            return (ip_address,
+                    server.web_server_port,
+                    server.web_server_secret,
+                    server.web_server_certificate,
+                    server.web_server_private_key)
+        return None
+    
 
 # ===== Helpers =====
 
@@ -96,7 +151,7 @@ class ServerInstance(object):
         # Add server IP address and client region for logging
         input_values.append(('server_ip_address', self.server_ip_address))
         client_ip_address = request.remote_addr
-        input_values.append(('client_region', psi_db.get_region(client_ip_address)))
+        input_values.append(('client_region', db_get_region(client_ip_address)))
 
         # Check for each expected input
         for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
@@ -175,7 +230,7 @@ class ServerInstance(object):
             self.__log_event('discovery',
                              inputs + [('server_ip_address', server_ip_address),
                                        ('unknown', unknown)])
-        lines = psi_db.handshake(
+        lines = db_handshake(
                     self.server_ip_address,
                     client_ip_address,
                     inputs_lookup['propagation_channel_id'],
@@ -256,14 +311,10 @@ def get_servers():
         try:
             if (interface.find('ipsec') == -1 and interface.find('mast') == -1 and
                     netifaces.ifaddresses(interface).has_key(netifaces.AF_INET)):
-                ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
-                server = filter(lambda s : s.IP_Address == ip_address, psi_db.get_servers())
-                if len(server) == 1:
-                    servers.append((ip_address,
-                                    server[0].Web_Server_Port,
-                                    server[0].Web_Server_Secret,
-                                    server[0].Web_Server_Certificate,
-                                    server[0].Web_Server_Private_Key))
+                interface_ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
+                server = db_get_server(interface_ip_address)
+                if server:
+                    servers.append(server)
         except ValueError as e:
             if str(e) != 'You must specify a valid interface name.':
                 raise

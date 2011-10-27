@@ -17,9 +17,21 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+#==== Directory Layout =========================================================
+
+HOST_SOURCE_ROOT = '/opt/PsiphonV'
+HOST_IP_UP_DIR = '/etc/ppp/ip-up.d'
+HOST_IP_DOWN_DIR = '/etc/ppp/ip-down.d'
+HOST_INIT_DIR = '/etc/init.d'
+
+
 #==== Web Server ==============================================================
 
+import os
+import posixpath
+
 UPGRADE_DOWNLOAD_PATH = '/opt/PsiphonV/download'
+DATA_FILE_NAME = posixpath.join(HOST_SOURCE_ROOT, 'Automation', 'psi_ops.dat')
 
 
 #==== VPN =====================================================================
