@@ -266,7 +266,7 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
         status = '200 OK'
-        response_headers = [('Content-type', 'application/exe'),
+        response_headers = [('Content-Type', 'application/exe'),
                             ('Content-Length', '%d' % (len(contents),))]
         start_response(status, response_headers)
         return [contents]
@@ -283,10 +283,23 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
         self.__log_event('connected', inputs)
-        # No action, this request is just for stats logging
-        status = '200 OK'
-        start_response(status, [])
-        return []
+        # In addition to stats logging for successful connection, we return
+        # routing information for the user's country for split tunneling.
+        # When region route file is missing (including None, A1, ...) then
+        # the response is empty.
+        try:
+            path = os.path.join(
+                        ROUTES_PATH,
+                        ROUTE_FILE_NAME_TEMPLATE % (inputs_lookup['client_region'],))
+            with open(path, 'rb') as file:
+                contents = file.read()
+            response_headers = [('Content-Type', 'application/octet-stream'),
+                                ('Content-Length', '%d' % (len(contents),))]
+            start_response('200 OK', response_headers)
+            return [contents]
+        except IOError as e:
+            start_response('200 OK', [])
+            return []
 
     def failed(self, environ, start_response):
         request = Request(environ)
