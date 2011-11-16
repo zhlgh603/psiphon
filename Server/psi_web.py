@@ -287,10 +287,11 @@ class ServerInstance(object):
         # routing information for the user's country for split tunneling.
         # When region route file is missing (including None, A1, ...) then
         # the response is empty.
+        inputs_lookup = dict(inputs)
         try:
             path = os.path.join(
-                        ROUTES_PATH,
-                        ROUTE_FILE_NAME_TEMPLATE % (inputs_lookup['client_region'],))
+                        psi_config.ROUTES_PATH,
+                        psi_config.ROUTE_FILE_NAME_TEMPLATE % (inputs_lookup['client_region'],))
             with open(path, 'rb') as file:
                 contents = file.read()
             response_headers = [('Content-Type', 'application/octet-stream'),
