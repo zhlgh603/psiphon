@@ -201,7 +201,7 @@ class ServerInstance(object):
         # NOTE: not validating that server IP addresses are part of the network
         #       (if we do add this, be careful to not introduce a timing based
         #        attack that could be used to enumerate valid server IPs)
-        known_servers = request.str_params.getall('known_server')
+        known_servers = request.params.getall('known_server')
         for known_server in known_servers:
             if not is_valid_ip_address(known_server):
                 syslog.syslog(
