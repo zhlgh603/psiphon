@@ -224,7 +224,6 @@ class ServerInstance(object):
         # common denominator compatibility.
         #
         self.__log_event('handshake', inputs)
-        status = '200 OK'
         client_ip_address = request.remote_addr
         inputs_lookup = dict(inputs)
         # logger callback will add log entry for each server IP address discovered
@@ -242,7 +241,7 @@ class ServerInstance(object):
                     logger=discovery_logger)
         lines += [psi_psk.set_psk(self.server_ip_address)]
         response_headers = [('Content-type', 'text/plain')]
-        start_response(status, response_headers)
+        start_response('200 OK', response_headers)
         return ['\n'.join(lines)]
 
     def download(self, environ, start_response):
@@ -268,10 +267,9 @@ class ServerInstance(object):
         except IOError as e:
             start_response('404 Not Found', [])
             return []
-        status = '200 OK'
         response_headers = [('Content-Type', 'application/exe'),
                             ('Content-Length', '%d' % (len(contents),))]
-        start_response(status, response_headers)
+        start_response('200 OK', response_headers)
         return [contents]
 
     def connected(self, environ, start_response):
@@ -280,7 +278,8 @@ class ServerInstance(object):
         # We assume VPN for backwards compatibility
         # Note: session ID is a VPN client IP address for backwards compatibility
         additional_inputs = [('relay_protocol', lambda x: x in ['VPN', 'SSH']),
-                             ('session_id', lambda x: is_valid_ip_address(x))]
+                             ('session_id', lambda x: is_valid_ip_address(x) or
+                                                      consists_of(x, string.hexdigits))]
         inputs = self.__get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -315,8 +314,25 @@ class ServerInstance(object):
             return []
         self.__log_event('failed', inputs)
         # No action, this request is just for stats logging
-        status = '200 OK'
-        start_response(status, [])
+        start_response('200 OK', [])
+        return []
+
+
+    def status(self, environ, start_response):
+        request = Request(environ)
+        additional_inputs = [('relay_protocol', lambda x: x in ['VPN', 'SSH']),
+                             ('session_id', lambda x: consists_of(x, string.hexdigits)),
+                             ('connected', lambda x: x in ['0', '1'])]
+        inputs = self.__get_inputs(request, 'status', additional_inputs)
+        if not inputs:
+            start_response('404 Not Found', [])
+            return []
+        log_event = 'status' if request.params['connected'] == '1' else 'disconnected'
+        self.__log_event(log_event,
+                         [('relay_protocol', request.params['relay_protocol']),
+                          ('session_id', request.params['session_id'])])
+        # No action, this request is just for stats logging
+        start_response('200 OK', [])
         return []
 
 
