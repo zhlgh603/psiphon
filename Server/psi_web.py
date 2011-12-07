@@ -317,7 +317,6 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
-
     def status(self, environ, start_response):
         request = Request(environ)
         additional_inputs = [('relay_protocol', lambda x: x in ['VPN', 'SSH']),
@@ -388,7 +387,8 @@ class WebServerThread(threading.Thread):
                                     {'/handshake': server_instance.handshake,
                                      '/download': server_instance.download,
                                      '/connected': server_instance.connected,
-                                     '/failed': server_instance.failed}))
+                                     '/failed': server_instance.failed,
+                                     '/status': server_instance.status}))
 
                 # Set maximum request input sizes to avoid processing DoS inputs
                 self.server.max_request_header_size = 100000
