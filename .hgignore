@@ -4,6 +4,14 @@
 
 Client/Release
 Client/psiclient/Release
+Client/Debug
+Client/psiclient/Debug
+Client/ipch
+Client/psiclient.opensdf
+Client/psiclient.sdf
+Client/psiclient.suo
+Client/psiclient/psiclient.vcxproj.user
+
 Automation/Builds
 
 syntax: glob
