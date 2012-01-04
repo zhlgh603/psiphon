@@ -124,6 +124,10 @@ def is_valid_ip_address(str):
         return False
 
 
+def is_valid_relay_protocol(str):
+    return str in ['VPN', 'SSH', 'OBS-SSH']
+
+
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
@@ -277,7 +281,7 @@ class ServerInstance(object):
         # Peek at input to determine required parameters
         # We assume VPN for backwards compatibility
         # Note: session ID is a VPN client IP address for backwards compatibility
-        additional_inputs = [('relay_protocol', lambda x: x in ['VPN', 'SSH']),
+        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits))]
         inputs = self.__get_inputs(request, 'connected', additional_inputs)
@@ -306,7 +310,7 @@ class ServerInstance(object):
 
     def failed(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('relay_protocol', lambda x: x in ['VPN', 'SSH']),
+        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('error_code', lambda x: consists_of(x, string.digits))]
         inputs = self.__get_inputs(request, 'failed', additional_inputs)
         if not inputs:
@@ -319,7 +323,7 @@ class ServerInstance(object):
 
     def status(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('relay_protocol', lambda x: x in ['VPN', 'SSH']),
+        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('session_id', lambda x: consists_of(x, string.hexdigits)),
                              ('connected', lambda x: x in ['0', '1'])]
         inputs = self.__get_inputs(request, 'status', additional_inputs)
