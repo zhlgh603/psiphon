@@ -125,7 +125,7 @@ def is_valid_ip_address(str):
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OBS-SSH']
+    return str in ['VPN', 'SSH', 'OSSH']
 
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
