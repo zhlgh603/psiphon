@@ -238,11 +238,6 @@ bool SSHConnection::Connect(
 
     m_connectType = connectType;
 
-    // Add host to Plonk's known host registry set
-    // Note: currently we're not removing this after the session, so we're leaving a trace
-
-    SetPlonkSSHHostKey(sshServerAddress, sshServerPort, sshServerHostKey);
-
     // Start plonk using Psiphon server SSH parameters
 
     // Note: -batch ensures plonk doesn't hang on a prompt when the server's host key isn't
@@ -252,6 +247,17 @@ bool SSHConnection::Connect(
     
     if (connectType == SSH_CONNECT_OBFUSCATED)
     {
+        if (sshObfuscatedPort.size() <= 0 || sshObfuscatedKey.size() <= 0)
+        {
+            my_print(false, _T("SSHConnection::Connect - missing parameters"));
+            return false;
+        }
+
+        // Add host to Plonk's known host registry set
+        // Note: currently we're not removing this after the session, so we're leaving a trace
+
+        SetPlonkSSHHostKey(sshServerAddress, sshObfuscatedPort, sshServerHostKey);
+
         plonkCommandLine = m_plonkPath
                                 + _T(" -ssh -C -N -batch")
                                 + _T(" -P ") + sshObfuscatedPort
@@ -263,6 +269,10 @@ bool SSHConnection::Connect(
     }
     else
     {
+        // Add host to Plonk's known host registry set
+
+        SetPlonkSSHHostKey(sshServerAddress, sshServerPort, sshServerHostKey);
+
         plonkCommandLine = m_plonkPath
                                 + _T(" -ssh -C -N -batch")
                                 + _T(" -P ") + sshServerPort
