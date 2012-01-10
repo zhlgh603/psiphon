@@ -392,7 +392,8 @@ class WebServerThread(threading.Thread):
                                      '/download': server_instance.download,
                                      '/connected': server_instance.connected,
                                      '/failed': server_instance.failed,
-                                     '/status': server_instance.status}))
+                                     '/status': server_instance.status}),
+                                numthreads=30,timeout=20)
 
                 # Set maximum request input sizes to avoid processing DoS inputs
                 self.server.max_request_header_size = 100000
