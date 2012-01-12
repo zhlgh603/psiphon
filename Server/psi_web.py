@@ -371,10 +371,19 @@ class WebServerThread(threading.Thread):
         self.certificate_temp_file = None
 
     def stop_server(self):
-        if self.server:
-            # blocks until server stops
-            self.server.stop()
-            self.server = None
+        # Retry loop in case self.server.stop throws an exception
+        for i in range(5):
+            try:
+                if self.server:
+                    # blocks until server stops
+                    self.server.stop()
+                    self.server = None
+                break
+            except Exception as e:
+                # Log errors
+                for line in traceback.format_exc().split('\n'):
+                    syslog.syslog(syslog.LOG_ERR, line)
+                time.sleep(i)
         if self.certificate_temp_file:
             # closing the temp file auto deletes it (NOTE: not secure wipe)
             self.certificate_temp_file.close()
@@ -426,7 +435,7 @@ class WebServerThread(threading.Thread):
                 for line in traceback.format_exc().split('\n'):
                     syslog.syslog(syslog.LOG_ERR, line)
                 if self.server:
-                    self.server.stop()
+                    self.stop_server()
             except TypeError as e:
                 trace = traceback.format_exc()
                 for line in trace.split('\n'):
@@ -436,7 +445,7 @@ class WebServerThread(threading.Thread):
                 if (str(e).find("'NoneType' object") == 0 and
                     trace.find("'SSL_PROTOCOL': cipher[1]") != -1):
                     if self.server:
-                        self.server.stop()
+                        self.stop_server()
                 else:
                     raise
             except Exception as e:
