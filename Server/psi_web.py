@@ -40,6 +40,7 @@ import psi_psk
 import psi_config
 import sys
 import traceback
+import platform
 
 # ===== DB abstraction layer ===================================================
 
@@ -359,7 +360,7 @@ def get_servers():
 
 class WebServerThread(threading.Thread):
 
-    def __init__(self, ip_address, port, secret, certificate, private_key):
+    def __init__(self, ip_address, port, secret, certificate, private_key, server_threads):
         #super(WebServerThread, self).__init__(self)
         threading.Thread.__init__(self)
         self.ip_address = ip_address
@@ -369,6 +370,7 @@ class WebServerThread(threading.Thread):
         self.private_key = private_key
         self.server = None
         self.certificate_temp_file = None
+        self.server_threads = server_threads
 
     def stop_server(self):
         # Retry loop in case self.server.stop throws an exception
@@ -402,7 +404,7 @@ class WebServerThread(threading.Thread):
                                      '/connected': server_instance.connected,
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status}),
-                                numthreads=30,timeout=20)
+                                numthreads=self.server_threads, timeout=20)
 
                 # Set maximum request input sizes to avoid processing DoS inputs
                 self.server.max_request_header_size = 100000
@@ -458,12 +460,20 @@ class WebServerThread(threading.Thread):
 def main():
     syslog.openlog(psi_config.SYSLOG_IDENT, syslog.LOG_NDELAY, psi_config.SYSLOG_FACILITY)
     threads = []
+    servers = get_servers()
     # run a web server for each server entry
     # (presently web server-per-entry since each has its own certificate;
     #  we could, in principle, run one web server that presents a different
     #  cert per IP address)
-    for server_info in get_servers():
-        thread = WebServerThread(*server_info)
+    threads_per_server = 30
+    if '32bit' in platform.architecture():
+        # Only 381 threads can run on 32-bit Linux
+        # Assuming 361 to allow for some extra overhead, plus the additional overhead
+        # of 1 main thread and 2 threads per web server
+        # Also, we don't want more than 30 per server
+        threads_per_server = min(threads_per_server, 360 / len(servers) - 2)
+    for server_info in servers:
+        thread = WebServerThread(*server_info, server_threads=threads_per_server)
         thread.start()
         threads.append(thread)
     print 'Servers running...'
