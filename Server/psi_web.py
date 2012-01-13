@@ -33,6 +33,7 @@ import ssl
 import tempfile
 import netifaces
 import socket
+import json
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_builtin
 from webob import Request
@@ -146,7 +147,7 @@ class ServerInstance(object):
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits)),
             ('client_version', lambda x: consists_of(x, string.digits))]
 
-    def __get_inputs(self, request, request_name, additional_inputs=None):
+    def _get_inputs(self, request, request_name, additional_inputs=None):
         if additional_inputs is None:
             additional_inputs = []
 
@@ -189,14 +190,14 @@ class ServerInstance(object):
         # Caller gets a list of name/value input tuples, used for logging etc.
         return input_values
 
-    def __log_event(self, event_name, log_values):
+    def _log_event(self, event_name, log_values):
         syslog.syslog(
             syslog.LOG_INFO,
-            ' '.join([event_name] + [value for (_, value) in log_values]))
+            ' '.join([event_name] + [str(value) for (_, value) in log_values]))
 
     def handshake(self, environ, start_response):
         request = Request(environ)
-        inputs = self.__get_inputs(request, 'handshake')
+        inputs = self._get_inputs(request, 'handshake')
         if not inputs:
             start_response('404 Not Found', [])
             return []
@@ -227,13 +228,13 @@ class ServerInstance(object):
         # and why we're using PSKs instead of VPN PKI: basically, lowest
         # common denominator compatibility.
         #
-        self.__log_event('handshake', inputs)
+        self._log_event('handshake', inputs)
         client_ip_address = request.remote_addr
         inputs_lookup = dict(inputs)
         # logger callback will add log entry for each server IP address discovered
         def discovery_logger(server_ip_address):
             unknown = '0' if server_ip_address in known_servers else '1'
-            self.__log_event('discovery',
+            self._log_event('discovery',
                              inputs + [('server_ip_address', server_ip_address),
                                        ('unknown', unknown)])
         lines = db_handshake(
@@ -251,11 +252,11 @@ class ServerInstance(object):
     def download(self, environ, start_response):
         # NOTE: currently we ignore client_version and just download whatever
         # version is currently in place for the propagation channel ID and sponsor ID.
-        inputs = self.__get_inputs(Request(environ), 'download')
+        inputs = self._get_inputs(Request(environ), 'download')
         if not inputs:
             start_response('404 Not Found', [])
             return []
-        self.__log_event('download', inputs)
+        self._log_event('download', inputs)
         # e.g., /root/PsiphonV/download/psiphon-<propagation_channel_id>-<sponsor_id>.exe
         inputs_lookup = dict(inputs)
         try:
@@ -284,11 +285,11 @@ class ServerInstance(object):
         additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits))]
-        inputs = self.__get_inputs(request, 'connected', additional_inputs)
+        inputs = self._get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
             return []
-        self.__log_event('connected', inputs)
+        self._log_event('connected', inputs)
         # In addition to stats logging for successful connection, we return
         # routing information for the user's country for split tunneling.
         # When region route file is missing (including None, A1, ...) then
@@ -312,11 +313,11 @@ class ServerInstance(object):
         request = Request(environ)
         additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('error_code', lambda x: consists_of(x, string.digits))]
-        inputs = self.__get_inputs(request, 'failed', additional_inputs)
+        inputs = self._get_inputs(request, 'failed', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
             return []
-        self.__log_event('failed', inputs)
+        self._log_event('failed', inputs)
         # No action, this request is just for stats logging
         start_response('200 OK', [])
         return []
@@ -326,14 +327,29 @@ class ServerInstance(object):
         additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('session_id', lambda x: consists_of(x, string.hexdigits)),
                              ('connected', lambda x: x in ['0', '1'])]
-        inputs = self.__get_inputs(request, 'status', additional_inputs)
+        inputs = self._get_inputs(request, 'status', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
             return []
         log_event = 'status' if request.params['connected'] == '1' else 'disconnected'
-        self.__log_event(log_event,
+        self._log_event(log_event,
                          [('relay_protocol', request.params['relay_protocol']),
                           ('session_id', request.params['session_id'])])
+        
+        # Log page view and traffic stats, if available.
+        if request.body:
+            try:
+                stats = json.loads(request.body)
+                self._log_event('bytes_transferred', 
+                                [('bytes', stats['bytes_transferred'])])
+                
+                for page_view in stats['page_views']:
+                    self._log_event('page_views', 
+                                    [('page', page_view['page']),
+                                     ('count', page_view['count'])])
+            except:
+                start_response('403 Forbidden', [])
+        
         # No action, this request is just for stats logging
         start_response('200 OK', [])
         return []
