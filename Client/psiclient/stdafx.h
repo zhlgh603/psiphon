@@ -38,3 +38,6 @@
 #include <tchar.h>
 
 #include "tstring.h"
+#include <map>
+#include <regex>
+#include <sstream>
