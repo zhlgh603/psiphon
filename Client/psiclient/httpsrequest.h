@@ -29,13 +29,16 @@ class HTTPSRequest
 public:
     HTTPSRequest(void);
     virtual ~HTTPSRequest(void);
-    bool GetRequest(
+    bool MakeRequest(
         const bool& cancel,
         const TCHAR* serverAddress,
         int serverWebPort,
         const string& webServerCertificate,
         const TCHAR* requestPath,
-        string& response);
+        string& response,
+        LPCWSTR additionalHeaders=NULL,
+        LPVOID additionalData=NULL,
+        DWORD additionalDataLength=0);
 
     // NOTE: these member functions could be private if the WinHttpStatusCallback
     // function is a static member or friend
