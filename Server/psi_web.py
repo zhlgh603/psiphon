@@ -348,6 +348,11 @@ class ServerInstance(object):
                     self._log_event('page_views', 
                                     [('page', page_view['page']),
                                      ('count', page_view['count'])])
+
+                for https_req in stats['https_requests']:
+                    self._log_event('https_requests', 
+                                    [('domain', https_req['domain']),
+                                     ('count', https_req['count'])])
             except:
                 start_response('403 Forbidden', [])
         
