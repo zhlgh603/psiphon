@@ -47,8 +47,26 @@ class Psiphon3Server(object):
 
     # handshake
     def handshake(self):
+        # TODO: known_servers
+        # TODO: discovery
+        # TODO: page view regexes
         response = self.opener.open(self.common_request_url() % ('handshake',)).read()
-        return response
+        handshake_response = {'Upgrade': '',
+                              'SSHPort': '',
+                              'SSHUsername': '',
+                              'SSHPassword': '',
+                              'SSHHostKey': '',
+                              'SSHSessionID': '',
+                              'SSHObfuscatedPort': '',
+                              'SSHObfuscatedKey': '',
+                              'PSK': ''}
+
+        for line in response.split('\n'):
+            key, value = line.split(': ')
+            if key in handshake_response.keys():
+                handshake_response[key] = value
+
+        return handshake_response
 
     # TODO: download
 
@@ -102,6 +120,7 @@ class CertificateMatchingHTTPSConnection(httplib.HTTPConnection):
 
 
 class CertificateMatchingHTTPSHandler(urllib2.HTTPSHandler):
+
     def __init__(self, expected_server_certificate):
         urllib2.AbstractHTTPHandler.__init__(self)
         self.expected_server_certificate = expected_server_certificate
