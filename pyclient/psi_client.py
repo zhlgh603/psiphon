@@ -50,24 +50,38 @@ def save_data(data):
         data_file.write(json.dumps(data))
 
 
-def get_server_entry(data):
+def move_first_server_entry_to_bottom():
 
-    server_entry = data['servers'][0]
-    return binascii.unhexlify(server_entry).split(" ")
+    data = load_data()
+    servers = data['servers']
+    if len(servers) > 1:
+        servers.append(servers.pop(0))
+        save_data(data)
+        return True
+    else:
+        return False
 
 
 def connect():
 
-    try:
-        data = load_data()
-        propagation_channel_id = data['propagation_channel_id']
-        sponsor_id = data['sponsor_id']
-        server_entry = get_server_entry(data)
-    except (IOError, ValueError, KeyError, TypeError) as error:
-        print '\nPlease obtain a valid psi_client.dat file and try again.\n'
-        raise
+    while True:
+        try:
+            data = load_data()
+            propagation_channel_id = data['propagation_channel_id']
+            sponsor_id = data['sponsor_id']
+            server_entry = binascii.unhexlify(data['servers'][0]).split(" ")
+        except (IOError, ValueError, KeyError, TypeError) as error:
+            print '\nPlease obtain a valid psi_client.dat file and try again.\n'
+            raise
 
-    connect_to_server(*server_entry, propagation_channel_id=propagation_channel_id, sponsor_id=sponsor_id)
+        try:
+            connect_to_server(*server_entry, propagation_channel_id=propagation_channel_id, sponsor_id=sponsor_id)
+            break
+        except Exception as error:
+            print error
+            if not move_first_server_entry_to_bottom():
+                break
+            print 'Trying next server...'
 
 
 if __name__ == "__main__":
