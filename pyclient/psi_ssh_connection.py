@@ -48,20 +48,24 @@ class SSHConnection(object):
         return ':'.join(a + b for a, b in zip(md5_hash[::2], md5_hash[1::2]))
 
     def connect(self):
-        try:
-            self.ssh = pexpect.spawn('ssh -D %s -N -p %s %s@%s' %
-                                     (self.listen_port, self.port, self.username, self.ip_address))
-            # Print ssh output:
-            #self.ssh.logfile_read = sys.stdout
-            prompt = self.ssh.expect([self._ssh_fingerprint(), 'Password:'])
-            if prompt == 0:
-                self.ssh.sendline('yes')
-                self.ssh.expect('Password:')
-                self.ssh.sendline(self.password)
-            else:
-                self.ssh.sendline(self.password)
+        self.ssh = pexpect.spawn('ssh -D %s -N -p %s %s@%s' %
+                                 (self.listen_port, self.port, self.username, self.ip_address))
+        # Print ssh output:
+        #self.ssh.logfile_read = sys.stdout
+        prompt = self.ssh.expect([self._ssh_fingerprint(), 'Password:'])
+        if prompt == 0:
+            self.ssh.sendline('yes')
+            self.ssh.expect('Password:')
+            self.ssh.sendline(self.password)
+        else:
+            self.ssh.sendline(self.password)
 
-            print '\nYour SOCKS proxy is now running at 127.0.0.1:%s' % (self.listen_port,)
+    def test_connection(self):
+        # TODO: test the connection
+        print '\nYour SOCKS proxy is now running at 127.0.0.1:%s' % (self.listen_port,)
+
+    def wait_for_disconnect(self):
+        try:
             print 'Press Ctrl-C to terminate.'
             self.ssh.wait()
         except KeyboardInterrupt as e:

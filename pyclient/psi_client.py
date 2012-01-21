@@ -41,6 +41,10 @@ def connect_to_server(ip_address, web_server_port, web_server_secret,
                                    handshake_response['SSHUsername'], handshake_response['SSHPassword'],
                                    handshake_response['SSHHostKey'], '1080')
     ssh_connection.connect()
+    ssh_connection.test_connection()
+    # TODO: server.connected()
+    ssh_connection.wait_for_disconnect()
+    # TODO: server.disconnected()
 
 
 def load_data():
