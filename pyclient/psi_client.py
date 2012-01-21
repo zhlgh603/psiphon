@@ -31,6 +31,12 @@ def connect_to_server(ip_address, web_server_port, web_server_secret,
                             web_server_certificate, propagation_channel_id, sponsor_id)
     handshake_response = server.handshake()
 
+    home_pages = handshake_response['Homepage']
+    if len(home_pages) > 0:
+        print '\nPlease visit our sponsor\'s homepage%s:' % ('s' if len(home_pages) > 1 else '',)
+    for home_page in home_pages:
+        print home_page
+
     ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
                                    handshake_response['SSHUsername'], handshake_response['SSHPassword'],
                                    handshake_response['SSHHostKey'], '1080')

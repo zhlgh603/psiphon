@@ -59,12 +59,16 @@ class Psiphon3Server(object):
                               'SSHSessionID': '',
                               'SSHObfuscatedPort': '',
                               'SSHObfuscatedKey': '',
-                              'PSK': ''}
+                              'PSK': '',
+                              'Homepage': []}
 
         for line in response.split('\n'):
             key, value = line.split(': ')
             if key in handshake_response.keys():
-                handshake_response[key] = value
+                if type(handshake_response[key]) == list:
+                    handshake_response[key].append(value)
+                else:
+                    handshake_response[key] = value
 
         return handshake_response
 
