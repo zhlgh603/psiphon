@@ -61,7 +61,7 @@ class SSHConnection(object):
             else:
                 self.ssh.sendline(self.password)
 
-            print '\n\nYour SOCKS proxy is now running at 127.0.0.1:%s' % (self.listen_port,)
+            print '\nYour SOCKS proxy is now running at 127.0.0.1:%s' % (self.listen_port,)
             print 'Press Ctrl-C to terminate.'
             self.ssh.wait()
         except KeyboardInterrupt as e:
