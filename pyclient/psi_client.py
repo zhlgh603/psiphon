@@ -19,10 +19,9 @@
 
 
 from psi_api import Psiphon3Server
-import pexpect
-import base64
-import hashlib
-import sys
+from psi_ssh_connection import SSHConnection
+import json
+import binascii
 
 
 def connect_to_server(ip_address, web_server_port, web_server_secret,
@@ -30,7 +29,6 @@ def connect_to_server(ip_address, web_server_port, web_server_secret,
 
     server = Psiphon3Server(ip_address, web_server_port, web_server_secret,
                             web_server_certificate, propagation_channel_id, sponsor_id)
-
     handshake_response = server.handshake()
 
     ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
@@ -39,49 +37,41 @@ def connect_to_server(ip_address, web_server_port, web_server_secret,
     ssh_connection.connect()
 
 
-class SSHConnection(object):
+def load_data():
 
-    def __init__(self, ip_address, port, username, password, host_key, listen_port):
-        self.ip_address = ip_address
-        self.port = port
-        self.username = username
-        self.password = password
-        self.host_key = host_key
-        self.listen_port = listen_port
-        self.ssh = None
+    with open('psi_client.dat', 'r') as data_file:
+        data = json.loads(data_file.read())
+        return data
 
-    def __del__(self):
-        if self.ssh:
-            self.ssh.terminate()
 
-    # Get the RSA key fingerprint from the host's SSH_Host_Key
-    # Based on:
-    # http://stackoverflow.com/questions/6682815/deriving-an-ssh-fingerprint-from-a-public-key-in-python
-    def _ssh_fingerprint(self):
-        base64_key = base64.b64decode(self.host_key)
-        md5_hash = hashlib.md5(base64_key).hexdigest()
-        return ':'.join(a + b for a, b in zip(md5_hash[::2], md5_hash[1::2]))
- 
-    def connect(self):
-        try:
-            self.ssh = pexpect.spawn('ssh -D %s -N -p %s %s@%s' %
-                                     (self.listen_port, self.port, self.username, self.ip_address))
-            self.ssh.logfile_read = sys.stdout
-            prompt = self.ssh.expect([self._ssh_fingerprint(), 'Password:'])
-            if prompt == 0:
-                self.ssh.sendline('yes')
-                self.ssh.expect('Password:')
-                self.ssh.sendline(self.password)
-            else:
-                self.ssh.sendline(self.password)
+def save_data(data):
 
-            print '\n\nYour SOCKS proxy is now running at 127.0.0.1:%s' % (self.listen_port,)
-            print 'Press Ctrl-C to terminate.'
-            self.ssh.wait()
-        except KeyboardInterrupt as e:
-            print 'Terminating...'
-            self.ssh.terminate()
+    with open('psi_client.dat', 'w') as data_file:
+        data_file.write(json.dumps(data))
 
-        print 'Connection closed'
+
+def get_server_entry(data):
+
+    server_entry = data['servers'][0]
+    return binascii.unhexlify(server_entry).split(" ")
+
+
+def connect():
+
+    try:
+        data = load_data()
+        propagation_channel_id = data['propagation_channel_id']
+        sponsor_id = data['sponsor_id']
+        server_entry = get_server_entry(data)
+    except (IOError, ValueError, KeyError, TypeError) as error:
+        print '\nPlease obtain a valid psi_client.dat file and try again.\n'
+        raise
+
+    connect_to_server(*server_entry, propagation_channel_id=propagation_channel_id, sponsor_id=sponsor_id)
+
+
+if __name__ == "__main__":
+
+    connect()
 
 
