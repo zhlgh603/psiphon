@@ -340,19 +340,20 @@ class ServerInstance(object):
         # Log page view and traffic stats, if available.
         if request.body:
             try:
+                common_inputs = inputs[:-len(additional_inputs)] # common inputs, without status additional inputs
                 stats = json.loads(request.body)
                 self._log_event('bytes_transferred', 
-                                [('bytes', stats['bytes_transferred'])])
+                                common_inputs + [('bytes', stats['bytes_transferred'])])
                 
                 for page_view in stats['page_views']:
                     self._log_event('page_views', 
-                                    [('page', page_view['page']),
-                                     ('count', page_view['count'])])
+                                    common_inputs + [('page', page_view['page']),
+                                                     ('count', page_view['count'])])
 
                 for https_req in stats['https_requests']:
                     self._log_event('https_requests', 
-                                    [('domain', https_req['domain']),
-                                     ('count', https_req['count'])])
+                                    common_inputs + [('domain', https_req['domain']),
+                                                     ('count', https_req['count'])])
             except:
                 start_response('403 Forbidden', [])
         
