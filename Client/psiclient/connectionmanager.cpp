@@ -242,7 +242,7 @@ void ConnectionManager::DoVPNConnection(
     
         string response;
         HTTPSRequest httpsRequest;
-        if (!httpsRequest.GetRequest(
+        if (!httpsRequest.MakeRequest(
                             manager->GetUserSignalledStop(),
                             NarrowToTString(serverEntry.serverAddress).c_str(),
                             serverEntry.webServerPort,
@@ -276,7 +276,7 @@ void ConnectionManager::DoVPNConnection(
         
     string response;
     HTTPSRequest httpsRequest;
-    if (httpsRequest.GetRequest(
+    if (httpsRequest.MakeRequest(
                         manager->GetUserSignalledStop(),
                         NarrowToTString(serverEntry.serverAddress).c_str(),
                         serverEntry.webServerPort,
@@ -345,7 +345,7 @@ void ConnectionManager::DoSSHConnection(
     
             string response;
             HTTPSRequest httpsRequest;
-            if (!httpsRequest.GetRequest(
+            if (!httpsRequest.MakeRequest(
                                 manager->GetUserSignalledStop(),
                                 NarrowToTString(serverEntry.serverAddress).c_str(),
                                 serverEntry.webServerPort,
@@ -382,7 +382,7 @@ void ConnectionManager::DoSSHConnection(
         
     string response;
     HTTPSRequest httpsRequest;
-    if (httpsRequest.GetRequest(
+    if (httpsRequest.MakeRequest(
                         manager->GetUserSignalledStop(),
                         NarrowToTString(serverEntry.serverAddress).c_str(),
                         serverEntry.webServerPort,
@@ -476,7 +476,7 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* data)
             bool skipVPN = manager->GetSkipVPN();
 
             HTTPSRequest httpsRequest;
-            if (!httpsRequest.GetRequest(
+            if (!httpsRequest.MakeRequest(
                                 manager->GetUserSignalledStop(),
                                 NarrowToTString(serverEntry.serverAddress).c_str(),
                                 serverEntry.webServerPort,
@@ -498,7 +498,7 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* data)
                 // for inevitable timeouts.
 
                 else if (serverEntry.webServerPort != 443
-                            && httpsRequest.GetRequest(
+                            && httpsRequest.MakeRequest(
                                         manager->GetUserSignalledStop(),
                                         NarrowToTString(serverEntry.serverAddress).c_str(),
                                         443,
@@ -528,7 +528,7 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* data)
             {
                 // Download new binary
 
-                if (!httpsRequest.GetRequest(
+                if (!httpsRequest.MakeRequest(
                             manager->GetUserSignalledStop(),
                             NarrowToTString(serverEntry.serverAddress).c_str(),
                             serverEntry.webServerPort,
@@ -648,7 +648,11 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* data)
     return 0;
 }
 
-void ConnectionManager::SendStatusMessage(int connectType, bool connected)
+void ConnectionManager::SendStatusMessage(
+                            int connectType, bool connected,
+                            const map<string, int>& pageViewEntries,
+                            const map<string, int>& httpsRequestEntries,
+                            unsigned long long bytesTransferred)
 {
     // NOTE: no lock while waiting for network events
 
@@ -669,16 +673,54 @@ void ConnectionManager::SendStatusMessage(int connectType, bool connected)
     bool ignoreCancel = false;
     bool& cancel = connected ? GetUserSignalledStop() : ignoreCancel;
 
+    // Format stats data for consumption by the server. 
+
+    Json::Value stats;
+    stats["bytes_transferred"] = bytesTransferred;
+    my_print(true, _T("BYTES: %llu"), bytesTransferred);
+
+    map<string, int>::const_iterator pos = pageViewEntries.begin();
+    Json::Value page_views(Json::arrayValue);
+    for (; pos != pageViewEntries.end(); pos++)
+    {
+        Json::Value entry;
+        entry["page"] = pos->first;
+        entry["count"] = pos->second;
+        page_views.append(entry);
+        my_print(true, _T("PAGEVIEW: %d: %S"), pos->second, pos->first.c_str());
+    }
+    stats["page_views"] = page_views;
+
+    pos = httpsRequestEntries.begin();
+    Json::Value https_requests(Json::arrayValue);
+    for (; pos != httpsRequestEntries.end(); pos++)
+    {
+        Json::Value entry;
+        entry["domain"] = pos->first;
+        entry["count"] = pos->second;
+        https_requests.append(entry);
+        my_print(true, _T("HTTPS REQUEST: %d: %S"), pos->second, pos->first.c_str());
+    }
+    stats["https_requests"] = https_requests;
+
+    ostringstream additionalData; 
+    additionalData << stats; 
+    string additionalDataString = additionalData.str();
+    my_print(true, _T("%s:%d - PAGE VIEWS JSON: %S"), __TFUNCTION__, __LINE__, additionalDataString.c_str());
+
     tstring requestPath = GetSSHStatusRequestPath(connectType, connected);
     string response;
     HTTPSRequest httpsRequest;
-    httpsRequest.GetRequest(
+    httpsRequest.MakeRequest(
             cancel,
             NarrowToTString(serverAddress).c_str(),
             webServerPort,
             webServerCertificate,
             requestPath.c_str(),
-            response);
+            response,
+            L"Content-Type: application/json",
+            (LPVOID)additionalDataString.c_str(),
+            additionalDataString.length());
     
     // status message is for stats, success isn't critical
 }
@@ -868,7 +910,9 @@ bool ConnectionManager::SSHConnect(int connectType)
             NarrowToTString(m_currentSessionInfo.GetSSHUsername()),
             NarrowToTString(m_currentSessionInfo.GetSSHPassword()),
             NarrowToTString(m_currentSessionInfo.GetSSHObfuscatedPort()),
-            NarrowToTString(m_currentSessionInfo.GetSSHObfuscatedKey()));
+            NarrowToTString(m_currentSessionInfo.GetSSHObfuscatedKey()),
+            m_currentSessionInfo.GetPageViewRegexes(),
+            m_currentSessionInfo.GetHttpsRequestRegexes());
 }
 
 void ConnectionManager::SSHDisconnect(void)

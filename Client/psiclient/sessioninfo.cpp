@@ -22,6 +22,7 @@
 #include "psiclient.h"
 #include <sstream>
 
+
 void SessionInfo::Set(const ServerEntry& serverEntry)
 {
     m_serverEntry = serverEntry;
@@ -40,6 +41,7 @@ bool SessionInfo::ParseHandshakeResponse(const string& response)
     // SSHPassword: <string>\n  (zero or one)
     // SSHHostKey: <string>\n   (zero or one)
     // SSHSessionID: <string>\n   (zero or one)
+    // Config: <json>\n   (one)
 
     static const char* UPGRADE_PREFIX = "Upgrade: ";
     static const char* PSK_PREFIX = "PSK: ";
@@ -52,6 +54,7 @@ bool SessionInfo::ParseHandshakeResponse(const string& response)
     static const char* SSH_OBFUSCATED_KEY_PREFIX = "SSHObfuscatedKey: ";
     static const char* HOMEPAGE_PREFIX = "Homepage: ";
     static const char* SERVER_PREFIX = "Server: ";
+    static const char* CONFIG_PREFIX = "Config: ";
 
     m_upgradeVersion.clear();
     m_psk.clear();
@@ -125,9 +128,78 @@ bool SessionInfo::ParseHandshakeResponse(const string& response)
             item.erase(0, strlen(SERVER_PREFIX));
             m_servers.push_back(item);
         }
+        else if (0 == item.find(CONFIG_PREFIX))
+        {
+            item.erase(0, strlen(CONFIG_PREFIX));
+            if (!ProcessConfig(item))
+            {
+                return false;
+            }
+        }
+    }
+    // TODO: more explicit validation?  Eg, got exactly one non-blank PSK
+
+    return true;
+}
+
+bool SessionInfo::ProcessConfig(const string& config_json)
+{
+    m_pageViewRegexes.clear();
+    m_httpsRequestRegexes.clear();
+
+    Json::Value config;
+    Json::Reader reader;
+    bool parsingSuccessful = reader.parse(config_json, config);
+    if (!parsingSuccessful)
+    {
+        string fail = reader.getFormattedErrorMessages();
+        my_print(false, _T("%s:%d: Page view regex parse failed: %S"), __TFUNCTION__, __LINE__, reader.getFormattedErrorMessages().c_str());
+        return false;
     }
 
-    // TODO: more explicit validation?  Eg, got exactly one non-blank PSK
+    // Page view regexes
+    try
+    {
+        Json::Value regexes = config["page_view_regexes"];
+
+        for (Json::Value::ArrayIndex i = 0; i < regexes.size(); i++)
+        {
+            RegexReplace rx_re;
+            rx_re.regex = regex(
+                            regexes[i].get("regex", "").asString(), 
+                            regex::ECMAScript | regex::icase | regex::optimize);
+            rx_re.replace = regexes[i].get("replace", "").asString();
+
+            m_pageViewRegexes.push_back(rx_re);
+        }
+    }
+    catch (exception& e)
+    {
+        my_print(false, _T("%s:%d: Page view regex parse exception: %S"), __TFUNCTION__, __LINE__, e.what());
+        return false;
+    }
+
+    // HTTPS request regexes
+    try
+    {
+        Json::Value regexes = config["https_request_regexes"];
+
+        for (Json::Value::ArrayIndex i = 0; i < regexes.size(); i++)
+        {
+            RegexReplace rx_re;
+            rx_re.regex = regex(
+                            regexes[i].get("regex", "").asString(), 
+                            regex::ECMAScript | regex::icase | regex::optimize);
+            rx_re.replace = regexes[i].get("replace", "").asString();
+
+            m_httpsRequestRegexes.push_back(rx_re);
+        }
+    }
+    catch (exception& e)
+    {
+        my_print(false, _T("%s:%d: Page view regex parse exception: %S"), __TFUNCTION__, __LINE__, e.what());
+        return false;
+    }
 
     return true;
 }

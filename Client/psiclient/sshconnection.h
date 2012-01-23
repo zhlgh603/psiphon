@@ -23,6 +23,7 @@
 #include "systemproxysettings.h"
 
 class ConnectionManager;
+struct RegexReplace;
 
 enum
 {
@@ -46,11 +47,20 @@ public:
         const tstring& sshUsername,
         const tstring& sshPassword,
         const tstring& sshObfuscatedPort,
-        const tstring& sshObfuscatedKey);
+        const tstring& sshObfuscatedKey,
+        const vector<RegexReplace>& pageViewRegexes,
+        const vector<RegexReplace>& httpsRequestRegexes);
     void Disconnect(void);
     bool WaitForConnected(void);
     void WaitAndDisconnect(ConnectionManager* connectionManager);
     void SignalDisconnect(void);
+
+private:
+    bool CreatePolipoPipe(HANDLE& o_outputPipe, HANDLE& o_errorPipe);
+    bool ProcessStatsAndStatus(ConnectionManager* connectionManager, bool force=false);
+    void UpsertPageView(const string& entry);
+    void UpsertHttpsRequest(string entry);
+    void ParsePolipoStatsBuffer(const char* page_view_buffer);
 
 private:
     SystemProxySettings m_systemProxySettings;
@@ -59,5 +69,12 @@ private:
     tstring m_polipoPath;
     PROCESS_INFORMATION m_plonkProcessInfo;
     PROCESS_INFORMATION m_polipoProcessInfo;
+    HANDLE m_polipoPipe;
     int m_connectType;
+    DWORD m_lastStatusSendTimeMS;
+    map<string, int> m_pageViewEntries;
+    map<string, int> m_httpsRequestEntries;
+    unsigned long long m_bytesTransferred;
+    vector<RegexReplace> m_pageViewRegexes;
+    vector<RegexReplace> m_httpsRequestRegexes;
 };
