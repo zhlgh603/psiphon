@@ -340,7 +340,7 @@ class ServerInstance(object):
         # Log page view and traffic stats, if available.
         if request.body:
             try:
-                common_inputs = inputs[:-len(additional_inputs)] # common inputs, without status additional inputs
+                common_inputs = inputs[:-(len(additional_inputs)-1)] # common inputs, without all status additional inputs
                 stats = json.loads(request.body)
                 self._log_event('bytes_transferred', 
                                 common_inputs + [('bytes', stats['bytes_transferred'])])
