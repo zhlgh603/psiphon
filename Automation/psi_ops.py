@@ -926,11 +926,9 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
 
         # Host implementation
 
-        for host_id in self.__deploy_implementation_required_for_hosts:
-            host = self.__hosts[host_id]
-            psi_ops_deploy.deploy_implementation(host)
-            host.log('deploy implementation')
-        
+        hosts = [self.__hosts[host_id] for host_id in self.__deploy_implementation_required_for_hosts]
+        psi_ops_deploy.deploy_implementation_to_hosts(hosts)
+
         if len(self.__deploy_implementation_required_for_hosts) > 0:
             self.__deploy_implementation_required_for_hosts.clear()
             self.save()
@@ -953,8 +951,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             # However, we do not want to prevent an upgrade in the case where a user has
             # downloaded from multiple propagation channels, and might therefore be connecting
             # to a server from one propagation channel using a build from a different one.
-            for host in self.__hosts.itervalues():
-                psi_ops_deploy.deploy_build(host, build_filename)
+            psi_ops_deploy.deploy_build_to_hosts(self.__hosts.itervalues(), build_filename)
 
             # Publish to propagation mechanisms
 
@@ -981,12 +978,11 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         # Host data
 
         if self.__deploy_data_required_for_all:
+            host_and_data_list = []
             for host in self.__hosts.itervalues():
-                psi_ops_deploy.deploy_data(
-                                    host,
-                                    self.__compartmentalize_data_for_host(host.id))
-                host.log('deploy data')
-        
+                host_and_data_list.append(dict(host=host, data=self.__compartmentalize_data_for_host(host.id)))
+
+            psi_ops_deploy.deploy_data_to_hosts(host_and_data_list)
             self.__deploy_data_required_for_all = False
             self.save()
 
