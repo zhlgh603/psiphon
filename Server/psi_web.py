@@ -45,61 +45,32 @@ import platform
 
 # ===== DB abstraction layer ===================================================
 
-# This bridges compatibility between the old and new database subsystems
+sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
+import psi_ops
 
-if os.path.isfile(os.path.join('..', 'Data', 'psi_db.py')):
-    sys.path.insert(0, os.path.abspath(os.path.join('..', 'Data')))
-    import psi_db
+psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
-    def db_get_region(client_ip_address):        
-        return psi_db.get_region(client_ip_address)
+def db_get_region(client_ip_address):
+    return psinet.get_region(client_ip_address)
 
-    def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
-        return psi_db.handshake(
-                    server_ip_address,
-                    client_ip_address,
-                    propagation_channel_id,
-                    sponsor_id,
-                    client_version,
-                    logger)
+def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
+    return psinet.handshake(
+                server_ip_address,
+                client_ip_address,
+                propagation_channel_id,
+                sponsor_id,
+                client_version,
+                logger)
 
-    def db_get_server(ip_address):
-        server = filter(lambda s : s.IP_Address == ip_address, psi_db.get_servers())
-        if len(server) == 1:
-            return (ip_address,
-                    server[0].Web_Server_Port,
-                    server[0].Web_Server_Secret,
-                    server[0].Web_Server_Certificate,
-                    server[0].Web_Server_Private_Key)
-        return None
-
-else:
-    sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
-    import psi_ops
-
-    psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
-
-    def db_get_region(client_ip_address):
-        return psinet.get_region(client_ip_address)
-
-    def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
-        return psinet.handshake(
-                    server_ip_address,
-                    client_ip_address,
-                    propagation_channel_id,
-                    sponsor_id,
-                    client_version,
-                    logger)
-
-    def db_get_server(ip_address):
-        server = psinet.get_server_by_ip_address(ip_address)
-        if server:
-            return (ip_address,
-                    server.web_server_port,
-                    server.web_server_secret,
-                    server.web_server_certificate,
-                    server.web_server_private_key)
-        return None
+def db_get_server(ip_address):
+    server = psinet.get_server_by_ip_address(ip_address)
+    if server:
+        return (ip_address,
+                server.web_server_port,
+                server.web_server_secret,
+                server.web_server_certificate,
+                server.web_server_private_key)
+    return None
     
 
 # ===== Helpers =====
