@@ -342,8 +342,10 @@ class ServerInstance(object):
             try:
                 common_inputs = inputs[:-(len(additional_inputs)-1)] # common inputs, without all status additional inputs
                 stats = json.loads(request.body)
-                self._log_event('bytes_transferred', 
-                                common_inputs + [('bytes', stats['bytes_transferred'])])
+                
+                if stats['bytes_transferred'] > 0:
+                    self._log_event('bytes_transferred', 
+                                    common_inputs + [('bytes', stats['bytes_transferred'])])
                 
                 for page_view in stats['page_views']:
                     self._log_event('page_views', 
