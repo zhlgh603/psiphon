@@ -98,7 +98,7 @@ def is_valid_ip_address(str):
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH']
+    return str in ['VPN', 'SSH', 'OSSH', 'None']
 
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
@@ -336,7 +336,8 @@ class ServerInstance(object):
 
     def speed(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('operation', lambda x: consists_of(x, string.letters)),
+        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
+                             ('operation', lambda x: consists_of(x, string.letters)),
                              ('milliseconds', lambda x: consists_of(x, string.digits)),
                              ('size', lambda x: consists_of(x, string.digits))]
         inputs = self._get_inputs(request, 'speed', additional_inputs)
