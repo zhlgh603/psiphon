@@ -25,6 +25,7 @@ import json
 
 # TODO: add support to server for indicating platform
 CLIENT_VERSION = 1
+LOCAL_SOCKS_PORT = 1080
 
 
 class Data(object):
@@ -83,12 +84,12 @@ def connect_to_server(data):
 
     ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
                                    handshake_response['SSHUsername'], handshake_response['SSHPassword'],
-                                   handshake_response['SSHHostKey'], '1080')
+                                   handshake_response['SSHHostKey'], str(LOCAL_SOCKS_PORT))
     ssh_connection.connect()
     ssh_connection.test_connection()
-    # TODO: server.connected()
+    server.connected('SSH')
     ssh_connection.wait_for_disconnect()
-    # TODO: server.disconnected()
+    server.disconnected('SSH')
 
 
 def connect():

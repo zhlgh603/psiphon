@@ -43,9 +43,10 @@ class Psiphon3Server(object):
         self.opener = urllib2.build_opener(handler)
 
     # handshake
+    # Note that self.servers may be updated with newly discovered servers after a successful handshake
     def handshake(self):
         # TODO: page view regexes
-        request_url = (self.common_request_url() % ('handshake',) + '&' +
+        request_url = (self._common_request_url() % ('handshake',) + '&' +
                        '&'.join(['known_server=%s' % (binascii.unhexlify(server).split(" ")[0],) for server in self.servers]))
         response = self.opener.open(request_url).read()
         handshake_response = {'Upgrade': '',
@@ -70,18 +71,44 @@ class Psiphon3Server(object):
                 # discovery
                 if value not in self.servers:
                     self.servers.insert(1, value)
+            if key == 'SSHSessionID':
+                self.ssh_session_id = value
 
         return handshake_response
 
     # TODO: download
 
-    # TODO: connected
+    # connected
+    # For SSH and OSSH, SSHSessionID from the handshake response is used when session_id is None
+    # For VPN, the VPN IP Address should be used for session_id (ie. 10.0.0.2)
+    def connected(self, relay_protocol, session_id=None):
+        assert relay_protocol in ['VPN','SSH','OSSH']
+        if not session_id and relay_protocol in ['SSH', 'OSSH']:
+            session_id = self.ssh_session_id
+        assert session_id is not None
+
+        request_url = (self._common_request_url() % ('connected',) +
+                       '&relay_protocol=%s&session_id=%s' % (relay_protocol, session_id))
+        self.opener.open(request_url)
+
+    # disconnected
+    # For SSH and OSSH, SSHSessionID from the handshake response is used when session_id is None
+    # For VPN, this should not be called
+    def disconnected(self, relay_protocol, session_id=None):
+        assert relay_protocol in ['VPN','SSH','OSSH']
+        if not session_id and relay_protocol in ['SSH', 'OSSH']:
+            session_id = self.ssh_session_id
+        assert session_id is not None
+
+        request_url = (self._common_request_url() % ('status',) +
+                       '&relay_protocol=%s&session_id=%s&connected=%s' % (relay_protocol, session_id, '0'))
+        self.opener.open(request_url)
 
     # TODO: failed
 
     # TODO: status
 
-    def common_request_url(self):
+    def _common_request_url(self):
         return 'https://%s:%s/%%s?server_secret=%s&propagation_channel_id=%s&sponsor_id=%s&client_version=%s' % (
             self.ip_address, self.web_server_port, self.web_server_secret,
             self.propagation_channel_id, self.sponsor_id, self.client_version)
