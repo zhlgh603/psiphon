@@ -22,25 +22,22 @@ import urllib2
 import httplib
 import ssl
 import socket
+import binascii
 
 
 #
 # Psiphon 3 Server API
 #
 
-# TODO: add support to server for indicating platform
-CLIENT_VERSION = 1
-
 class Psiphon3Server(object):
 
-    def __init__(self, ip_address, web_server_port, web_server_secret,
-                 web_server_certificate, propagation_channel_id, sponsor_id):
-        self.ip_address = ip_address
-        self.web_server_port = web_server_port
-        self.web_server_secret = web_server_secret
-        self.web_server_certificate = web_server_certificate
+    def __init__(self, server_entry, known_servers, propagation_channel_id,
+                 sponsor_id, client_version):
+        (self.ip_address, self.web_server_port, self.web_server_secret,
+         self.web_server_certificate) = binascii.unhexlify(server_entry).split(" ")
         self.propagation_channel_id = propagation_channel_id
         self.sponsor_id = sponsor_id
+        self.client_version = client_version
         # TODO: add proxy support
         handler = CertificateMatchingHTTPSHandler(self.web_server_certificate)
         self.opener = urllib2.build_opener(handler)
@@ -63,7 +60,7 @@ class Psiphon3Server(object):
                               'Homepage': []}
 
         for line in response.split('\n'):
-            key, value = line.split(': ')
+            key, value = line.split(': ', 1)
             if key in handshake_response.keys():
                 if type(handshake_response[key]) == list:
                     handshake_response[key].append(value)
@@ -83,7 +80,7 @@ class Psiphon3Server(object):
     def common_request_url(self):
         return 'https://%s:%s/%%s?server_secret=%s&propagation_channel_id=%s&sponsor_id=%s&client_version=%s' % (
             self.ip_address, self.web_server_port, self.web_server_secret,
-            self.propagation_channel_id, self.sponsor_id, CLIENT_VERSION)
+            self.propagation_channel_id, self.sponsor_id, self.client_version)
 
 
 #
