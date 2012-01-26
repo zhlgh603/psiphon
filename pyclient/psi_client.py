@@ -21,14 +21,15 @@
 from psi_api import Psiphon3Server
 from psi_ssh_connection import SSHConnection
 import json
-import binascii
 
 
-def connect_to_server(ip_address, web_server_port, web_server_secret,
-                      web_server_certificate, propagation_channel_id, sponsor_id):
+# TODO: add support to server for indicating platform
+CLIENT_VERSION = 1
 
-    server = Psiphon3Server(ip_address, web_server_port, web_server_secret,
-                            web_server_certificate, propagation_channel_id, sponsor_id)
+
+def connect_to_server(server_entry, known_servers, propagation_channel_id, sponsor_id):
+
+    server = Psiphon3Server(server_entry, known_servers, propagation_channel_id, sponsor_id, CLIENT_VERSION)
     handshake_response = server.handshake()
 
     home_pages = handshake_response['Homepage']
@@ -79,13 +80,14 @@ def connect():
             data = load_data()
             propagation_channel_id = data['propagation_channel_id']
             sponsor_id = data['sponsor_id']
-            server_entry = binascii.unhexlify(data['servers'][0]).split(" ")
+            server_entry = data['servers'][0]
+            known_servers = data['servers']
         except (IOError, ValueError, KeyError, TypeError) as error:
             print '\nPlease obtain a valid psi_client.dat file and try again.\n'
             raise
 
         try:
-            connect_to_server(*server_entry, propagation_channel_id=propagation_channel_id, sponsor_id=sponsor_id)
+            connect_to_server(server_entry, known_servers, propagation_channel_id, sponsor_id)
             break
         except Exception as error:
             print error
