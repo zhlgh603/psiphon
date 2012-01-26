@@ -334,6 +334,20 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
+    def speed(self, environ, start_response):
+        request = Request(environ)
+        additional_inputs = [('operation', lambda x: consists_of(x, string.letters)),
+                             ('milliseconds', lambda x: consists_of(x, string.digits)),
+                             ('size', lambda x: consists_of(x, string.digits))]
+        inputs = self._get_inputs(request, 'speed', additional_inputs)
+        if not inputs:
+            start_response('404 Not Found', [])
+            return []
+        self._log_event('speed', inputs)
+        # No action, this request is just for stats logging
+        start_response('200 OK', [])
+        return []
+
 
 def get_servers():
     # enumerate all interfaces with an IPv4 address and server entry
