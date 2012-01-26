@@ -32,6 +32,7 @@ import binascii
 class Psiphon3Server(object):
 
     def __init__(self, servers, propagation_channel_id, sponsor_id, client_version):
+        self.servers = servers
         (self.ip_address, self.web_server_port, self.web_server_secret,
          self.web_server_certificate) = binascii.unhexlify(servers[0]).split(" ")
         self.propagation_channel_id = propagation_channel_id
@@ -43,10 +44,10 @@ class Psiphon3Server(object):
 
     # handshake
     def handshake(self):
-        # TODO: known_servers
-        # TODO: discovery
         # TODO: page view regexes
-        response = self.opener.open(self.common_request_url() % ('handshake',)).read()
+        request_url = (self.common_request_url() % ('handshake',) + '&' +
+                       '&'.join(['known_server=%s' % (binascii.unhexlify(server).split(" ")[0],) for server in self.servers]))
+        response = self.opener.open(request_url).read()
         handshake_response = {'Upgrade': '',
                               'SSHPort': '',
                               'SSHUsername': '',
@@ -65,6 +66,10 @@ class Psiphon3Server(object):
                     handshake_response[key].append(value)
                 else:
                     handshake_response[key] = value
+            if key == 'Server':
+                # discovery
+                if value not in self.servers:
+                    self.servers.insert(1, value)
 
         return handshake_response
 
