@@ -31,10 +31,9 @@ import binascii
 
 class Psiphon3Server(object):
 
-    def __init__(self, server_entry, known_servers, propagation_channel_id,
-                 sponsor_id, client_version):
+    def __init__(self, servers, propagation_channel_id, sponsor_id, client_version):
         (self.ip_address, self.web_server_port, self.web_server_secret,
-         self.web_server_certificate) = binascii.unhexlify(server_entry).split(" ")
+         self.web_server_certificate) = binascii.unhexlify(servers[0]).split(" ")
         self.propagation_channel_id = propagation_channel_id
         self.sponsor_id = sponsor_id
         self.client_version = client_version
