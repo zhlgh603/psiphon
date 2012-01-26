@@ -27,10 +27,53 @@ import json
 CLIENT_VERSION = 1
 
 
-def connect_to_server(server_entry, known_servers, propagation_channel_id, sponsor_id):
+class Data(object):
 
-    server = Psiphon3Server(server_entry, known_servers, propagation_channel_id, sponsor_id, CLIENT_VERSION)
+    def __init__(self, data):
+        self.data = data
+
+    @staticmethod
+    def load():
+        try:
+            with open('psi_client.dat', 'r') as data_file:
+                data = Data(json.loads(data_file.read()))
+            # Validate
+            data.servers()[0]
+            data.propagation_channel_id()
+            data.sponsor_id()
+        except (IOError, ValueError, KeyError, IndexError, TypeError) as error:
+            print '\nPlease obtain a valid psi_client.dat file and try again.\n'
+            raise
+        return data
+
+    def save(self):
+        with open('psi_client.dat', 'w') as data_file:
+            data_file.write(json.dumps(self.data))
+
+    def servers(self):
+        return self.data['servers']
+
+    def propagation_channel_id(self):
+        return self.data['propagation_channel_id']
+
+    def sponsor_id(self):
+        return self.data['sponsor_id']
+
+    def move_first_server_entry_to_bottom(self):
+        servers = self.servers()
+        if len(servers) > 1:
+            servers.append(servers.pop(0))
+            return True
+        else:
+            return False
+
+
+def connect_to_server(data):
+
+    server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION)
     handshake_response = server.handshake()
+    # handshake might update the server list with newly discovered servers
+    data.save()
 
     home_pages = handshake_response['Homepage']
     if len(home_pages) > 0:
@@ -48,51 +91,20 @@ def connect_to_server(server_entry, known_servers, propagation_channel_id, spons
     # TODO: server.disconnected()
 
 
-def load_data():
-
-    with open('psi_client.dat', 'r') as data_file:
-        data = json.loads(data_file.read())
-        return data
-
-
-def save_data(data):
-
-    with open('psi_client.dat', 'w') as data_file:
-        data_file.write(json.dumps(data))
-
-
-def move_first_server_entry_to_bottom():
-
-    data = load_data()
-    servers = data['servers']
-    if len(servers) > 1:
-        servers.append(servers.pop(0))
-        save_data(data)
-        return True
-    else:
-        return False
-
-
 def connect():
 
     while True:
-        try:
-            data = load_data()
-            propagation_channel_id = data['propagation_channel_id']
-            sponsor_id = data['sponsor_id']
-            server_entry = data['servers'][0]
-            known_servers = data['servers']
-        except (IOError, ValueError, KeyError, TypeError) as error:
-            print '\nPlease obtain a valid psi_client.dat file and try again.\n'
-            raise
+
+        data = Data.load()
 
         try:
-            connect_to_server(server_entry, known_servers, propagation_channel_id, sponsor_id)
+            connect_to_server(data)
             break
         except Exception as error:
             print error
-            if not move_first_server_entry_to_bottom():
+            if not data.move_first_server_entry_to_bottom():
                 break
+            data.save()
             print 'Trying next server...'
 
 
