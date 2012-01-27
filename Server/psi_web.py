@@ -98,7 +98,7 @@ def is_valid_ip_address(str):
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH', 'None']
+    return str in ['VPN', 'SSH', 'OSSH', '(None)']
 
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
@@ -317,7 +317,11 @@ class ServerInstance(object):
                 if stats['bytes_transferred'] > 0:
                     self._log_event('bytes_transferred', 
                                     common_inputs + [('bytes', stats['bytes_transferred'])])
-                
+
+                # Note: no input validation on page/domain.
+                # Any string is accepted (regex transform may result in arbitrary string).
+                # Stats processor must handle this input with care.
+
                 for page_view in stats['page_views']:
                     self._log_event('page_views', 
                                     common_inputs + [('page', page_view['page']),
@@ -336,8 +340,12 @@ class ServerInstance(object):
 
     def speed(self, environ, start_response):
         request = Request(environ)
+
+        # Note: 'info' is arbitrary string. See note above.
+
         additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('operation', lambda x: consists_of(x, string.letters)),
+                             ('info', lambda x: True),
                              ('milliseconds', lambda x: consists_of(x, string.digits)),
                              ('size', lambda x: consists_of(x, string.digits))]
         inputs = self._get_inputs(request, 'speed', additional_inputs)
