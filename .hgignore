@@ -1,0 +1,46 @@
+.hgignore
+.project
+.pydevproject
+
+Client/Release
+Client/psiclient/Release
+Client/Debug
+Client/psiclient/Debug
+Client/ipch
+Client/psiclient.opensdf
+Client/psiclient.sdf
+Client/psiclient.suo
+Client/psiclient/psiclient.vcxproj.user
+
+Automation/Builds
+
+syntax: glob
+
+# Numerous always-ignore extensions
+*.diff
+*.err
+*.orig
+*.log
+*.rej
+*.swo
+*.swp
+*.vi
+*.pyc
+*~
+
+# OS or Editor folders
+.DS_Store
+.cache
+.settings
+.tmproj
+nbproject
+Thumbs.db
+
+# Folders to ignore
+.hg
+.svn
+.CVS
+intermediate
+publish
+.idea
+
