@@ -341,10 +341,10 @@ class ServerInstance(object):
     def speed(self, environ, start_response):
         request = Request(environ)
 
-        # Note: 'info' is arbitrary string. See note above.
+        # Note: 'operation' and 'info' are arbitrary strings. See note above.
 
         additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('operation', lambda x: consists_of(x, string.letters)),
+                             ('operation', lambda x: True),
                              ('info', lambda x: True),
                              ('milliseconds', lambda x: consists_of(x, string.digits)),
                              ('size', lambda x: consists_of(x, string.digits))]
