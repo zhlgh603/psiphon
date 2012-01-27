@@ -98,7 +98,7 @@ def is_valid_ip_address(str):
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH', '(None)']
+    return str in ['VPN', 'SSH', 'OSSH', '(NONE)']
 
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
