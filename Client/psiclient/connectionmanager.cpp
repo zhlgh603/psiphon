@@ -945,7 +945,7 @@ tstring ConnectionManager::GetSplitTunnelingFileName()
     int ret = GetTempPath(MAX_PATH, tempPath);
     if (ret > MAX_PATH-14 || ret == 0)
     {
-        return NULL;
+        return _T("");
     }
 
     if(NULL != PathCombine(filePath, tempPath, SPLIT_TUNNELING_FILE_NAME))
