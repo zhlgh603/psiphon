@@ -48,6 +48,7 @@ public:
         const tstring& sshPassword,
         const tstring& sshObfuscatedPort,
         const tstring& sshObfuscatedKey,
+        const tstring& splitTunnelingFileName,
         const vector<RegexReplace>& pageViewRegexes,
         const vector<RegexReplace>& httpsRequestRegexes);
     void Disconnect(void);
