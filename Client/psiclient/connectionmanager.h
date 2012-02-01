@@ -93,6 +93,8 @@ private:
 
     tstring GetVPNConnectRequestPath(void);
     tstring GetVPNFailedRequestPath(void);
+    tstring GetSplitTunnelingFileName(void);
+
     bool CurrentServerVPNCapable(void);
     VPNConnectionState GetVPNConnectionState(void);
     HANDLE GetVPNConnectionStateChangeEvent(void);
@@ -119,5 +121,4 @@ private:
     HANDLE m_thread;
     bool m_currentSessionSkippedVPN;
     time_t m_startingTime;
-    string m_splitTunnelRoutes;
 };
