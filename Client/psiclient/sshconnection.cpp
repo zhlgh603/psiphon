@@ -214,6 +214,7 @@ bool SSHConnection::Connect(
         const tstring& sshPassword,
         const tstring& sshObfuscatedPort,
         const tstring& sshObfuscatedKey,
+        const tstring& splitTunnelingFileName,
         const vector<RegexReplace>& pageViewRegexes,
         const vector<RegexReplace>& httpsRequestRegexes)
 {    
@@ -267,6 +268,9 @@ bool SSHConnection::Connect(
 
         plonkCommandLine = m_plonkPath
                                 + _T(" -ssh -C -N -batch")
+#ifdef _DEBUG
+                                + _T(" -v ") //verbose output
+#endif
                                 + _T(" -P ") + sshObfuscatedPort
                                 + _T(" -z -Z ") + sshObfuscatedKey
                                 + _T(" -l ") + sshUsername
@@ -282,6 +286,9 @@ bool SSHConnection::Connect(
 
         plonkCommandLine = m_plonkPath
                                 + _T(" -ssh -C -N -batch")
+#ifdef _DEBUG
+                                + _T(" -v ") //verbose output
+#endif
                                 + _T(" -P ") + sshServerPort
                                 + _T(" -l ") + sshUsername
                                 + _T(" -pw ") + sshPassword
@@ -326,13 +333,19 @@ bool SSHConnection::Connect(
     // Start polipo, using plonk's SOCKS proxy, with no disk cache and no web admin interface
     // (same recommended settings as Tor: http://www.pps.jussieu.fr/~jch/software/polipo/tor.html
 
+    //TODO: the DNS for split tunneling is hardcoded right now. Make it a part of handshake or 
+    //create another tunnel for DNS in the future?
+
     tstring polipoCommandLine = m_polipoPath
                                 + _T(" psiphonStats=true")
                                 + _T(" proxyPort=") + POLIPO_HTTP_PROXY_PORT
                                 + _T(" socksParentProxy=127.0.0.1:") + PLONK_SOCKS_PROXY_PORT
                                 + _T(" diskCacheRoot=\"\"")
                                 + _T(" disableLocalInterface=true")
+                                + _T(" splitTunnelingFile=\"") + splitTunnelingFileName + _T("\"")
+                                + _T(" splitTunnelingDnsServer=8.8.8.8")
                                 + _T(" logLevel=1");
+
 
     STARTUPINFO polipoStartupInfo;
     ZeroMemory(&polipoStartupInfo, sizeof(polipoStartupInfo));
