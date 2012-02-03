@@ -29,6 +29,7 @@
 #include "psiclient.h"
 #include "connectionmanager.h"
 #include "embeddedvalues.h"
+#include "transport.h"
 
 
 //==== Globals ================================================================
