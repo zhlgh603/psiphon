@@ -26,14 +26,42 @@
  ITransport
 ******************************************************************************/
 
-ITransport::ITransport(ITransportManager* manager)
-    : m_manager(manager) 
+ITransport::ITransport()
+    : m_systemProxySettings(NULL)
 {
 }
 
-void ITransport::Connect(SessionInfo sessionInfo)
+void ITransport::Connect(
+                    SessionInfo sessionInfo, 
+                    SystemProxySettings* systemProxySettings,
+                    const bool& stopSignalFlag)
 {
-    TransportConnect(sessionInfo);
+    m_sessionInfo = sessionInfo;
+    m_systemProxySettings = systemProxySettings;
+    assert(m_systemProxySettings);
+
+    if (!IWorkerThread::Start(stopSignalFlag))
+    {
+        throw TransportFailed();
+    }
 }
 
+bool ITransport::DoStart()
+{
+    try
+    {
+        TransportConnect(m_sessionInfo, m_systemProxySettings);
+    }
+    catch(...)
+    {
+        return false;
+    }
 
+    return true;
+}
+
+void ITransport::DoStop()
+{
+    Cleanup();
+    m_systemProxySettings = 0;
+}
