@@ -297,7 +297,8 @@ class ServerInstance(object):
     def status(self, environ, start_response):
         request = Request(environ)
         additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('session_id', lambda x: consists_of(x, string.hexdigits)),
+                             ('session_id', lambda x: is_valid_ip_address(x) or
+                                                      consists_of(x, string.hexdigits)),
                              ('connected', lambda x: x in ['0', '1'])]
         inputs = self._get_inputs(request, 'status', additional_inputs)
         if not inputs:
