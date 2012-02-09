@@ -35,7 +35,7 @@ import netifaces
 import socket
 import json
 from cherrypy import wsgiserver, HTTPError
-from cherrypy.wsgiserver import ssl_builtin
+from cherrypy.wsgiserver import ssl_pyopenssl
 from webob import Request
 import psi_psk
 import psi_config
@@ -389,6 +389,7 @@ class WebServerThread(threading.Thread):
         self.private_key = private_key
         self.server = None
         self.certificate_temp_file = None
+        self.private_key_temp_file = None
         self.server_threads = server_threads
 
     def stop_server(self):
@@ -409,6 +410,9 @@ class WebServerThread(threading.Thread):
             # closing the temp file auto deletes it (NOTE: not secure wipe)
             self.certificate_temp_file.close()
             self.certificate_temp_file = None
+        if self.private_key_temp_file:
+            self.private_key_temp_file.close()
+            self.private_key_temp_file = None
 
     def run(self):
         # While loop is for recovery from 'unknown ca' issue.
@@ -433,16 +437,21 @@ class WebServerThread(threading.Thread):
                 # Lifetime of cert/private key temp file is lifetime of server
                 # file is closed by ServerInstance, and that auto deletes tempfile
                 self.certificate_temp_file = tempfile.NamedTemporaryFile()
+                self.private_key_temp_file = tempfile.NamedTemporaryFile()
                 self.certificate_temp_file.write(
-                    '-----BEGIN RSA PRIVATE KEY-----\n' +
-                    '\n'.join(split_len(self.private_key, 64)) +
-                    '\n-----END RSA PRIVATE KEY-----\n' +
                     '-----BEGIN CERTIFICATE-----\n' +
                     '\n'.join(split_len(self.certificate, 64)) +
                     '\n-----END CERTIFICATE-----\n');
                 self.certificate_temp_file.flush()
-                self.server.ssl_adapter = ssl_builtin.BuiltinSSLAdapter(
-                                              self.certificate_temp_file.name, None)
+                self.private_key_temp_file.write(
+                    '-----BEGIN RSA PRIVATE KEY-----\n' +
+                    '\n'.join(split_len(self.private_key, 64)) +
+                    '\n-----END RSA PRIVATE KEY-----\n');
+                self.private_key_temp_file.flush()
+                self.server.ssl_adapter = ssl_pyopenssl.pyOpenSSLAdapter(
+                                              self.certificate_temp_file.name,
+                                              self.private_key_temp_file.name,
+                                              None)
                 # Blocks until server stopped
                 syslog.syslog(syslog.LOG_INFO, 'started %s' % (self.ip_address,))
                 self.server.start()
