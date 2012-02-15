@@ -55,6 +55,7 @@ except ImportError:
 
 #==== Session Database ========================================================
 
+SSH_PASSWORD_BYTE_LENGTH = 32 # TODO: common config with psi_ops_install.py
 SESSION_DB_HOST = 'localhost'
 SESSION_DB_PORT = 6379
 SESSION_DB_INDEX = 0

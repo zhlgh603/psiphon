@@ -43,30 +43,36 @@ try:
     # Client sends a session ID prepended to the SSH password.
     # Extract the sesssion ID, and then perform standard PAM
     # authentication with the username and remaining password.
+    # Backwards compatibility case: if the password length is
+    # not correct, skip the session ID logic.
 
     authtok = sys.stdin.readline()
-    session_id = authtok[0:SESSION_ID_LENGTH]
-    password = authtok[SESSION_ID_LENGTH:]
 
-    if (len(session_id) != SESSION_ID_LENGTH or
-        0 != len(filter(lambda x : x not in SESSION_ID_CHARACTERS, session_id))):
-        sys.exit(1)
+    if len(authtok) == 2*(SESSION_ID_LENGTH + psi_config.SSH_PASSWORD_BYTE_LENGTH):
+        session_id = authtok[0:SESSION_ID_LENGTH]
+        password = authtok[SESSION_ID_LENGTH:]
+        if 0 != len(filter(lambda x : x not in SESSION_ID_CHARACTERS, session_id)):
+            sys.exit(1)
+    else:
+        session_id = None
+        password = authtok
 
     try:
         pam.authenticate(user, password)
     except pam.PamException as e:
         sys.exit(1)
 
-    # Determine the user's region by client IP address and store
-    # it in a lookup database keyed by session ID.
-
-    rhost = os.environ['PAM_RHOST']
-    region = psi_geoip.get_region(rhost)
-
-    r = redis.StrictRedis(
-            host=SESSION_DB_HOST, port=SESSION_DB_PORT, db=SESSION_DB_INDEX)
-
-    r.setex(SESSION_EXPIRE_SECONDS, session_id, region)
+    if session_id:
+        # Determine the user's region by client IP address and store
+        # it in a lookup database keyed by session ID.
+    
+        rhost = os.environ['PAM_RHOST']
+        region = psi_geoip.get_region(rhost)
+    
+        r = redis.StrictRedis(
+                host=SESSION_DB_HOST, port=SESSION_DB_PORT, db=SESSION_DB_INDEX)
+    
+        r.setex(SESSION_EXPIRE_SECONDS, session_id, region)
 
 except Exception as e:
     for line in traceback.format_exc().split('\n'):
