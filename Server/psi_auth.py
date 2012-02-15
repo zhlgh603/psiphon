@@ -26,14 +26,10 @@ import syslog
 import traceback
 import redis
 import psi_config
-
-
-USERNAME_PREFIX = 'psiphon'
-GEOIP_DATABASE_FILE = '/usr/local/share/GeoIP/GeoIPCity.dat'
+import psi_geoip
 
 
 syslog.openlog(psi_config.SYSLOG_IDENT, syslog.LOG_NDELAY, psi_config.SYSLOG_FACILITY)
-
 
 try:
     user = os.environ['PAM_USER']
@@ -41,7 +37,7 @@ try:
     # Only apply this logic to the 'psiphon' user accounts;
     # system accounts still use normal authentication stack.
 
-    if not user.startswith(USERNAME_PREFIX):
+    if not user.startswith('psiphon'):
         sys.exit(1)
 
     # Client sends a session ID prepended to the SSH password.
@@ -65,10 +61,7 @@ try:
     # it in a lookup database keyed by session ID.
 
     rhost = os.environ['PAM_RHOST']
-    region = GeoIP.open(
-                 file,
-                 GeoIP.GEOIP_MEMORY_CACHE).record_by_name(
-                     rhost)['country_code']
+    region = psi_geoip.get_region(rhost)
 
     r = redis.StrictRedis(
             host=SESSION_DB_HOST, port=SESSION_DB_PORT, db=SESSION_DB_INDEX)
