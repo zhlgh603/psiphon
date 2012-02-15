@@ -39,6 +39,7 @@ from cherrypy.wsgiserver import ssl_pyopenssl
 from webob import Request
 import psi_psk
 import psi_config
+import psi_geoip
 import sys
 import traceback
 import platform
@@ -50,9 +51,6 @@ sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
 import psi_ops
 
 psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
-
-def db_get_region(client_ip_address):
-    return psinet.get_region(client_ip_address)
 
 def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
     return psinet.handshake(
@@ -139,7 +137,7 @@ class ServerInstance(object):
         client_ip_address = request.remote_addr
         region = 'None'
         if client_ip_address not in ['localhost', '127.0.0.1']:
-            region = db_get_region(client_ip_address)
+            region = psi_geoip.get_region(client_ip_address)
         elif request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
             if not consists_of(client_session_id, string.hexdigits):
