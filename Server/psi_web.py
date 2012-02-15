@@ -42,6 +42,7 @@ import psi_config
 import sys
 import traceback
 import platform
+import redis
 
 # ===== DB abstraction layer ===================================================
 
@@ -111,6 +112,8 @@ def split_len(seq, length):
 class ServerInstance(object):
 
     def __init__(self, ip_address, server_secret):
+        self.redis = redis.StrictRedis(
+            host=SESSION_DB_HOST, port=SESSION_DB_PORT, db=SESSION_DB_INDEX)
         self.server_ip_address = ip_address
         self.server_secret = server_secret
         self.COMMON_INPUTS = [
@@ -125,10 +128,28 @@ class ServerInstance(object):
 
         input_values = []
 
-        # Add server IP address and client region for logging
+        # Add server IP address for logging
         input_values.append(('server_ip_address', self.server_ip_address))
+
+        # Log client region (but not IP address)
+        # If the peer is localhost, the web request is coming through the
+        # tunnel. In this case, check if the client provided a client_session_id
+        # and check if there's a corresponding region in the tunnel session
+        # database
         client_ip_address = request.remote_addr
-        input_values.append(('client_region', db_get_region(client_ip_address)))
+        region = 'None'
+        if client_ip_address not in ['localhost', '127.0.0.1']:
+            region = db_get_region(client_ip_address)
+        elif request.params.has_key('client_session_id'):
+            client_session_id = request.params['client_session_id']
+            if not consists_of(client_session_id, string.hexdigits):
+                syslog.syslog(
+                    syslog.LOG_ERR,
+                    'Invalid client_session_id in %s [%s]' % (request_name, str(request.params)))
+                return False
+            region = self.redis.get(client_session_id) or region
+
+        input_values.append(('client_region', region))            
 
         # Check for each expected input
         for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:

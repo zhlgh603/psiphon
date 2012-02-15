@@ -52,3 +52,12 @@ try:
 
 except ImportError:
     pass
+
+#==== Session Database ========================================================
+
+SESSION_DB_HOST = 'localhost'
+SESSION_DB_PORT = 6379
+SESSION_DB_INDEX = 0
+SESSION_TIMEOUT_SECONDS = 2592000 # Discard session_ids older than one month
+SESSION_ID_LENGTH = 32
+SESSION_ID_CHARACTERS = string.hexdigits
