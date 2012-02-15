@@ -219,7 +219,7 @@ void SSHTransportBase::TransportConnectHelper(
         throw TransportFailed();
     }
 
-    systemProxySettings->SetHttpProxyPort(PLONK_SOCKS_PROXY_PORT);
+    systemProxySettings->SetSocksProxyPort(PLONK_SOCKS_PROXY_PORT);
 }
 
 bool SSHTransportBase::IsServerSSHCapable(const SessionInfo& sessionInfo) const
