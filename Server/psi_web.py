@@ -90,7 +90,7 @@ def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, s
     
     # We only get the PSK now, so it has to be added to the config object
     psk = psi_psk.set_psk(self.server_ip_address)
-    config['psk'] = psk
+    config['l2tp_ipsec_psk'] = psk
     output.append('PSK: %s' % (psk,))
 
     # The entire config is JSON encoded and included as well.
