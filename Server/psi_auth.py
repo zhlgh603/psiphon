@@ -80,8 +80,8 @@ try:
                 port=psi_config.SESSION_DB_PORT,
                 db=psi_config.SESSION_DB_INDEX)
     
-        #r.setex(psi_config.SESSION_EXPIRE_SECONDS, session_id, region)
         r.set(session_id, region)
+        r.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
 
 except Exception as e:
     for line in traceback.format_exc().split('\n'):
