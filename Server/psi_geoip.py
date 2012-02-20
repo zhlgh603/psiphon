@@ -21,7 +21,7 @@ import os
 import GeoIP
 
 
-def get_region(self, network_address):
+def get_region(network_address):
     try:
         region = None
         # Use the commercial "city" database is available
