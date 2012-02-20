@@ -45,70 +45,13 @@ import traceback
 import platform
 import redis
 
-# ===== DB abstraction layer ===================================================
+# ===== PSINET database ===================================================
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
 import psi_ops
 
 psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
-def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
-    config = psinet.handshake(
-                server_ip_address,
-                client_ip_address,
-                propagation_channel_id,
-                sponsor_id,
-                client_version,
-                logger)
-                
-    # Legacy handshake output is a series of Name:Value lines returned to 
-    # the client. That format will continue to be supported (old client 
-    # versions expect it), but the new format of a JSON-ified object will
-    # also be output.
-
-    output = []
-
-    for homepage_url in config['homepages']:
-        output.append('Homepage: %s' % (homepage_url,))
-
-    if config['upgrade_client_version']:
-        output.append('Upgrade: %s' % (config['upgrade_client_version'],))
-                
-    for encoded_server_entry in config['encoded_server_list']:
-        output.append('Server: %s' % (encoded_server_entry,))
-
-    if config['ssh_host_key']:
-        output.append('SSHPort: %s' % (config['ssh_port'],))
-        output.append('SSHUsername: %s' % (config['ssh_username'],))
-        output.append('SSHPassword: %s' % (config['ssh_password'],))
-        output.append('SSHHostKey: %s' % (config['ssh_host_key'],))
-        output.append('SSHSessionID: %s' % (config['ssh_session_id'],))
-        # Obfuscated SSH fields are optional
-        if server.ssh_obfuscated_port:
-            output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
-            output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
-    
-    # We only get the PSK now, so it has to be added to the config object
-    psk = psi_psk.set_psk(self.server_ip_address)
-    config['l2tp_ipsec_psk'] = psk
-    output.append('PSK: %s' % (psk,))
-
-    # The entire config is JSON encoded and included as well.
-
-    output.append('Config: ' + json.dumps(config))
-
-    return output
-
-def db_get_server(ip_address):
-    server = psinet.get_server_by_ip_address(ip_address)
-    if server:
-        return (ip_address,
-                server.web_server_port,
-                server.web_server_secret,
-                server.web_server_certificate,
-                server.web_server_private_key)
-    return None
-    
 
 # ===== Helpers =====
 
@@ -149,7 +92,9 @@ class ServerInstance(object):
 
     def __init__(self, ip_address, server_secret):
         self.redis = redis.StrictRedis(
-            host=SESSION_DB_HOST, port=SESSION_DB_PORT, db=SESSION_DB_INDEX)
+            host=psi_config.SESSION_DB_HOST,
+            port=psi_config.SESSION_DB_PORT,
+            db=psi_config.SESSION_DB_INDEX)
         self.server_ip_address = ip_address
         self.server_secret = server_secret
         self.COMMON_INPUTS = [
@@ -266,17 +211,53 @@ class ServerInstance(object):
             self._log_event('discovery',
                              inputs + [('server_ip_address', server_ip_address),
                                        ('unknown', unknown)])
-        lines = db_handshake(
+
+        config = psinet.handshake(
                     self.server_ip_address,
                     client_ip_address,
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_version'],
-                    logger=discovery_logger)
+                    event_logger=discovery_logger)
+                    
+        output = []
+
+        # Legacy handshake output is a series of Name:Value lines returned to 
+        # the client. That format will continue to be supported (old client 
+        # versions expect it), but the new format of a JSON-ified object will
+        # also be output.
+
+        for homepage_url in config['homepages']:
+            output.append('Homepage: %s' % (homepage_url,))
+
+        if config['upgrade_client_version']:
+            output.append('Upgrade: %s' % (config['upgrade_client_version'],))
+                    
+        for encoded_server_entry in config['encoded_server_list']:
+            output.append('Server: %s' % (encoded_server_entry,))
+
+        if config['ssh_host_key']:
+            output.append('SSHPort: %s' % (config['ssh_port'],))
+            output.append('SSHUsername: %s' % (config['ssh_username'],))
+            output.append('SSHPassword: %s' % (config['ssh_password'],))
+            output.append('SSHHostKey: %s' % (config['ssh_host_key'],))
+            output.append('SSHSessionID: %s' % (config['ssh_session_id'],))
+            # Obfuscated SSH fields are optional
+            if config.has_key('ssh_obfuscated_port'):
+                output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
+                output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
+        
+        psk = psi_psk.set_psk(self.server_ip_address)
+        config['l2tp_ipsec_psk'] = psk
+        output.append('PSK: %s' % (psk,))
+
+        # The entire config is JSON encoded and included as well.
+
+        output.append('Config: ' + json.dumps(config))
         
         response_headers = [('Content-type', 'text/plain')]
         start_response('200 OK', response_headers)
-        return ['\n'.join(lines)]
+        return ['\n'.join(output)]
 
     def download(self, environ, start_response):
         # NOTE: currently we ignore client_version and just download whatever
@@ -425,9 +406,14 @@ def get_servers():
             if (interface.find('ipsec') == -1 and interface.find('mast') == -1 and
                     netifaces.ifaddresses(interface).has_key(netifaces.AF_INET)):
                 interface_ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
-                server = db_get_server(interface_ip_address)
+                server = psinet.get_server_by_ip_address(interface_ip_address)
                 if server:
-                    servers.append(server)
+                    servers.append(
+                        (interface_ip_address,
+                         server.web_server_port,
+                         server.web_server_secret,
+                         server.web_server_certificate,
+                         server.web_server_private_key))
         except ValueError as e:
             if str(e) != 'You must specify a valid interface name.':
                 raise
