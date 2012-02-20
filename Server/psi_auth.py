@@ -46,11 +46,17 @@ try:
     # Backwards compatibility case: if the password length is
     # not correct, skip the session ID logic.
 
-    authtok = sys.stdin.readline()
+    authtok = sys.stdin.readline().rstrip()
 
-    if len(authtok) == 2*(psi_config.SESSION_ID_LENGTH + psi_config.SSH_PASSWORD_BYTE_LENGTH):
-        session_id = authtok[0:psi_config.SESSION_ID_LENGTH]
-        password = authtok[psi_config.SESSION_ID_LENGTH:]
+    # Two hex characters per byte, plus pam_exec adds a null character
+    expected_authtok_length = (
+        2*(psi_config.SESSION_ID_BYTE_LENGTH +
+           psi_config.SSH_PASSWORD_BYTE_LENGTH)
+        + 1)
+        
+    if len(authtok) == expected_authtok_length:
+        session_id = authtok[0:psi_config.SESSION_ID_BYTE_LENGTH*2]
+        password = authtok[psi_config.SESSION_ID_BYTE_LENGTH*2:]
         if 0 != len(filter(lambda x : x not in psi_config.SESSION_ID_CHARACTERS, session_id)):
             sys.exit(1)
     else:
@@ -74,7 +80,8 @@ try:
                 port=psi_config.SESSION_DB_PORT,
                 db=psi_config.SESSION_DB_INDEX)
     
-        r.setex(psi_config.SESSION_EXPIRE_SECONDS, session_id, region)
+        #r.setex(psi_config.SESSION_EXPIRE_SECONDS, session_id, region)
+        r.set(session_id, region)
 
 except Exception as e:
     for line in traceback.format_exc().split('\n'):
