@@ -48,10 +48,10 @@ try:
 
     authtok = sys.stdin.readline()
 
-    if len(authtok) == 2*(SESSION_ID_LENGTH + psi_config.SSH_PASSWORD_BYTE_LENGTH):
-        session_id = authtok[0:SESSION_ID_LENGTH]
-        password = authtok[SESSION_ID_LENGTH:]
-        if 0 != len(filter(lambda x : x not in SESSION_ID_CHARACTERS, session_id)):
+    if len(authtok) == 2*(psi_config.SESSION_ID_LENGTH + psi_config.SSH_PASSWORD_BYTE_LENGTH):
+        session_id = authtok[0:psi_config.SESSION_ID_LENGTH]
+        password = authtok[psi_config.SESSION_ID_LENGTH:]
+        if 0 != len(filter(lambda x : x not in psi_config.SESSION_ID_CHARACTERS, session_id)):
             sys.exit(1)
     else:
         session_id = None
@@ -70,9 +70,11 @@ try:
         region = psi_geoip.get_region(rhost)
     
         r = redis.StrictRedis(
-                host=SESSION_DB_HOST, port=SESSION_DB_PORT, db=SESSION_DB_INDEX)
+                host=psi_config.SESSION_DB_HOST,
+                port=psi_config.SESSION_DB_PORT,
+                db=psi_config.SESSION_DB_INDEX)
     
-        r.setex(SESSION_EXPIRE_SECONDS, session_id, region)
+        r.setex(psi_config.SESSION_EXPIRE_SECONDS, session_id, region)
 
 except Exception as e:
     for line in traceback.format_exc().split('\n'):
