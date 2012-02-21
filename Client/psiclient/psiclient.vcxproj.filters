@@ -93,6 +93,7 @@
     <ClInclude Include="3rdParty\json\json.h">
       <Filter>json</Filter>
     </ClInclude>
+    <ClInclude Include="limitsingleinstance.h" />
     <ClInclude Include="server_request.h" />
     <ClInclude Include="transport_connection.h" />
   </ItemGroup>
