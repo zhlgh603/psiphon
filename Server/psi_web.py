@@ -119,7 +119,7 @@ class ServerInstance(object):
         # database
         client_ip_address = request.remote_addr
         region = 'None'
-        if client_ip_address not in ['localhost', '127.0.0.1']:
+        if client_ip_address not in ['localhost', '127.0.0.1', self.server_ip_address]:
             region = psi_geoip.get_region(client_ip_address)
         elif request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
