@@ -372,7 +372,11 @@ class ServerInstance(object):
                                                      ('count', https_req['count'])])
             except:
                 start_response('403 Forbidden', [])
-        
+
+        # Clean up session data
+        if request.params['connected'] == '0' and request.params.has_key('client_session_id'):
+            self.redis.delete(request.params['client_session_id'])
+
         # No action, this request is just for stats logging
         start_response('200 OK', [])
         return []
