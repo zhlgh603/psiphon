@@ -56,6 +56,7 @@ request through them.
 #include "transport_registry.h"
 #include "httpsrequest.h"
 #include "transport_connection.h"
+#include "psiclient.h"
 
 
 ServerRequest::ServerRequest()
@@ -109,7 +110,7 @@ bool ServerRequest::MakeRequest(
     // The ports we'll try to connect to directly, in order.
     vector<int> ports;
     ports.push_back(sessionInfo.GetWebPort());
-    ports.push_back(443);
+    ports.push_back(443); // Also try the standard HTTPS port.
     vector<int>::const_iterator port_iter;
     for (port_iter = ports.begin(); port_iter != ports.end(); port_iter++)
     {
@@ -128,6 +129,8 @@ bool ServerRequest::MakeRequest(
         {
             return true;
         }
+
+        my_print(true, _T("%s: HTTPS:%d failed"), __TFUNCTION__, *port_iter);
     }
 
     // Connecting directly via HTTPS failed. 
@@ -176,6 +179,8 @@ bool ServerRequest::MakeRequest(
                 success = true;
                 break;
             }
+
+            my_print(true, _T("%s: transport:%s failed"), __TFUNCTION__, (*transport_iter)->GetTransportProtocolName().c_str());
 
             // Note that when we leave this scope, the TransportConnection will
             // clean up the transport connection.
