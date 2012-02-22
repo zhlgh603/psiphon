@@ -80,7 +80,7 @@ void TransportConnection::Connect(
             my_print(true, _T("%s: Not doing pre-handshake; enough server info for immediate connection"), __TFUNCTION__);
         }
 
-        m_referenceCounter.Reset();
+        m_workerThreadSynch.Reset();
 
         // Connect with the transport.
         // May throw.
@@ -88,7 +88,7 @@ void TransportConnection::Connect(
                     m_sessionInfo, 
                     &m_systemProxySettings,
                     stopSignalFlag,
-                    &m_referenceCounter);
+                    &m_workerThreadSynch);
 
         // Set up and start the local proxy.
         m_localProxy = new LocalProxy(
@@ -100,7 +100,7 @@ void TransportConnection::Connect(
 
         // Launches the local proxy thread and doesn't return until it
         // observes a successful (or not) connection.
-        if (!m_localProxy->Start(stopSignalFlag, &m_referenceCounter))
+        if (!m_localProxy->Start(stopSignalFlag, &m_workerThreadSynch))
         {
             throw IWorkerThread::Error("LocalProxy::Start failed");
         }
@@ -199,6 +199,11 @@ void TransportConnection::DoHandshake(
 
 void TransportConnection::Cleanup()
 {
+    // NOTE: It is important that the system proxy settings get torn down
+    // before the transport and local proxy do. Otherwise, all web connections
+    // will have a window of being guaranteed to fail (including and especially
+    // our own -- like final /status requests).
+    m_systemProxySettings.Revert();
     if (m_transport) m_transport->Cleanup();
     if (m_localProxy) delete m_localProxy;
     m_localProxy = 0;
