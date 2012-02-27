@@ -1,5 +1,6 @@
 Psiphon 3 Circumvention System README
 ================================================================================
+
 ----BEGIN ssh-with-no-handshake NOTES----
 
 Two design statements:
@@ -22,34 +23,6 @@ Two design statements:
 
 TODO
 
-- Polipo doesn't detect when a split-tunnel rules file is overwritten.  So if
-  someone uses Psiphon 3 from Country A, then travels to Country B, the first
-  time they use Psiphon 3 in Country B they will still be using split tunnel rules
-  for Country A.  At the start of the session, we should make sure that no route
-  file exists.
-  
-- HTTPS requests to server aren't tunneled through VPN. Ever. This is very bad.
-  But the fix is probably very hard. The real fix for this might have to wait.
-  - What will happen now (if HTTPS is blocked) -- which might be acceptable:
-    1. Handshake will be tried through HTTPS, OSSH, etc. It will succeed (or 
-       else we ain't doing VPN, so nothing to talk about).
-    2. VPN transport will connect.
-    3. While the transport is up, all other server requests will fail, since
-       they'll be assumed to be going through the tunnel, but won't be. (And,
-       remember, the assumption is that HTTPS is blocked.)
-    4. So we get no stats, but the user can still use VPN.
-	5. Disconnect will be really slow, since the final /status call will probably
-	   fail slowly.
-    [NOTE: We might actually get stats, which is good and bad. They'll accrue 
-    and accrue as the user browses, and won't get cleared out because the /status
-    request fails every time (memory usage: bad). When the tunnel is all torn
-    down and LocalProxy::Cleanup is call, there'll be a last attempt to send
-    the stats... and it'll succeed, since it'll try OSSH (good). I haven't
-    tested this, so I don't know if it'll actually work like this. And I even
-    have a nagging suspicion that the tunnel won't be town down all the way
-    and bad things might result (this is some testing that needs to be done
-    regardless).]
-
 - Make sure to test generated client. Embedded values should be different format now.
 
 - Test real campaign (regexes, speed test, discovery).
@@ -57,32 +30,8 @@ TODO
 - Make sure session reconstruction is okay with the fact that the final /status
   might use a different protocol than the rest of the session. (Better be.)
 
-- Test None/null values in the handshake JSON. For example, I think the upgrade
-  version can theoretically be None/null. The desired behaviour is that it get
-  the default empty string value when pulling it out of JSON. 
-
-- Determine if WinHttpGetIEProxyConfigForCurrentUser is the correct/best way to
-  deterine the correct local proxy settings (both when our LocalProxy is and 
-  isn't up). See HTTPSRequest::GetSystemDefaultHTTPSProxy().
-  - SystemProxySettings has some code to determine local proxy info, but then
-    we need to figure out which connection name to use. And maybe using a 
-    WinHTTP function in HTTPSRequest makes more sense.
-
-- Maybe now, maybe future: Remember which method worked last time for 
-  extra-transport requests, and skip to it next time.
-
-- Test failover to temp-transport in ServerRequest. It won't happen naturally.
-  Like, HTTPS is never going to fail for us in debugging without special effort.
-  - I have done some testing of failing from HTTPS to OSSH, but not on to SSH.
-  - I've seen some weirdness to suggest that there's a problem if a transport fails.
-  - There was a crash bug if TransportConnection::Connect threw anything other
-    than TryNextServer. But it's fixed now.
-  - I have tested temp transport failover to at least some degree now (with
-    two different ways of making OSSH transport fail: returning false from
-	GetSSHParams and manually closing Plonk while it's setting up). I feel
-	somewhat confident now that temp-transport failover is working fine.
-
 ----END ssh-with-no-handshake NOTES----
+
 Overview
 --------------------------------------------------------------------------------
 
