@@ -35,15 +35,23 @@ ITransport::ITransport()
 void ITransport::Connect(
                     SessionInfo sessionInfo, 
                     SystemProxySettings* systemProxySettings,
-                    const bool& stopSignalFlag)
+                    const bool& stopSignalFlag,
+                    WorkerThreadSynch* workerThreadSynch)
 {
     m_sessionInfo = sessionInfo;
     m_systemProxySettings = systemProxySettings;
     assert(m_systemProxySettings);
 
-    if (!IWorkerThread::Start(stopSignalFlag))
+    if (!IWorkerThread::Start(stopSignalFlag, workerThreadSynch))
     {
-        throw TransportFailed();
+        if (stopSignalFlag)
+        {
+            throw Abort();
+        }
+        else
+        {
+            throw TransportFailed();
+        }
     }
 }
 
@@ -63,10 +71,19 @@ bool ITransport::DoStart()
     return true;
 }
 
+void ITransport::StopImminent()
+{
+}
+
 void ITransport::DoStop()
 {
     Cleanup();
     m_systemProxySettings = 0;
 
     my_print(false, _T("%s disconnected."), GetTransportDisplayName().c_str());
+}
+
+bool ITransport::IsConnected() const
+{
+    return IsRunning();
 }

@@ -44,14 +44,17 @@ LocalProxy::LocalProxy(
       m_polipoPipe(NULL),
       m_bytesTransferred(0),
       m_lastStatusSendTimeMS(0),
-      m_splitTunnelingFilePath(splitTunnelingFilePath)
+      m_splitTunnelingFilePath(splitTunnelingFilePath),
+      m_finalStatsSent(false)
 {
     ZeroMemory(&m_polipoProcessInfo, sizeof(m_polipoProcessInfo));
 
     m_pageViewRegexes = sessionInfo.GetPageViewRegexes();
     m_httpsRequestRegexes = sessionInfo.GetHttpsRequestRegexes();
+    m_serverAddress = NarrowToTString(sessionInfo.GetServerAddress());
 
-    assert(statsCollector);
+    m_mutex = CreateMutex(NULL, FALSE, 0);
+
     assert(systemProxySettings);
 }
 
@@ -60,8 +63,17 @@ LocalProxy::~LocalProxy()
     IWorkerThread::Stop();
 
     Cleanup();
+
+    CloseHandle(m_mutex);
 }
 
+void LocalProxy::UpdateSessionInfo(const SessionInfo& sessionInfo)
+{
+    AutoMUTEX lock(m_mutex);
+
+    m_pageViewRegexes = sessionInfo.GetPageViewRegexes();
+    m_httpsRequestRegexes = sessionInfo.GetHttpsRequestRegexes();
+}
 
 bool LocalProxy::DoStart()
 {
@@ -107,7 +119,7 @@ bool LocalProxy::DoPeriodicCheck()
             // Everything normal; process stats and return
 
             // We don't care about the return value of ProcessStatsAndStatus
-            (void)ProcessStatsAndStatus(true);
+            (void)ProcessStatsAndStatus(false);
 
             return true;
         }
@@ -128,13 +140,18 @@ bool LocalProxy::DoPeriodicCheck()
     return false;
 }
 
-void LocalProxy::DoStop()
+void LocalProxy::StopImminent()
 {
     if (m_polipoProcessInfo.hProcess != 0)
     {
-        // We were (probably) connected, so send a final stats message
-        (void)ProcessStatsAndStatus(false);
+        // We are (probably) connected, so send a final stats message
+        my_print(true, _T("%s: Stopping cleanly. Sending final stats."), __TFUNCTION__);
+        (void)ProcessStatsAndStatus(true);
     }
+}
+
+void LocalProxy::DoStop()
+{
 }
 
 void LocalProxy::Cleanup()
@@ -163,6 +180,19 @@ void LocalProxy::Cleanup()
     m_polipoPipe = NULL;
 
     m_lastStatusSendTimeMS = 0;
+
+    // If we have stats, and we didn't get a chance to send our final stats, 
+    // we'll try one last time.
+    if (!m_finalStatsSent && m_statsCollector && m_bytesTransferred > 0)
+    {
+        my_print(true, _T("%s: Stopped dirtily. Sending final stats."), __TFUNCTION__);
+        (void)m_statsCollector->SendStatusMessage(
+                                true, // Note: there's a timeout side-effect when final=false
+                                m_pageViewEntries, 
+                                m_httpsRequestEntries, 
+                                m_bytesTransferred);
+        my_print(true, _T("%s: Stopped dirtily. Final stats sent."), __TFUNCTION__);
+    }
 }
 
 
@@ -192,6 +222,10 @@ bool LocalProxy::StartPolipo()
             //TODO: the DNS for split tunneling is hardcoded. Make it a part of handshake or 
             //create another tunnel for DNS in the future?
             polipoCommandLine << _T(" splitTunnelingDnsServer=8.8.8.8");
+        }
+        if(m_serverAddress.length() > 0)
+        {
+            polipoCommandLine << _T(" psiphonServer=") << m_serverAddress ;
         }
     }
 
@@ -255,7 +289,7 @@ bool LocalProxy::StartPolipo()
     }
     else if (ERROR_SUCCESS != connected)
     {
-        my_print(false, _T("%s - Failed to connect to Polipo (%d)"), __TFUNCTION__, GetLastError());
+        my_print(false, _T("%s - Failed to connect to Polipo (%d, %d)"), __TFUNCTION__, connected, GetLastError());
         return false;
     }
 
@@ -339,8 +373,16 @@ bool LocalProxy::CreatePolipoPipe(HANDLE& o_outputPipe, HANDLE& o_errorPipe)
 // time or size limits have been exceeded; if connected is false, the stats will
 // be sent regardlesss of limits.
 // Returns true on success, false otherwise.
-bool LocalProxy::ProcessStatsAndStatus(bool connected)
+bool LocalProxy::ProcessStatsAndStatus(bool final)
 {
+    if (!m_statsCollector)
+    {
+        // We're not collecting stats.
+        return true;
+    }
+
+    m_finalStatsSent = m_finalStatsSent || final;
+
     // Stats get sent to the server when a time or size limit has been reached.
 
     const DWORD DEFAULT_SEND_INTERVAL_MS = (30*60*1000); // 30 mins
@@ -386,17 +428,21 @@ bool LocalProxy::ProcessStatsAndStatus(bool connected)
 
     // If the time or size thresholds have been exceeded, or if we're being 
     // forced to, send the stats.
-    if (!connected
+    if (final
         || (m_lastStatusSendTimeMS + s_send_interval_ms) < now
         || m_pageViewEntries.size() >= s_send_max_entries
         || m_httpsRequestEntries.size() >= s_send_max_entries)
     {
+        my_print(true, _T("%s: Sending %s stats."), __TFUNCTION__, final ? _T("final") : _T("non-final"));
+
         if (m_statsCollector->SendStatusMessage(
-                                connected, // Note: there's a timeout side-effect when connected=false
+                                final, // Note: there's a timeout side-effect when final=false
                                 m_pageViewEntries, 
                                 m_httpsRequestEntries, 
                                 m_bytesTransferred))
         {
+            my_print(true, _T("%s: Stats send success"), __TFUNCTION__);
+
             // Reset thresholds
             s_send_interval_ms = DEFAULT_SEND_INTERVAL_MS;
             s_send_max_entries = DEFAULT_SEND_MAX_ENTRIES;
@@ -409,6 +455,8 @@ bool LocalProxy::ProcessStatsAndStatus(bool connected)
         }
         else
         {
+            my_print(true, _T("%s: Stats send failure"), __TFUNCTION__);
+
             // Status sending failures are fairly common.
             // We'll back off the thresholds and try again later.
             s_send_interval_ms += DEFAULT_SEND_INTERVAL_MS;
@@ -425,6 +473,8 @@ bool LocalProxy::ProcessStatsAndStatus(bool connected)
 void LocalProxy::UpsertPageView(const string& entry)
 {
     if (entry.length() <= 0) return;
+
+    AutoMUTEX lock(m_mutex);
 
     my_print(true, _T("%s:%d: %S"), __TFUNCTION__, __LINE__, entry.c_str());
 
@@ -469,6 +519,8 @@ void LocalProxy::UpsertHttpsRequest(string entry)
     }
 
     if (entry.length() <= 0) return;
+
+    AutoMUTEX lock(m_mutex);
 
     string store_entry = "(OTHER)";
 

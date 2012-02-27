@@ -20,6 +20,33 @@
 #pragma once
 
 
+class WorkerThreadSynch
+{
+public:
+    WorkerThreadSynch();
+    ~WorkerThreadSynch();
+
+    void Reset();
+
+protected:
+    friend class IWorkerThread;
+
+    void ThreadStarting();
+    
+    void ThreadStoppingCleanly(bool clean);
+    bool BlockUntil_AllThreadsStoppingCleanly();
+
+    void ThreadReadyForStop();
+    void BlockUntil_AllThreadsReadyToStop();
+
+private:
+    HANDLE m_mutex;
+    unsigned int m_threadsStartedCounter;
+    unsigned int m_threadsReadyToStopCounter;
+    vector<bool> m_threadCleanStops;
+};
+
+
 class IWorkerThread
 {
 public:
@@ -28,7 +55,10 @@ public:
 
     // Blocking call. Returns true if worker was successfully started,
     // false otherwise.
-    virtual bool Start(const bool& externalStopSignalFlag);
+    // synchronizedExitCounter can be null if not needed.
+    virtual bool Start(
+        const bool& externalStopSignalFlag, 
+        WorkerThreadSynch* workerThreadSynch);
 
     // Blocking call. Tell the thread to stop and wait for it to do so.
     // Implementing classes MUST call this from their destructor.
@@ -36,6 +66,8 @@ public:
 
     // The returned event will be set when the thread stops.
     virtual HANDLE GetStoppedEvent() const;
+
+    bool IsRunning() const;
 
     //
     // Exception classes
@@ -66,6 +98,10 @@ protected:
     // Called from the busy-wait loop every so often.
     virtual bool DoPeriodicCheck() = 0;
 
+    // Called before stop is full processed. Must not take any destructive
+    // actions.
+    virtual void StopImminent() = 0;
+
     // Called when the implementation should stop and clean up.
     virtual void DoStop() = 0;
 
@@ -76,9 +112,12 @@ protected:
     HANDLE m_thread;
     HANDLE m_startedEvent;
     HANDLE m_stoppedEvent;
+    HANDLE m_mutex;
 
     const bool* m_externalStopSignalFlag;
     bool m_internalSignalStopFlag;
     vector<const bool*> m_signalStopFlags;
+
+    WorkerThreadSynch* m_workerThreadSynch;
 };
 

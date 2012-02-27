@@ -39,39 +39,19 @@ from cherrypy.wsgiserver import ssl_pyopenssl
 from webob import Request
 import psi_psk
 import psi_config
+import psi_geoip
 import sys
 import traceback
 import platform
+import redis
 
-# ===== DB abstraction layer ===================================================
+# ===== PSINET database ===================================================
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
 import psi_ops
 
 psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
-def db_get_region(client_ip_address):
-    return psinet.get_region(client_ip_address)
-
-def db_handshake(server_ip_address, client_ip_address, propagation_channel_id, sponsor_id, client_version, logger):
-    return psinet.handshake(
-                server_ip_address,
-                client_ip_address,
-                propagation_channel_id,
-                sponsor_id,
-                client_version,
-                logger)
-
-def db_get_server(ip_address):
-    server = psinet.get_server_by_ip_address(ip_address)
-    if server:
-        return (ip_address,
-                server.web_server_port,
-                server.web_server_secret,
-                server.web_server_certificate,
-                server.web_server_private_key)
-    return None
-    
 
 # ===== Helpers =====
 
@@ -111,6 +91,10 @@ def split_len(seq, length):
 class ServerInstance(object):
 
     def __init__(self, ip_address, server_secret):
+        self.redis = redis.StrictRedis(
+            host=psi_config.SESSION_DB_HOST,
+            port=psi_config.SESSION_DB_PORT,
+            db=psi_config.SESSION_DB_INDEX)
         self.server_ip_address = ip_address
         self.server_secret = server_secret
         self.COMMON_INPUTS = [
@@ -125,10 +109,28 @@ class ServerInstance(object):
 
         input_values = []
 
-        # Add server IP address and client region for logging
+        # Add server IP address for logging
         input_values.append(('server_ip_address', self.server_ip_address))
+
+        # Log client region (but not IP address)
+        # If the peer is localhost, the web request is coming through the
+        # tunnel. In this case, check if the client provided a client_session_id
+        # and check if there's a corresponding region in the tunnel session
+        # database
         client_ip_address = request.remote_addr
-        input_values.append(('client_region', db_get_region(client_ip_address)))
+        region = 'None'
+        if client_ip_address not in ['localhost', '127.0.0.1', self.server_ip_address]:
+            region = psi_geoip.get_region(client_ip_address)
+        elif request.params.has_key('client_session_id'):
+            client_session_id = request.params['client_session_id']
+            if not consists_of(client_session_id, string.hexdigits):
+                syslog.syslog(
+                    syslog.LOG_ERR,
+                    'Invalid client_session_id in %s [%s]' % (request_name, str(request.params)))
+                return False
+            region = self.redis.get(client_session_id) or region
+
+        input_values.append(('client_region', region))            
 
         # Check for each expected input
         for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
@@ -209,17 +211,53 @@ class ServerInstance(object):
             self._log_event('discovery',
                              inputs + [('server_ip_address', server_ip_address),
                                        ('unknown', unknown)])
-        lines = db_handshake(
+
+        config = psinet.handshake(
                     self.server_ip_address,
                     client_ip_address,
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_version'],
-                    logger=discovery_logger)
-        lines += [psi_psk.set_psk(self.server_ip_address)]
+                    event_logger=discovery_logger)
+                    
+        output = []
+
+        # Legacy handshake output is a series of Name:Value lines returned to 
+        # the client. That format will continue to be supported (old client 
+        # versions expect it), but the new format of a JSON-ified object will
+        # also be output.
+
+        for homepage_url in config['homepages']:
+            output.append('Homepage: %s' % (homepage_url,))
+
+        if config['upgrade_client_version']:
+            output.append('Upgrade: %s' % (config['upgrade_client_version'],))
+                    
+        for encoded_server_entry in config['encoded_server_list']:
+            output.append('Server: %s' % (encoded_server_entry,))
+
+        if config['ssh_host_key']:
+            output.append('SSHPort: %s' % (config['ssh_port'],))
+            output.append('SSHUsername: %s' % (config['ssh_username'],))
+            output.append('SSHPassword: %s' % (config['ssh_password'],))
+            output.append('SSHHostKey: %s' % (config['ssh_host_key'],))
+            output.append('SSHSessionID: %s' % (config['ssh_session_id'],))
+            # Obfuscated SSH fields are optional
+            if config.has_key('ssh_obfuscated_port'):
+                output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
+                output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
+        
+        psk = psi_psk.set_psk(self.server_ip_address)
+        config['l2tp_ipsec_psk'] = psk
+        output.append('PSK: %s' % (psk,))
+
+        # The entire config is JSON encoded and included as well.
+
+        output.append('Config: ' + json.dumps(config))
+        
         response_headers = [('Content-type', 'text/plain')]
         start_response('200 OK', response_headers)
-        return ['\n'.join(lines)]
+        return ['\n'.join(output)]
 
     def download(self, environ, start_response):
         # NOTE: currently we ignore client_version and just download whatever
@@ -334,7 +372,11 @@ class ServerInstance(object):
                                                      ('count', https_req['count'])])
             except:
                 start_response('403 Forbidden', [])
-        
+
+        # Clean up session data
+        if request.params['connected'] == '0' and request.params.has_key('client_session_id'):
+            self.redis.delete(request.params['client_session_id'])
+
         # No action, this request is just for stats logging
         start_response('200 OK', [])
         return []
@@ -368,9 +410,14 @@ def get_servers():
             if (interface.find('ipsec') == -1 and interface.find('mast') == -1 and
                     netifaces.ifaddresses(interface).has_key(netifaces.AF_INET)):
                 interface_ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
-                server = db_get_server(interface_ip_address)
+                server = psinet.get_server_by_ip_address(interface_ip_address)
                 if server:
-                    servers.append(server)
+                    servers.append(
+                        (interface_ip_address,
+                         server.web_server_port,
+                         server.web_server_secret,
+                         server.web_server_certificate,
+                         server.web_server_private_key))
         except ValueError as e:
             if str(e) != 'You must specify a valid interface name.':
                 raise
