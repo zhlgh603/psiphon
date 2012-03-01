@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# NOTE: If there is no pid file then psi_web is supposed to be stopped (see psi_ops_deploy.deploy_data)
+if [ -f /var/run/psiphonv.pid ]; then
+    if ! pgrep psi_web.py > /dev/null; then
+        /etc/init.d/psiphonv restart
+    fi
+fi
+
+if ! pgrep xinetd > /dev/null; then
+    /etc/init.d/xinetd restart
+fi
