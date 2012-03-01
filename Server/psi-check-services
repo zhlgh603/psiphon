@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# NOTE: At times we want to ensure that the service is stopped (see psi_ops_deploy.deploy_data)
+if [ ! -f /var/lock/psiphonv.stopped ]; then
+    if ! pgrep psi_web.py > /dev/null; then
+        # Check again in 5 seconds in case it was in the middle of a restart
+        sleep 5
+        if ! pgrep psi_web.py > /dev/null; then
+            /etc/init.d/psiphonv restart
+        fi
+    fi
+fi
+
+if ! pgrep xinetd > /dev/null; then
+    /etc/init.d/xinetd restart
+fi
