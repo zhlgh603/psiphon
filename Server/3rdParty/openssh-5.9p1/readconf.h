@@ -134,6 +134,9 @@ typedef struct {
 	int	use_roaming;
 
 	int	request_tty;
+
+        int obfuscate_handshake;
+        char *obfuscate_keyword;
 }       Options;
 
 #define SSHCTL_MASTER_NO	0
