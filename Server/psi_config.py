@@ -23,6 +23,7 @@ HOST_SOURCE_ROOT = '/opt/PsiphonV'
 HOST_IP_UP_DIR = '/etc/ppp/ip-up.d'
 HOST_IP_DOWN_DIR = '/etc/ppp/ip-down.d'
 HOST_INIT_DIR = '/etc/init.d'
+HOST_OSSH_SRC_DIR = '/usr/local/src/openssh-5.9p1'
 
 
 #==== Web Server ==============================================================
