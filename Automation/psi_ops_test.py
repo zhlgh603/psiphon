@@ -98,8 +98,7 @@ def __test_server(executable_path, transport, expected_egress_ip_addresses):
             
             proc = subprocess.Popen([executable_path])
             
-            # VPN mode takes longer to establish a connection than other modes
-            time.sleep(15 if transport == 'VPN' else 10)
+            time.sleep(15)
         
             # In VPN mode, all traffic is routed through the proxy. In SSH mode, the
             # urlib2 ProxyHandler picks up the Windows Internet Settings and uses the
@@ -117,7 +116,7 @@ def __test_server(executable_path, transport, expected_egress_ip_addresses):
                                     egress_ip_address, ','.join(expected_egress_ip_addresses)))
     
             if transport != 'VPN' and split_tunnel_mode and is_proxied:
-                raise Exception('Local case/not VPN/split tunnel: egress is %s and expected egresses are %s' % (
+                raise Exception('Local case/not VPN/split tunnel: egress is %s and expected egresses are ANYTHING OTHER THAN %s' % (
                                     egress_ip_address, ','.join(expected_egress_ip_addresses)))
         
             # Get egress IP from web site in different GeoIP region; remote split tunnel is proxied
