@@ -1,5 +1,4 @@
 .hgignore
-.project
 .pydevproject
 
 Client/Release
