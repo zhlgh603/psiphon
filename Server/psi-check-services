@@ -14,3 +14,20 @@ fi
 if ! pgrep xinetd > /dev/null; then
     /etc/init.d/xinetd restart
 fi
+
+if ! pgrep -f ipsec/pluto > /dev/null; then
+    /etc/init.d/ipsec restart
+else
+    cpu_check_command=`ps aux | grep ipsec/pluto | grep -v grep | awk '{print $3}'`
+    cpu_threshold=90
+    cpu=${cpu_check_command/.*}
+    if [ $cpu -ge $cpu_threshold ]; then
+        # Check again in 5 seconds
+        sleep 5
+        cpu=${cpu_check_command/.*}
+        if [ $cpu -ge $cpu_threshold ]; then
+            killall -9 pluto
+            /etc/init.d/ipsec restart
+        fi
+    fi
+fi
