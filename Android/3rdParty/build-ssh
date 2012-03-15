@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# NOTE: You need to have arm-none-linux-gnueabi-gcc in your path.
+
+export HOST=arm-none-linux-gnueabi
+export CC=$HOST-gcc
+export PREFIX=$PWD/$HOST
+
+# zlib
+pushd zlib-1.2.6
+./configure --prefix=$PREFIX
+make clean && make && make install
+popd
+
+# openssl
+pushd openssl-1.0.1
+./Configure android-armv7 --prefix=$PREFIX
+make clean && make build_libs && make install_sw
+popd
+
+# openssh
+export LDFLAGS=-L$PWD/openssl-1.0.1
+pushd openssh-5.9p1
+./configure --with-ldflags=-static --host=$HOST --with-zlib=$PREFIX --prefix=$PREFIX
+make clean && make
+popd
+
