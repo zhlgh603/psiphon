@@ -4,24 +4,32 @@
 
 export HOST=arm-none-linux-gnueabi
 export CC=$HOST-gcc
+export STRIP=$HOST-strip
 export PREFIX=$PWD/$HOST
 
+export ZLIB_DIR=zlib-1.2.6
+export OPENSSL_DIR=openssl-1.0.1
+export OPENSSH_DIR=openssh-5.9p1
+
 # zlib
-pushd zlib-1.2.6
+pushd $ZLIB_DIR
 ./configure --prefix=$PREFIX
 make clean && make && make install
 popd
 
 # openssl
-pushd openssl-1.0.1
+pushd $OPENSSL_DIR
 ./Configure android-armv7 --prefix=$PREFIX
 make clean && make build_libs && make install_sw
 popd
 
 # openssh
-export LDFLAGS=-L$PWD/openssl-1.0.1
-pushd openssh-5.9p1
-./configure --with-ldflags=-static --host=$HOST --with-zlib=$PREFIX --prefix=$PREFIX
+export LDFLAGS=-L$PWD/$OPENSSL_DIR
+pushd $OPENSSH_DIR
+./configure --with-ldflags=-static --host=$HOST --with-zlib=$PREFIX
 make clean && make
 popd
+
+cp $OPENSSH_DIR/ssh .
+$STRIP ssh
 
