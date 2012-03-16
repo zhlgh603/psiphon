@@ -298,7 +298,11 @@ main(int ac, char **av)
 	}
 #endif
 	/* Get user data. */
+	/* PSIPHON ANDROID PATCH BEGIN
 	pw = getpwuid(original_real_uid);
+	*/
+	pw = psiphon_android_getpwuid();
+	/* PSIPHON ANDROID PATCH END */
 	if (!pw) {
 		logit("You don't exist, go away!");
 		exit(255);
@@ -1520,7 +1524,11 @@ load_public_identity_files(void)
 		xfree(keys);
 	}
 #endif /* ENABLE_PKCS11 */
+	/* PSIPHON ANDROID PATCH BEGIN
 	if ((pw = getpwuid(original_real_uid)) == NULL)
+	*/
+	if ((pw = psiphon_android_getpwuid()) == NULL)
+	/* PSIPHON ANDROID PATCH END */
 		fatal("load_public_identity_files: getpwuid failed");
 	pwname = xstrdup(pw->pw_name);
 	pwdir = xstrdup(pw->pw_dir);

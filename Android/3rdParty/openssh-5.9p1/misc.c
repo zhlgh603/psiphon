@@ -199,6 +199,25 @@ strdelim(char **s)
 	return (old);
 }
 
+/* PSIPHON ANDROID PATCH BEGIN */
+struct passwd g_pw_entry;
+struct passwd *
+psiphon_android_getpwuid(void)
+{
+	memset(&g_pw_entry, 0, sizeof(g_pw_entry));
+	g_pw_entry.pw_name = "root";
+	g_pw_entry.pw_passwd = "password";
+	g_pw_entry.pw_gecos = "Root User";
+	g_pw_entry.pw_uid = 0;
+	g_pw_entry.pw_gid = 0;
+	/* TODO: .ssh/known_hosts will get created here (pw_dir), so
+	         use a better location. */
+	g_pw_entry.pw_dir = "/data/local/tmp/";
+	g_pw_entry.pw_shell = "sh";
+	return &g_pw_entry; 
+}
+/* PSIPHON ANDROID PATCH END */
+
 struct passwd *
 pwcopy(struct passwd *pw)
 {
@@ -533,7 +552,10 @@ tilde_expand_filename(const char *filename, uid_t uid)
 		user[slash] = '\0';
 		if ((pw = getpwnam(user)) == NULL)
 			fatal("tilde_expand_filename: No such user %s", user);
-	} else if ((pw = getpwuid(uid)) == NULL)	/* ~/path */
+	/* PSIPHON ANDROID PATCH BEGIN
+	} else if ((pw = getpwuid(uid)) == NULL)*/	/* ~/path */
+	} else if ((pw = psiphon_android_getpwuid()) == NULL)	/* ~/path */
+	/* PSIPHON ANDROID PATCH END */
 		fatal("tilde_expand_filename: No such uid %ld", (long)uid);
 
 	if (strlcpy(ret, pw->pw_dir, sizeof(ret)) >= sizeof(ret))
