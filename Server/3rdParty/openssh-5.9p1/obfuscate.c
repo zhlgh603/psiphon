@@ -175,7 +175,7 @@ generate_key(const u_char *seed, const u_char *iv, u_int iv_len, u_char *key_dat
 	memcpy(p, iv, iv_len);
 
 	EVP_DigestInit(&ctx, EVP_sha1());
-	EVP_DigestUpdate(&ctx, buffer, OBFUSCATE_SEED_LENGTH + iv_len);
+	EVP_DigestUpdate(&ctx, buffer, buffer_length);
 	EVP_DigestFinal(&ctx, md_output, &md_len);
 
 	xfree(buffer);
