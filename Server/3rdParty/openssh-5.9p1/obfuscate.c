@@ -29,7 +29,7 @@ struct seed_msg {
 static void generate_key_pair(const u_char *, u_char *, u_char *);
 static void generate_key(const u_char *, const u_char *, u_int, u_char *);
 static void set_keys(const u_char *, const u_char *);
-static void initialize(const u_char *, int);
+static void initialize(const u_char *, int, int);
 static void read_forever(int);
 
 
@@ -51,13 +51,22 @@ obfuscate_receive_seed(int sock_in)
 	if(len != sizeof(struct seed_msg))
 		fatal("obfuscate_receive_seed: read failed");
 
-	initialize(seed.seed_buffer, 1);
-	obfuscate_input((u_char *)&seed.magic, 8);
-	
-	if(OBFUSCATE_MAGIC_VALUE != ntohl(seed.magic)) {
-		logit("Magic value check failed (%u) on obfuscated handshake.", ntohl(seed.magic));
-		read_forever(sock_in);
+	initialize(seed.seed_buffer, 1, 1); // try fixed key pair first
+
+        //create a copy of seed.magic because obfuscate_input(..) destroys it
+        u_int32_t test_magic = xmalloc(8);
+	obfuscate_input((u_char *)&test_magic, 8);
+	if(OBFUSCATE_MAGIC_VALUE != ntohl(test_magic)) {
+            initialize(seed.seed_buffer, 1, 0); // try backwards compatible key pair
+            obfuscate_input((u_char *)&seed.magic, 8);
+            if(OBFUSCATE_MAGIC_VALUE != ntohl(seed.magic)) {
+                logit("Magic value check failed (%u) on obfuscated handshake.", ntohl(seed.magic));
+                read_forever(sock_in);
+            }
+
 	}
+        xfree(test_magic);
+	
 	padding_length = ntohl(seed.padding_length);
 	if(padding_length > OBFUSCATE_MAX_PADDING) {
 		logit("Illegal padding length %d for obfuscated handshake", ntohl(seed.padding_length));
@@ -99,7 +108,7 @@ obfuscate_send_seed(int sock_out)
 			rnd = arc4random();
 		seed->padding[i] = rnd & 0xff;
 	}
-	initialize(seed->seed_buffer, 0);
+	initialize(seed->seed_buffer, 0, 1); //always generate fixed key pair
 	obfuscate_output(((u_char *)seed) + OBFUSCATE_SEED_LENGTH,
 		message_length - OBFUSCATE_SEED_LENGTH);
 	debug2("obfuscate_send_seed: Sending seed message with %d bytes of padding", padding_length);
@@ -128,12 +137,12 @@ obfuscate_output(u_char *buffer, u_int buffer_len)
 }
 
 static void
-initialize(const u_char *seed, int server)
+initialize(const u_char *seed, int server, int ossh_key_fix)
 {
 	u_char client_to_server_key[OBFUSCATE_KEY_LENGTH];
 	u_char server_to_client_key[OBFUSCATE_KEY_LENGTH];
 	
-	generate_key_pair(seed, client_to_server_key, server_to_client_key);
+	generate_key_pair(seed, client_to_server_key, server_to_client_key, ossh_key_fix);
 
 	if(server)
 		set_keys(client_to_server_key, server_to_client_key);
@@ -142,14 +151,14 @@ initialize(const u_char *seed, int server)
 }
 
 static void
-generate_key_pair(const u_char *seed, u_char *client_to_server_key, u_char *server_to_client_key)
+generate_key_pair(const u_char *seed, u_char *client_to_server_key, u_char *server_to_client_key, int ossh_key_fix)
 {
-	generate_key(seed, "client_to_server", strlen("client_to_server"), client_to_server_key);
-	generate_key(seed, "server_to_client", strlen("server_to_client"), server_to_client_key);
+	generate_key(seed, "client_to_server", strlen("client_to_server"), client_to_server_key, ossh_key_fix);
+	generate_key(seed, "server_to_client", strlen("server_to_client"), server_to_client_key, ossh_key_fix);
 }
 
 static void
-generate_key(const u_char *seed, const u_char *iv, u_int iv_len, u_char *key_data)
+generate_key(const u_char *seed, const u_char *iv, u_int iv_len, u_char *key_data, int ossh_key_fix)
 {
 	EVP_MD_CTX ctx;
 	u_char md_output[EVP_MAX_MD_SIZE];
@@ -175,7 +184,14 @@ generate_key(const u_char *seed, const u_char *iv, u_int iv_len, u_char *key_dat
 	memcpy(p, iv, iv_len);
 
 	EVP_DigestInit(&ctx, EVP_sha1());
-	EVP_DigestUpdate(&ctx, buffer, buffer_length);
+        if(ossh_key_fix)
+        {
+            EVP_DigestUpdate(&ctx, buffer, buffer_length);
+        }
+        else
+        {
+            EVP_DigestUpdate(&ctx, buffer, OBFUSCATE_SEED_LENGTH + iv_len);
+        }
 	EVP_DigestFinal(&ctx, md_output, &md_len);
 
 	xfree(buffer);
