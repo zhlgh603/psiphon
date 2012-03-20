@@ -7,6 +7,7 @@
 #include "xmalloc.h"
 #include "log.h"
 #include "obfuscate.h"
+#include <string.h>
 
 static RC4_KEY rc4_input;
 static RC4_KEY rc4_output;
@@ -26,8 +27,8 @@ struct seed_msg {
 	u_char padding[];
 };
 
-static void generate_key_pair(const u_char *, u_char *, u_char *);
-static void generate_key(const u_char *, const u_char *, u_int, u_char *);
+static void generate_key_pair(const u_char *, u_char *, u_char *i, int);
+static void generate_key(const u_char *, const u_char *, u_int, u_char *, int);
 static void set_keys(const u_char *, const u_char *);
 static void initialize(const u_char *, int, int);
 static void read_forever(int);
@@ -54,19 +55,23 @@ obfuscate_receive_seed(int sock_in)
 	initialize(seed.seed_buffer, 1, 1); // try fixed key pair first
 
         //create a copy of seed.magic because obfuscate_input(..) destroys it
-        u_int32_t test_magic = xmalloc(8);
-	obfuscate_input((u_char *)&test_magic, 8);
+        u_int32_t test_magic = seed.magic;
+	obfuscate_input((u_char *)&test_magic, 4);
 	if(OBFUSCATE_MAGIC_VALUE != ntohl(test_magic)) {
+            debug2("trying ossh backwards compatibility mode");
             initialize(seed.seed_buffer, 1, 0); // try backwards compatible key pair
-            obfuscate_input((u_char *)&seed.magic, 8);
+            obfuscate_input((u_char *)&seed.magic, 4);
             if(OBFUSCATE_MAGIC_VALUE != ntohl(seed.magic)) {
                 logit("Magic value check failed (%u) on obfuscated handshake.", ntohl(seed.magic));
                 read_forever(sock_in);
             }
-
 	}
-        xfree(test_magic);
+        else
+        {
+             seed.magic = test_magic;
+        }
 	
+        obfuscate_input((u_char *)&seed.padding_length, 4);
 	padding_length = ntohl(seed.padding_length);
 	if(padding_length > OBFUSCATE_MAX_PADDING) {
 		logit("Illegal padding length %d for obfuscated handshake", ntohl(seed.padding_length));
