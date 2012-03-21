@@ -27,7 +27,7 @@ struct seed_msg {
 	u_char padding[];
 };
 
-static void generate_key_pair(const u_char *, u_char *, u_char *i, int);
+static void generate_key_pair(const u_char *, u_char *, u_char *, int);
 static void generate_key(const u_char *, const u_char *, u_int, u_char *, int);
 static void set_keys(const u_char *, const u_char *);
 static void initialize(const u_char *, int, int);
