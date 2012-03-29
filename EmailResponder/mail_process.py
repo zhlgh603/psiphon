@@ -157,6 +157,9 @@ class MailResponder:
             dump_to_exception_file('fail: unparsable requested address\n\n%s' % self._email_string)
             return False
 
+        # The requested address may need to be sanitized further.
+        self.requested_addr = sanitize_email(self.requested_addr)
+
         # Convert to lowercase, since that's what's in the _conf and we want to 
         # do a case-insensitive check.
         self.requested_addr = self.requested_addr.lower()
@@ -181,6 +184,8 @@ class MailResponder:
                 dump_to_exception_file('fail: unparsable requester address\n\n%s' % self._email_string)
                 
             return False
+
+        self._requester_addr = sanitize_email(self._requester_addr)
 
         self._subject = decode_header(self._email['Subject'])
         if not self._subject: self._subject = '' 
@@ -268,6 +273,14 @@ def strip_email(email_address):
         return match.group(2)
     return False
     
+
+def sanitize_email(email_address):
+    '''
+    Sanitizes an email address, for example by removing trailing periods.
+    '''
+
+    return email_address.rstrip('.')
+
 
 def decode_header(header_val):
     '''
