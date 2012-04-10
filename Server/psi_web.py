@@ -171,7 +171,10 @@ class ServerInstance(object):
 
     def handshake(self, environ, start_response):
         request = Request(environ)
-        inputs = self._get_inputs(request, 'handshake')
+        # We assume VPN for backwards compatibility, but if a different relay_protocol
+        # is specified, then we won't need a PSK.
+        additional_inputs = [('relay_protocol', is_valid_relay_protocol)]
+        inputs = self._get_inputs(request, 'handshake', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
             return []
@@ -247,9 +250,10 @@ class ServerInstance(object):
                 output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
                 output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
         
-        psk = psi_psk.set_psk(self.server_ip_address)
-        config['l2tp_ipsec_psk'] = psk
-        output.append('PSK: %s' % (psk,))
+        if inputs_lookup['relay_protocol'] == 'VPN':
+            psk = psi_psk.set_psk(self.server_ip_address)
+            config['l2tp_ipsec_psk'] = psk
+            output.append('PSK: %s' % (psk,))
 
         # The entire config is JSON encoded and included as well.
 
