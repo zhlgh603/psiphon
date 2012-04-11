@@ -44,9 +44,9 @@ class Psiphon3Server(object):
 
     # handshake
     # Note that self.servers may be updated with newly discovered servers after a successful handshake
-    def handshake(self):
+    def handshake(self, relay_protocol):
         # TODO: page view regexes
-        request_url = (self._common_request_url() % ('handshake',) + '&' +
+        request_url = (self._common_request_url(relay_protocol) % ('handshake',) + '&' +
                        '&'.join(['known_server=%s' % (binascii.unhexlify(server).split(" ")[0],) for server in self.servers]))
         response = self.opener.open(request_url).read()
         handshake_response = {'Upgrade': '',
@@ -82,36 +82,37 @@ class Psiphon3Server(object):
     # For SSH and OSSH, SSHSessionID from the handshake response is used when session_id is None
     # For VPN, the VPN IP Address should be used for session_id (ie. 10.0.0.2)
     def connected(self, relay_protocol, session_id=None):
-        assert relay_protocol in ['VPN','SSH','OSSH']
         if not session_id and relay_protocol in ['SSH', 'OSSH']:
             session_id = self.ssh_session_id
         assert session_id is not None
 
-        request_url = (self._common_request_url() % ('connected',) +
-                       '&relay_protocol=%s&session_id=%s' % (relay_protocol, session_id))
+        request_url = (self._common_request_url(relay_protocol) % ('connected',) +
+                       '&session_id=%s' % (session_id,))
         self.opener.open(request_url)
 
     # disconnected
     # For SSH and OSSH, SSHSessionID from the handshake response is used when session_id is None
     # For VPN, this should not be called
     def disconnected(self, relay_protocol, session_id=None):
-        assert relay_protocol in ['VPN','SSH','OSSH']
+        assert relay_protocol not in ['VPN']
         if not session_id and relay_protocol in ['SSH', 'OSSH']:
             session_id = self.ssh_session_id
         assert session_id is not None
 
-        request_url = (self._common_request_url() % ('status',) +
-                       '&relay_protocol=%s&session_id=%s&connected=%s' % (relay_protocol, session_id, '0'))
+        request_url = (self._common_request_url(relay_protocol) % ('status',) +
+                       '&session_id=%s&connected=%s' % (session_id, '0'))
         self.opener.open(request_url)
 
     # TODO: failed
 
     # TODO: status
 
-    def _common_request_url(self):
-        return 'https://%s:%s/%%s?server_secret=%s&propagation_channel_id=%s&sponsor_id=%s&client_version=%s' % (
+    def _common_request_url(self, relay_protocol):
+        assert relay_protocol in ['VPN','SSH','OSSH']
+        return 'https://%s:%s/%%s?server_secret=%s&propagation_channel_id=%s&sponsor_id=%s&client_version=%s&relay_protocol=%s' % (
             self.ip_address, self.web_server_port, self.web_server_secret,
-            self.propagation_channel_id, self.sponsor_id, self.client_version)
+            self.propagation_channel_id, self.sponsor_id, self.client_version,
+            relay_protocol)
 
 
 #

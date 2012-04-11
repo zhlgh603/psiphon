@@ -72,7 +72,7 @@ class Data(object):
 def connect_to_server(data):
 
     server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION)
-    handshake_response = server.handshake()
+    handshake_response = server.handshake('SSH')
     # handshake might update the server list with newly discovered servers
     data.save()
 
