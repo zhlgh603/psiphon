@@ -101,7 +101,8 @@ class ServerInstance(object):
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits)),
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits)),
-            ('client_version', lambda x: consists_of(x, string.digits))]
+            ('client_version', lambda x: consists_of(x, string.digits)),
+            ('client_platform', lambda x: consists_of(x, string.letters))]
 
     def _get_inputs(self, request, request_name, additional_inputs=None):
         if additional_inputs is None:
@@ -138,15 +139,18 @@ class ServerInstance(object):
                 value = request.params[input_name]
             except KeyError as e:
                 # Backwards compatibility patches
-                # - Older clients don't specifiy relay_protcol, default to VPN
+                # - Older clients don't specifiy relay_protocol, default to VPN
                 # - Older clients specify vpn_client_ip_address for session ID
                 # - Older clients specify client_id for propagation_channel_id
+                # - Older clients don't specify client_platform
                 if input_name == 'relay_protocol':
                     value = 'VPN'
                 elif input_name == 'session_id' and request.params.has_key('vpn_client_ip_address'):
                     value = request.params['vpn_client_ip_address']
                 elif input_name == 'propagation_channel_id' and request.params.has_key('client_id'):
                     value = request.params['client_id']
+                elif input_name == 'client_platform':
+                    value = 'Windows'
                 else:
                     syslog.syslog(
                         syslog.LOG_ERR,
