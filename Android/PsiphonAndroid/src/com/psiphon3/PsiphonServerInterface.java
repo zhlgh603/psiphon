@@ -54,8 +54,6 @@ import org.json.JSONObject;
 import com.psiphon3.Utils.MyLog;
 
 import android.content.Context;
-import android.os.Build;
-import android.util.Log;
 
 
 public class PsiphonServerInterface
@@ -131,7 +129,7 @@ public class PsiphonServerInterface
         this.ownerContext = context;
 
         // Load persistent server entries, then add embedded entries
-
+        
         try
         {
             FileInputStream file = context.openFileInput(
@@ -160,12 +158,12 @@ public class PsiphonServerInterface
         }
         catch (IOException e)
         {
-            Log.e(PsiphonConstants.TAG, e.toString());
+            MyLog.w(R.string.PsiphonServerInterface_FailedToReadStoredServerEntries, e);
             // skip loading persistent server entries
         } 
         catch (JSONException e)
         {
-            Log.e(PsiphonConstants.TAG, e.toString());
+            MyLog.w(R.string.PsiphonServerInterface_FailedToParseStoredServerEntries, e);
             // skip loading persistent server entries
         }
         
@@ -283,7 +281,7 @@ public class PsiphonServerInterface
         }
         catch (JSONException e)
         {
-            Log.e(PsiphonConstants.TAG, e.toString());
+            MyLog.w(R.string.PsiphonServerInterface_FailedToParseHandshake, e);
             throw new PsiphonServerInterfaceException(e);
         }
     }
@@ -301,10 +299,6 @@ public class PsiphonServerInterface
         String url = getCommonRequestURL("connected", extraParams);
         
         makeRequest(url, null);
-    }
-
-    synchronized public void doDownload()
-    {
     }
 
     /**
@@ -370,7 +364,22 @@ public class PsiphonServerInterface
         makeRequest(url, requestBody);
     }
 
-    synchronized public void doSpeed()
+    synchronized public void doSpeedRequest(String operation, String info, Integer milliseconds, Integer size) 
+        throws PsiphonServerInterfaceException
+    {
+        List<Utils.Pair<String,String>> extraParams = new ArrayList<Utils.Pair<String,String>>();
+        extraParams.add(Utils.Pair.of("session_id", this.serverSessionID));
+        extraParams.add(Utils.Pair.of("operation", operation));
+        extraParams.add(Utils.Pair.of("info", info));
+        extraParams.add(Utils.Pair.of("milliseconds", milliseconds.toString()));
+        extraParams.add(Utils.Pair.of("size", size.toString()));
+        
+        String url = getCommonRequestURL("speed", extraParams);
+        
+        makeRequest(url, null);
+    }
+
+    synchronized public void doDownload()
     {
     }
 
@@ -498,10 +507,9 @@ public class PsiphonServerInterface
                 writer.close ();           
             }
             
-            int code = conn.getResponseCode();
             if (conn.getResponseCode() != HttpsURLConnection.HTTP_OK)
             {
-                throw new PsiphonServerInterfaceException("HTTPS request failed");
+                throw new PsiphonServerInterfaceException("HTTPS request failed with error: " + conn.getResponseCode());
             }
     
             ByteArrayOutputStream responseBody = new ByteArrayOutputStream();
@@ -615,12 +623,12 @@ public class PsiphonServerInterface
         }
         catch (JSONException e)
         {
-            Log.e(PsiphonConstants.TAG, e.toString());
+            MyLog.w(R.string.PsiphonServerInterface_FailedToCreateServerEntries, e);
             // Proceed, even if file saving fails
         } 
         catch (IOException e)
         {
-            Log.e(PsiphonConstants.TAG, e.toString());
+            MyLog.w(R.string.PsiphonServerInterface_FailedToStoreServerEntries, e);
             // Proceed, even if file saving fails
         }
     } 
