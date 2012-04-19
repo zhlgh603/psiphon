@@ -102,7 +102,7 @@ class ServerInstance(object):
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits)),
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits)),
             ('client_version', lambda x: consists_of(x, string.digits)),
-            ('client_platform', lambda x: consists_of(x, string.letters))]
+            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._'))]
 
     def _get_inputs(self, request, request_name, additional_inputs=None):
         if additional_inputs is None:
