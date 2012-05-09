@@ -390,6 +390,18 @@ public class ServerInterface
         makeRequest(url);
     }
 
+    /**
+     * Make the 'upgrade' request to the server. 
+     * @throws PsiphonServerInterfaceException
+     */
+    synchronized public byte[] doUpgradeDownloadRequest() 
+        throws PsiphonServerInterfaceException
+    {
+        String url = getRequestURL("download", null);
+        
+        return makeRequest(url);
+    }
+    
     synchronized public void doFailedRequest(String error) 
         throws PsiphonServerInterfaceException
     {
@@ -757,5 +769,10 @@ public class ServerInterface
                 MyLog.d("Sending stats FAILED"+(finalCall?" (final)":""));
             }
         }
+    }
+
+    public boolean isUpgradeAvailable()
+    {
+        return !this.upgradeClientVersion.isEmpty();
     } 
 }
