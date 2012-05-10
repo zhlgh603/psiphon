@@ -45,12 +45,16 @@ import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+
+import org.apache.http.conn.ssl.AbstractVerifier;
 import org.apache.http.conn.ssl.AllowAllHostnameVerifier;
+import org.apache.http.conn.ssl.BrowserCompatHostnameVerifier;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import com.psiphon3.ServerEntryAuth.ServerEntryAuthException;
 import com.psiphon3.Utils.MyLog;
 
 import android.content.Context;
@@ -230,7 +234,7 @@ public class ServerInterface
             
             String url = getRequestURL("handshake", extraParams);
             
-            byte[] response = makeRequest(url);
+            byte[] response = makePsiphonRequest(url);
 
             final String JSON_CONFIG_PREFIX = "Config: ";
             for (String line : new String(response).split("\n"))
@@ -305,7 +309,7 @@ public class ServerInterface
         
         String url = getRequestURL("connected", extraParams);
         
-        makeRequest(url);
+        makePsiphonRequest(url);
     }
 
     /**
@@ -371,7 +375,7 @@ public class ServerInterface
         List<Pair<String,String>> additionalHeaders = new ArrayList<Pair<String,String>>();
         additionalHeaders.add(Pair.create("Content-Type", "application/json"));
         
-        makeRequest(url, additionalHeaders, requestBody);
+        makePsiphonRequest(url, additionalHeaders, requestBody);
     }
 
     synchronized public void doSpeedRequest(String operation, String info, Integer milliseconds, Integer size) 
@@ -386,7 +390,7 @@ public class ServerInterface
         
         String url = getRequestURL("speed", extraParams);
         
-        makeRequest(url);
+        makePsiphonRequest(url);
     }
 
     /**
@@ -398,7 +402,7 @@ public class ServerInterface
     {
         String url = getRequestURL("download", null);
         
-        return makeRequest(url);
+        return makePsiphonRequest(url);
     }
     
     synchronized public void doFailedRequest(String error) 
@@ -409,9 +413,40 @@ public class ServerInterface
         
         String url = getRequestURL("failed", extraParams);
         
-        makeRequest(url);
+        makePsiphonRequest(url);
     }
 
+    synchronized public void fetchRemoteServerList()
+        throws PsiphonServerInterfaceException
+    {
+        // NOTE: Running this at the start of every session may be enabling
+        // a monitor/probe attack that identifies outbound requests to S3,
+        // checks that the (HTTPS) response is of a certain size, and then
+        // monitors the host for connections to Psiphon nodes.
+
+        // Get remote server entries from known S3 bucket; the bucket ID
+        // is in the path component of the URL and the request is HTTPS,
+        // so this request may be difficult to block without blocking all
+        // of a valuable service.
+
+        try
+        {
+            byte[] response = makeRequest(EmbeddedValues.REMOTE_SERVER_LIST_URL);
+
+            String serverList = ServerEntryAuth.validateAndExtractServerList(new String(response));
+
+            for (String encodedEntry : serverList.split("\n"))
+            {
+                addServerEntry(encodedEntry, false);
+            }
+        }
+        catch (ServerEntryAuthException e)
+        {
+            MyLog.w(R.string.ServerInterface_InvalidRemoteServerList, e);
+            throw new PsiphonServerInterfaceException(e);            
+        }
+    }
+    
     private class CustomTrustManager implements X509TrustManager
     {
         private X509Certificate expectedServerCertificate;
@@ -498,27 +533,68 @@ public class ServerInterface
         return url.toString();
     }
 
-    private byte[] makeRequest(String url) 
+    private byte[] makePsiphonRequest(String url)
             throws PsiphonServerInterfaceException
     {
-        return makeRequest(url, null, null);
+        return makePsiphonRequest(url, null, null);
     }
     
-    private byte[] makeRequest(String url, List<Pair<String,String>> additionalHeaders, byte[] body) 
+    private byte[] makePsiphonRequest(
+            String url,
+            List<Pair<String,String>> additionalHeaders,
+            byte[] body) 
         throws PsiphonServerInterfaceException
     {
-        String serverCertificate = getCurrentServerEntry().webServerCertificate;
-        
+        // Psiphon web request: authenticate the web server using the embedded certificate
+        String psiphonServerCertificate = getCurrentServerEntry().webServerCertificate;
+
+        return makeRequest(
+                psiphonServerCertificate,
+                url,
+                additionalHeaders,
+                body);
+    }
+
+    private byte[] makeRequest(String url)
+            throws PsiphonServerInterfaceException
+    {
+        return makeRequest(null, url, null, null);
+    }
+    
+    private byte[] makeRequest(
+                        String serverCertificate,
+                        String url,
+                        List<Pair<String,String>> additionalHeaders,
+                        byte[] body) 
+        throws PsiphonServerInterfaceException
+    {
         SSLContext context;
         try
         {
+            // If a specific web server certificate is provided, expect
+            // exactly that certificate. Otherwise, accept a server
+            // certificate signed by a CA in the default trust manager.
+            TrustManager[] trustManager = null;
+            AbstractVerifier hostnameVerifier = null;
+            if (serverCertificate != null)
+            {
+                // Specific server certificate case
+                trustManager = new TrustManager[] { new CustomTrustManager(serverCertificate) };
+                hostnameVerifier = new AllowAllHostnameVerifier();
+            }
+            else
+            {
+                // Default CA case
+                hostnameVerifier = new BrowserCompatHostnameVerifier();                
+            }
+
             context = SSLContext.getInstance("TLS");
             context.init(
                     null,
-                    new TrustManager[] { new CustomTrustManager(serverCertificate) },
+                    trustManager,
                     new SecureRandom());
             HttpsURLConnection.setDefaultSSLSocketFactory(context.getSocketFactory());
-            HttpsURLConnection.setDefaultHostnameVerifier(new AllowAllHostnameVerifier());
+            HttpsURLConnection.setDefaultHostnameVerifier(hostnameVerifier);
             HttpsURLConnection conn = (HttpsURLConnection) new URL(url).openConnection();
             conn.setConnectTimeout(PsiphonConstants.HTTPS_REQUEST_TIMEOUT);
             conn.setDoOutput(true);
@@ -535,7 +611,7 @@ public class ServerInterface
     
             if (body == null)
             {
-                conn.setRequestMethod("GET");                
+                conn.setRequestMethod("GET");
             }
             else
             {
