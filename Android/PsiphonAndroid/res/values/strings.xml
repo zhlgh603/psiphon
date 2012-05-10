@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Psiphon 3</string>
+    <string name="about">About Psiphon 3</string>
+    <string name="banner_desc">sponsor banner; click to visit sponsor home page</string>
+    <string name="start_desc">connect to Psiphon; click to connect</string>
+    <string name="message_image_success_desc">icon indicating a success message</string><string name="message_image_error_desc">icon indicating an error message</string><string name="message_image_debug_desc">icon indicating a debug message</string><string name="message_image_warning_desc">icon indicating a warning message</string>
+    <string name="psiphon_service_notification_id">Psiphon Service Notification</string>
+    <string name="psiphon_service_notification_message">Psiphon 3 is running...</string>
+    <string name="ssh_connecting">SSH connecting...</string>
+    <string name="ssh_connected">SSH connected</string><string name="ssh_connection_failed">SSH connection failed</string>
+    <string name="ssh_authenticating">SSH authenticating...</string>
+    <string name="ssh_authentication_failed">SSH authentication failed</string>
+    <string name="ssh_authenticated">SSH authenticated</string>
+    <string name="socks_starting">SOCKS starting...</string>
+    <string name="socks_running">SOCKS running</string>
+    <string name="socks_stopped">SOCKS stopped</string>
+    <string name="ssh_stopped">SSH stopped</string>
+    <string name="error_message">An error occurred</string>
+    <string name="http_proxy_starting">HTTP proxy starting...</string>
+    <string name="http_proxy_running">HTTP proxy running</string>
+    <string name="http_proxy_stopped">HTTP proxy stopped</string>
+    <string name="http_proxy_stopped_unexpectedly">HTTP proxy stopped unexpectedly</string>
+    <string name="ServerInterface.FailedToCreateServerEntries">Failed to create server entries to store.</string>
+    <string name="ServerInterface.FailedToStoreServerEntries">Failed to store server entries.</string>
+    <string name="ServerInterface.FailedToReadStoredServerEntries">Failed to read stored server entries.</string>
+    <string name="ServerInterface.FailedToParseStoredServerEntries">Failed to parse stored server entries.</string>
+    <string name="ServerInterface.FailedToParseHandshake">Failed to parse handshake.</string>
+    <string name="PsiphonAndroidService.HandshakeRequestFailed">Handshake request failed.</string>
+    <string name="PsiphonAndroidService.ConnectedRequestFailed">Connected request failed.</string>
+    <string name="ssh_disconnected_unexpectedly">SSH disconnected unexpectedly</string>
+    <string name="exit">Exit</string>
+    <string name="open_browser">Open Browser</string>
+    <string name="browser_task_label">Psiphon Browser</string>
+    <string name="client_version">Client Version %s</string>
+    <string name="no_server_entries">There are no servers to connect to</string>
+    <string name="UpgradeManager.CanNotRetrievePackageInfo">Unable to retrieve package info for current app</string>
+    <string name="UpgradeManager.UpgradeFileWriteFailed">Failed to write upgrade file</string>
+    <string name="UpgradeManager.UpgradeDownloadFailed">Upgrade download failed</string>
+    <string name="UpgradeManager.UpgradeDownloaded">Upgrade downloaded. Will be installed next time application starts.</string>
+    <string name="UpgradeManager.CannotExtractUpgradePackageInfo">Upgrade failed. Cannot extract package info from upgrade file.</string>
+    <string name="ServerInterface.HandshakeJSONParseFailed">Failed to parse handshake JSON</string>
+    <string name="UpgradeManager.UpgradeFileNotFound">Upgrade file not found</string>
+
+</resources>
