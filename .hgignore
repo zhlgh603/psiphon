@@ -14,6 +14,7 @@ Automation/Builds
 
 Android/PsiphonAndroid/bin
 Android/PsiphonAndroid/gen
+Android/PsiphonAndroid/obj
 Android/zirco-browser/bin
 Android/zirco-browser/gen
 
