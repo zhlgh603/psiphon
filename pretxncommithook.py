@@ -33,8 +33,8 @@ def no_embedded_values(difflines):
     '''
     for line in difflines:
         line = line.strip()
-        if line.startswith('diff ') and line.endswith('PsiphonAndroidEmbeddedValues.java'):
-            print >> sys.stderr, 'PsiphonAndroidEmbeddedValues.java commit disallowed!'
+        if line.startswith('diff ') and line.endswith('EmbeddedValues.java'):
+            print >> sys.stderr, 'EmbeddedValues.java commit disallowed!'
             return False
     return True
 
