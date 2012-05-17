@@ -50,7 +50,8 @@ ConnectionManager::ConnectionManager(void) :
     m_startingTime(0),
     m_transport(0),
     m_upgradePending(false),
-    m_startSplitTunnel(false)
+    m_startSplitTunnel(false),
+    m_nextFetchRemoteServerListAttempt(0)
 {
     m_mutex = CreateMutex(NULL, FALSE, 0);
 
@@ -178,13 +179,23 @@ void ConnectionManager::Stop(void)
 
 void ConnectionManager::FetchRemoteServerList(void)
 {
-    // TODO: Depending on where this is called from, we'll need a mutex
-    // AutoMUTEX lock(m_mutex);
+    AutoMUTEX lock(m_mutex);
 
     if (strlen(REMOTE_SERVER_LIST_ADDRESS) == 0)
     {
         return;
     }
+
+    // After at least one failed connection attempt, and no more than once
+    // per few hours (if successful), or not more than once per few minutes
+    // (if unsuccessful), check for a new remote server list.
+    if (m_nextFetchRemoteServerListAttempt != 0 &&
+        m_nextFetchRemoteServerListAttempt > time(0))
+    {
+        return;
+    }
+
+    m_nextFetchRemoteServerListAttempt = time(0) + SECONDS_BETWEEN_UNSUCCESSFUL_REMOTE_SERVER_LIST_FETCH;
 
     string response;
     HTTPSRequest httpsRequest;
@@ -200,15 +211,15 @@ void ConnectionManager::FetchRemoteServerList(void)
         response.length() <= 0)
     {
         my_print(false, _T("%s: fetch remote server list failed"), __TFUNCTION__);
-        // TODO: log or throw
         return;
     }
+
+    m_nextFetchRemoteServerListAttempt = time(0) + SECONDS_BETWEEN_SUCCESSFUL_REMOTE_SERVER_LIST_FETCH;
 
     string serverEntryList;
     if (!verifySignedServerList(response.c_str(), serverEntryList))
     {
         my_print(false, _T("%s: verify remote server list failed"), __TFUNCTION__);
-        // TODO: log or throw
         return;
     }
 
@@ -246,8 +257,6 @@ void ConnectionManager::Start(const tstring& transport, bool startSplitTunnel)
     }
 
     SetState(CONNECTION_MANAGER_STATE_STARTING);
-
-    FetchRemoteServerList();
 
     if (!(m_thread = CreateThread(0, 0, ConnectionManagerStartThread, (void*)this, 0, 0)))
     {
@@ -429,6 +438,8 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* object)
             my_print(false, _T("Trying next server..."));
 
             // Continue while loop to try next server
+
+            manager->FetchRemoteServerList();
 
             // Wait between 1 and 2 seconds before retrying. This is a quick
             // fix to deal with the following problem: when a client can
