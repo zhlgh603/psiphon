@@ -131,7 +131,7 @@ class ServerInstance(object):
                 return False
             region = self.redis.get(client_session_id) or region
 
-        input_values.append(('client_region', region))            
+        input_values.append(('client_region', region))
 
         # Check for each expected input
         for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
@@ -226,11 +226,11 @@ class ServerInstance(object):
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_version'],
                     event_logger=discovery_logger)
-                    
+
         output = []
 
-        # Legacy handshake output is a series of Name:Value lines returned to 
-        # the client. That format will continue to be supported (old client 
+        # Legacy handshake output is a series of Name:Value lines returned to
+        # the client. That format will continue to be supported (old client
         # versions expect it), but the new format of a JSON-ified object will
         # also be output.
 
@@ -239,7 +239,7 @@ class ServerInstance(object):
 
         if config['upgrade_client_version']:
             output.append('Upgrade: %s' % (config['upgrade_client_version'],))
-                    
+
         for encoded_server_entry in config['encoded_server_list']:
             output.append('Server: %s' % (encoded_server_entry,))
 
@@ -253,7 +253,7 @@ class ServerInstance(object):
             if config.has_key('ssh_obfuscated_port'):
                 output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
                 output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
-        
+
         if inputs_lookup['relay_protocol'] == 'VPN':
             psk = psi_psk.set_psk(self.server_ip_address)
             config['l2tp_ipsec_psk'] = psk
@@ -262,7 +262,7 @@ class ServerInstance(object):
         # The entire config is JSON encoded and included as well.
 
         output.append('Config: ' + json.dumps(config))
-        
+
         response_headers = [('Content-type', 'text/plain')]
         start_response('200 OK', response_headers)
         return ['\n'.join(output)]
@@ -354,15 +354,15 @@ class ServerInstance(object):
         self._log_event(log_event,
                          [('relay_protocol', request.params['relay_protocol']),
                           ('session_id', request.params['session_id'])])
-        
+
         # Log page view and traffic stats, if available.
         if request.body:
             try:
                 common_inputs = inputs[:-(len(additional_inputs)-1)] # common inputs, without all status additional inputs
                 stats = json.loads(request.body)
-                
+
                 if stats['bytes_transferred'] > 0:
-                    self._log_event('bytes_transferred', 
+                    self._log_event('bytes_transferred',
                                     common_inputs + [('bytes', stats['bytes_transferred'])])
 
                 # Note: no input validation on page/domain.
@@ -370,16 +370,17 @@ class ServerInstance(object):
                 # Stats processor must handle this input with care.
 
                 for page_view in stats['page_views']:
-                    self._log_event('page_views', 
+                    self._log_event('page_views',
                                     common_inputs + [('page', page_view['page']),
                                                      ('count', page_view['count'])])
 
                 for https_req in stats['https_requests']:
-                    self._log_event('https_requests', 
+                    self._log_event('https_requests',
                                     common_inputs + [('domain', https_req['domain']),
                                                      ('count', https_req['count'])])
             except:
                 start_response('403 Forbidden', [])
+                return []
 
         # Clean up session data
         if request.params['connected'] == '0' and request.params.has_key('client_session_id'):
