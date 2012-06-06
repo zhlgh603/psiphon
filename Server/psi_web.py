@@ -224,6 +224,7 @@ class ServerInstance(object):
                     client_ip_address,
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
+                    inputs_lookup['client_platform'],
                     inputs_lookup['client_version'],
                     event_logger=discovery_logger)
 
