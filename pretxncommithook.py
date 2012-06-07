@@ -36,6 +36,9 @@ def no_embedded_values(difflines):
         if line.startswith('diff ') and line.endswith('EmbeddedValues.java'):
             print >> sys.stderr, 'EmbeddedValues.java commit disallowed!'
             return False
+        if line.startswith('diff ') and line.endswith('embeddedvalues.h'):
+            print >> sys.stderr, 'embeddedvalues.h commit disallowed!'
+            return False
     return True
 
 if __name__ == '__main__':
