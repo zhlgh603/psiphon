@@ -69,7 +69,7 @@ def build_apk():
         'ant -q -f "%s" clean' % (os.path.join(ZIRCO_SOURCE_ROOT, 'build.xml'),),
         'ant -q -f "%s" clean' % (os.path.join(PSIPHON_SOURCE_ROOT, 'build.xml'),),
         'ant -q -f "%s" release' % (os.path.join(PSIPHON_SOURCE_ROOT, 'build.xml'),),
-        'jarsigner -sigalg SHA256withRSA -digestalg SHA1 -keystore "%s" -storepass %s "%s" psiphon' % (
+        'jarsigner -sigalg SHA1withRSA -digestalg SHA1 -keystore "%s" -storepass %s "%s" psiphon' % (
             KEYSTORE_FILENAME, KEYSTORE_PASSWORD, RELEASE_UNSIGNED_APK_FILENAME),
         'move "%s" "%s"' % (RELEASE_UNSIGNED_APK_FILENAME, RELEASE_SIGNED_APK_FILENAME),
         'zipalign -f 4 "%s" "%s"' % (RELEASE_SIGNED_APK_FILENAME, ZIPALIGNED_APK_FILENAME)]
@@ -117,7 +117,7 @@ def write_embedded_values(propagation_channel_id,
                                remote_server_list_url[1],
                                remote_server_list_url[2],
                                remote_server_list_signature_public_key,
-                               infor_link_url))
+                               info_link_url))
 
 
 def write_android_manifest_version(client_version):
