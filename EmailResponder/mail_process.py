@@ -106,8 +106,7 @@ class MailResponder:
                                         attachment_filename))
     
             extra_headers = { 
-                             'Reply-To': self.requested_addr,
-                             'Return-Path': settings.COMPLAINTS_ADDRESS
+                             'Reply-To': self.requested_addr
                             }
     
             if self._requester_msgid:
@@ -127,7 +126,7 @@ class MailResponder:
             raw_response = self._dkim_sign_email(raw_response)
     
             if not sendmail.send_raw_email_smtp(raw_response,
-                                                self._response_from_addr,
+                                                settings.COMPLAINTS_ADDRESS, # will be Return-Path
                                                 self._requester_addr):
                 return False
 
@@ -202,11 +201,6 @@ class MailResponder:
         Signs the raw email according to DKIM standards and returns the resulting
         email (which is the original with extra signature headers).
         '''
-
-        # Disabling DKIM signing for now. It adds a significant processing
-        # overhead, and it's not clear that it adds a significant benefit.
-        # If bounces increase, we'll re-enable it and see.
-        return raw_email
 
         sig = dkim.sign(raw_email, settings.DKIM_SELECTOR, settings.DKIM_DOMAIN,
                         open(settings.DKIM_PRIVATE_KEY).read())
