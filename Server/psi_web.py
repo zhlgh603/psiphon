@@ -279,9 +279,14 @@ class ServerInstance(object):
         # e.g., /root/PsiphonV/download/psiphon-<propagation_channel_id>-<sponsor_id>.exe
         inputs_lookup = dict(inputs)
         try:
-            filename = 'psiphon-%s-%s.exe' % (
-                            inputs_lookup['propagation_channel_id'],
-                            inputs_lookup['sponsor_id'])
+            if inputs_lookup['client_platform'].lower().find('android') != -1:
+                filename = 'PsiphonAndroid-%s-%s.apk' % (
+                                inputs_lookup['propagation_channel_id'],
+                                inputs_lookup['sponsor_id'])
+            else:
+                filename = 'psiphon-%s-%s.exe' % (
+                                inputs_lookup['propagation_channel_id'],
+                                inputs_lookup['sponsor_id'])
             path = os.path.join(psi_config.UPGRADE_DOWNLOAD_PATH, filename)
             with open(path, 'rb') as file:
                 contents = file.read()
