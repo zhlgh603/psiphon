@@ -1115,7 +1115,11 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                 RemoteServerSigningKeyPair(
                     psi_ops_server_entry_auth.generate_signing_key_pair(
                         REMOTE_SERVER_SIGNING_KEY_PAIR_PASSWORD))
-            
+        
+        # This may be serialized/deserialized into a unicode string, but M2Crypto won't accept that.
+        # The key pair should only contain ascii anyways, so encoding to ascii should be safe.
+        self.__remote_server_list_signing_key_pair.pem_key_pair = \
+            self.__remote_server_list_signing_key_pair.pem_key_pair.encode('ascii', 'ignore')
         return self.__remote_server_list_signing_key_pair
     
     def build(
@@ -1286,7 +1290,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         for sponsor in self.__sponsors.itervalues():
             for campaign in sponsor.campaigns:
                 if campaign.s3_bucket_name:
-                    psi_ops_s3.update_s3_download(self.__aws_account, None, campaign.s3_bucket_name)
+                    psi_ops_s3.update_s3_download(self.__aws_account, None, None, campaign.s3_bucket_name)
                     campaign.log('updated s3 bucket %s' % (campaign.s3_bucket_name,))
 
     def update_routes(self):
