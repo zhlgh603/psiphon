@@ -18,6 +18,8 @@ Android/PsiphonAndroid/obj
 Android/zirco-browser/bin
 Android/zirco-browser/gen
 
+node_modules
+
 syntax: glob
 
 # Numerous always-ignore extensions
