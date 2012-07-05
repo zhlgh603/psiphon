@@ -25,6 +25,7 @@ import GeoIP
 import syslog
 import traceback
 import redis
+import json
 import psi_config
 import psi_geoip
 
@@ -73,14 +74,14 @@ try:
         # it in a lookup database keyed by session ID.
     
         rhost = os.environ['PAM_RHOST']
-        region = psi_geoip.get_region(rhost)
+        geoip = psi_geoip.get_geoip(rhost)
     
         r = redis.StrictRedis(
                 host=psi_config.SESSION_DB_HOST,
                 port=psi_config.SESSION_DB_PORT,
                 db=psi_config.SESSION_DB_INDEX)
     
-        r.set(session_id, region)
+        r.set(session_id, json.dumps(geoip))
         r.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
 
 except Exception as e:

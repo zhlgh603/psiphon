@@ -34,6 +34,7 @@ import tempfile
 import netifaces
 import socket
 import json
+import iso8601
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_pyopenssl
 from webob import Request
@@ -81,6 +82,30 @@ def is_valid_relay_protocol(str):
     return str in ['VPN', 'SSH', 'OSSH', '(NONE)']
 
 
+def is_valid_iso8601_date(str):
+    try:
+        iso8601.parse_date(str)
+        # ISO8601 allows spaces, but we don't
+        if str.find(' ') != -1:
+            return false
+    except iso8601.iso8601.ParseError:
+        return false
+    return true
+
+
+def parse_feedback_response(str):
+    parts = str.split(':')
+    if len(parts) != 2:
+        return None
+    question, answer = parts
+    if not (len(question) > 0 and
+            consists_of(question, string.hexdigits) and
+            len(answer) > 0 and
+            consists_of(answer, string.digits)):
+        return None
+    return (question, answer)
+
+
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
@@ -113,15 +138,15 @@ class ServerInstance(object):
         # Add server IP address for logging
         input_values.append(('server_ip_address', self.server_ip_address))
 
-        # Log client region (but not IP address)
+        # Log client region/city/ISP (but not IP address)
         # If the peer is localhost, the web request is coming through the
         # tunnel. In this case, check if the client provided a client_session_id
         # and check if there's a corresponding region in the tunnel session
         # database
         client_ip_address = request.remote_addr
-        region = 'None'
+        geoip = psi_geoip.get_none()
         if client_ip_address not in ['localhost', '127.0.0.1', self.server_ip_address]:
-            region = psi_geoip.get_region(client_ip_address)
+            geoip = psi_geoip.get_geoip(client_ip_address)
         elif request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
             if not consists_of(client_session_id, string.hexdigits):
@@ -129,9 +154,17 @@ class ServerInstance(object):
                     syslog.LOG_ERR,
                     'Invalid client_session_id in %s [%s]' % (request_name, str(request.params)))
                 return False
-            region = self.redis.get(client_session_id) or region
+            record = self.redis.get(client_session_id)
+            if record:
+                geoip = json.loads(record)
 
-        input_values.append(('client_region', region))
+        # Hack: log parsing is space delimited, so remove spaces from
+        # GeoIP string (ISP names in particular)
+        space_to_underscore = string.maketrans(' ', '_')
+
+        input_values.append(('client_region', geoip['region'].translate(space_to_underscore)))
+        input_values.append(('client_city', geoip['city'].translate(space_to_underscore)))
+        input_values.append(('client_isp', geoip['isp'].translate(space_to_underscore)))
 
         # Check for each expected input
         for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
@@ -143,6 +176,7 @@ class ServerInstance(object):
                 # - Older clients specify vpn_client_ip_address for session ID
                 # - Older clients specify client_id for propagation_channel_id
                 # - Older clients don't specify client_platform
+                # - Older clients don't specify last session date
                 if input_name == 'relay_protocol':
                     value = 'VPN'
                 elif input_name == 'session_id' and request.params.has_key('vpn_client_ip_address'):
@@ -151,6 +185,8 @@ class ServerInstance(object):
                     value = request.params['client_id']
                 elif input_name == 'client_platform':
                     value = 'Windows'
+                elif input_name == 'last_connected':
+                    value = 'Unknown'
                 else:
                     syslog.syslog(
                         syslog.LOG_ERR,
@@ -211,7 +247,6 @@ class ServerInstance(object):
         #
         self._log_event('handshake', inputs)
         client_ip_address = request.remote_addr
-        inputs_lookup = dict(inputs)
         # logger callback will add log entry for each server IP address discovered
         def discovery_logger(server_ip_address):
             unknown = '0' if server_ip_address in known_servers else '1'
@@ -219,6 +254,7 @@ class ServerInstance(object):
                              inputs + [('server_ip_address', server_ip_address),
                                        ('unknown', unknown)])
 
+        inputs_lookup = dict(inputs)
         config = psinet.handshake(
                     self.server_ip_address,
                     client_ip_address,
@@ -308,7 +344,9 @@ class ServerInstance(object):
         # Note: session ID is a VPN client IP address for backwards compatibility
         additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('session_id', lambda x: is_valid_ip_address(x) or
-                                                      consists_of(x, string.hexdigits))]
+                                                      consists_of(x, string.hexdigits)),
+                             ('last_connected', lambda x: is_valid_iso8601_date(x) or
+                                                          x == 'None')]
         inputs = self._get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -412,6 +450,44 @@ class ServerInstance(object):
             return []
         self._log_event('speed', inputs)
         # No action, this request is just for stats logging
+        start_response('200 OK', [])
+        return []
+
+    def feedback(self, environ, start_response):
+        request = Request(environ)
+
+        additional_inputs = [('relay_protocol', is_valid_relay_protocol)]
+        inputs = self._get_inputs(request, 'feedback', additional_inputs)
+        if not inputs:
+            start_response('404 Not Found', [])
+            return []
+
+        # Client submits a list of feedback responses; each response value contains
+        # question ID and answer ID
+        if hasattr(request, 'str_params'):
+            feedback_responses = request.str_params.getall('response')
+        else:
+            feedback_responses = request.params.getall('response')
+
+        parsed_feedback_responses = []
+        for feedback_response in feedback_responses:
+            parsed_feedback_response = parse_feedback_response(feedback_response)
+            if not parsed_feedback_response:
+                syslog.syslog(
+                    syslog.LOG_ERR,
+                    'Invalid response in feedback [%s]' % (str(request.params),))
+                start_response('404 Not Found', [])
+                return []
+            parsed_feedback_responses.append(parsed_feedback_response)
+
+        self._log_event('feedback', inputs)
+
+        for question, answer in parsed_feedback_responses:
+            self._log_event('feedback_response',
+                             inputs + [('question', question),
+                                       ('answer', answer)])
+
+        # No action, this request is just for feedback logging
         start_response('200 OK', [])
         return []
 

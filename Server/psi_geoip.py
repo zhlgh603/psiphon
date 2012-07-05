@@ -21,21 +21,30 @@ import os
 import GeoIP
 
 
-def get_region(network_address):
+def get_none():
+    return {'region': 'None', 'city': 'None', 'isp': 'None'}
+
+def get_geoip(network_address):
     try:
-        region = None
-        # Use the commercial "city" database is available
+        geoip = get_none()
+
+        # Use the commercial "city" and "isp" databases if available
         city_db_filename = '/usr/local/share/GeoIP/GeoIPCity.dat'
+        isp_db_filename = '/usr/local/share/GeoIP/GeoIPISP.dat'
+
         if os.path.isfile(city_db_filename):
-            record = GeoIP.open(city_db_filename,
-                                GeoIP.GEOIP_MEMORY_CACHE).record_by_name(network_address)
+            record = GeoIP.open(city_db_filename, GeoIP.GEOIP_MEMORY_CACHE).record_by_name(network_address)
             if record:
-                region = record['country_code']
+                geoip['region'] = record['country_code']
+                geoip['city'] = record['city']
         else:
-            region = GeoIP.new(GeoIP.GEOIP_MEMORY_CACHE).country_code_by_name(network_address)
-        if region is None:
-            region = 'None'
-        return region
+            geoip['region'] = GeoIP.new(GeoIP.GEOIP_MEMORY_CACHE).country_code_by_name(network_address)
+
+        if os.path.isfile(isp_db_filename):
+            geoip['isp'] = GeoIP.open(isp_db_filename,GeoIP.GEOIP_MEMORY_CACHE).org_by_name(network_address)
+
+        return geoip
+
     except NameError:
         # Handle the case where the GeoIP module isn't installed
-        return 'None'
+        return get_none()
