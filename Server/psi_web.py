@@ -400,14 +400,18 @@ class ServerInstance(object):
                           ('session_id', request.params['session_id'])])
 
         # Log page view and traffic stats, if available.
+
+        # Traffic stats include session_id so we can report e.g., average bytes
+        # transferred per session by region/sponsor.
+        # NOTE: The session_id isn't associated with any PII.
+
         if request.body:
             try:
-                common_inputs = inputs[:-(len(additional_inputs)-1)] # common inputs, without all status additional inputs
                 stats = json.loads(request.body)
 
                 if stats['bytes_transferred'] > 0:
                     self._log_event('bytes_transferred',
-                                    common_inputs + [('bytes', stats['bytes_transferred'])])
+                                    inputs + [('bytes', stats['bytes_transferred'])])
 
                 # Note: no input validation on page/domain.
                 # Any string is accepted (regex transform may result in arbitrary string).
@@ -415,13 +419,13 @@ class ServerInstance(object):
 
                 for page_view in stats['page_views']:
                     self._log_event('page_views',
-                                    common_inputs + [('page', page_view['page']),
-                                                     ('count', page_view['count'])])
+                                    inputs + [('page', page_view['page']),
+                                              ('count', page_view['count'])])
 
                 for https_req in stats['https_requests']:
                     self._log_event('https_requests',
-                                    common_inputs + [('domain', https_req['domain']),
-                                                     ('count', https_req['count'])])
+                                    inputs + [('domain', https_req['domain']),
+                                              ('count', https_req['count'])])
             except:
                 start_response('403 Forbidden', [])
                 return []
