@@ -93,19 +93,6 @@ def is_valid_iso8601_date(str):
     return true
 
 
-def parse_feedback_response(str):
-    parts = str.split(':')
-    if len(parts) != 2:
-        return None
-    question, answer = parts
-    if not (len(question) > 0 and
-            consists_of(question, string.hexdigits) and
-            len(answer) > 0 and
-            consists_of(answer, string.digits)):
-        return None
-    return (question, answer)
-
-
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
@@ -466,30 +453,25 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
 
-        # Client submits a list of feedback responses; each response value contains
+        self._log_event('feedback', inputs)
+
+        # Client POSTs a list of feedback responses; each response value contains
         # question ID and answer ID
+
+        if request.body:
+            try:
+                for response in json.loads(request.body)['responses']:
+                    self._log_event('feedback_response',
+                                    inputs + [('question', response['question']),
+                                              ('answer', response['answer'])])
+            except:
+                start_response('403 Forbidden', [])
+                return []
+
         if hasattr(request, 'str_params'):
             feedback_responses = request.str_params.getall('response')
         else:
             feedback_responses = request.params.getall('response')
-
-        parsed_feedback_responses = []
-        for feedback_response in feedback_responses:
-            parsed_feedback_response = parse_feedback_response(feedback_response)
-            if not parsed_feedback_response:
-                syslog.syslog(
-                    syslog.LOG_ERR,
-                    'Invalid response in feedback [%s]' % (str(request.params),))
-                start_response('404 Not Found', [])
-                return []
-            parsed_feedback_responses.append(parsed_feedback_response)
-
-        self._log_event('feedback', inputs)
-
-        for question, answer in parsed_feedback_responses:
-            self._log_event('feedback_response',
-                             inputs + [('question', question),
-                                       ('answer', answer)])
 
         # No action, this request is just for feedback logging
         start_response('200 OK', [])
