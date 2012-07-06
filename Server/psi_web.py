@@ -87,10 +87,10 @@ def is_valid_iso8601_date(str):
         iso8601.parse_date(str)
         # ISO8601 allows spaces, but we don't
         if str.find(' ') != -1:
-            return false
+            return False
     except iso8601.iso8601.ParseError:
-        return false
-    return true
+        return False
+    return True
 
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
@@ -147,11 +147,10 @@ class ServerInstance(object):
 
         # Hack: log parsing is space delimited, so remove spaces from
         # GeoIP string (ISP names in particular)
-        space_to_underscore = string.maketrans(' ', '_')
 
-        input_values.append(('client_region', geoip['region'].translate(space_to_underscore)))
-        input_values.append(('client_city', geoip['city'].translate(space_to_underscore)))
-        input_values.append(('client_isp', geoip['isp'].translate(space_to_underscore)))
+        input_values.append(('client_region', geoip['region'].replace(' ', '_')))
+        input_values.append(('client_city', geoip['city'].replace(' ', '_')))
+        input_values.append(('client_isp', geoip['isp'].replace(' ', '_')))
 
         # Check for each expected input
         for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
@@ -333,7 +332,8 @@ class ServerInstance(object):
                              ('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits)),
                              ('last_connected', lambda x: is_valid_iso8601_date(x) or
-                                                          x == 'None')]
+                                                          x == 'None' or
+                                                          x == 'Unknown')]
         inputs = self._get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -460,7 +460,11 @@ class ServerInstance(object):
 
         if request.body:
             try:
-                for response in json.loads(request.body)['responses']:
+
+                # Note: no input validation on question/answers.
+                # Stats processor must handle this input with care.
+
+                for response in json.loads(request.body)['responses']:                    
                     self._log_event('feedback_response',
                                     inputs + [('question', response['question']),
                                               ('answer', response['answer'])])
