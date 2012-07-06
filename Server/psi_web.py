@@ -87,23 +87,10 @@ def is_valid_iso8601_date(str):
         iso8601.parse_date(str)
         # ISO8601 allows spaces, but we don't
         if str.find(' ') != -1:
-            return false
+            return False
     except iso8601.iso8601.ParseError:
-        return false
-    return true
-
-
-def parse_feedback_response(str):
-    parts = str.split(':')
-    if len(parts) != 2:
-        return None
-    question, answer = parts
-    if not (len(question) > 0 and
-            consists_of(question, string.hexdigits) and
-            len(answer) > 0 and
-            consists_of(answer, string.digits)):
-        return None
-    return (question, answer)
+        return False
+    return True
 
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
@@ -160,11 +147,10 @@ class ServerInstance(object):
 
         # Hack: log parsing is space delimited, so remove spaces from
         # GeoIP string (ISP names in particular)
-        space_to_underscore = string.maketrans(' ', '_')
 
-        input_values.append(('client_region', geoip['region'].translate(space_to_underscore)))
-        input_values.append(('client_city', geoip['city'].translate(space_to_underscore)))
-        input_values.append(('client_isp', geoip['isp'].translate(space_to_underscore)))
+        input_values.append(('client_region', geoip['region'].replace(' ', '_')))
+        input_values.append(('client_city', geoip['city'].replace(' ', '_')))
+        input_values.append(('client_isp', geoip['isp'].replace(' ', '_')))
 
         # Check for each expected input
         for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
@@ -346,7 +332,8 @@ class ServerInstance(object):
                              ('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits)),
                              ('last_connected', lambda x: is_valid_iso8601_date(x) or
-                                                          x == 'None')]
+                                                          x == 'None' or
+                                                          x == 'Unknown')]
         inputs = self._get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -400,6 +387,11 @@ class ServerInstance(object):
                           ('session_id', request.params['session_id'])])
 
         # Log page view and traffic stats, if available.
+
+        # Traffic stats include session_id so we can report e.g., average bytes
+        # transferred per session by region/sponsor.
+        # NOTE: The session_id isn't associated with any PII.
+
         if request.body:
             try:
                 stats = json.loads(request.body)
@@ -461,30 +453,24 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
 
-        # Client submits a list of feedback responses; each response value contains
-        # question ID and answer ID
-        if hasattr(request, 'str_params'):
-            feedback_responses = request.str_params.getall('response')
-        else:
-            feedback_responses = request.params.getall('response')
-
-        parsed_feedback_responses = []
-        for feedback_response in feedback_responses:
-            parsed_feedback_response = parse_feedback_response(feedback_response)
-            if not parsed_feedback_response:
-                syslog.syslog(
-                    syslog.LOG_ERR,
-                    'Invalid response in feedback [%s]' % (str(request.params),))
-                start_response('404 Not Found', [])
-                return []
-            parsed_feedback_responses.append(parsed_feedback_response)
-
         self._log_event('feedback', inputs)
 
-        for question, answer in parsed_feedback_responses:
-            self._log_event('feedback_response',
-                             inputs + [('question', question),
-                                       ('answer', answer)])
+        # Client POSTs a list of feedback responses; each response value contains
+        # question ID and answer ID
+
+        if request.body:
+            try:
+
+                # Note: no input validation on question/answers.
+                # Stats processor must handle this input with care.
+
+                for response in json.loads(request.body)['responses']:                    
+                    self._log_event('feedback_response',
+                                    inputs + [('question', response['question']),
+                                              ('answer', response['answer'])])
+            except:
+                start_response('403 Forbidden', [])
+                return []
 
         # No action, this request is just for feedback logging
         start_response('200 OK', [])
@@ -564,7 +550,8 @@ class WebServerThread(threading.Thread):
                                      '/connected': server_instance.connected,
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
-                                     '/speed': server_instance.speed}),
+                                     '/speed': server_instance.speed,
+                                     '/feedback': server_instance.feedback}),
                                 numthreads=self.server_threads, timeout=20)
 
                 # Set maximum request input sizes to avoid processing DoS inputs
