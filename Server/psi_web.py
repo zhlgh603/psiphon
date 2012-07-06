@@ -468,11 +468,6 @@ class ServerInstance(object):
                 start_response('403 Forbidden', [])
                 return []
 
-        if hasattr(request, 'str_params'):
-            feedback_responses = request.str_params.getall('response')
-        else:
-            feedback_responses = request.params.getall('response')
-
         # No action, this request is just for feedback logging
         start_response('200 OK', [])
         return []
@@ -551,7 +546,8 @@ class WebServerThread(threading.Thread):
                                      '/connected': server_instance.connected,
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
-                                     '/speed': server_instance.speed}),
+                                     '/speed': server_instance.speed,
+                                     '/feedback': server_instance.feedback}),
                                 numthreads=self.server_threads, timeout=20)
 
                 # Set maximum request input sizes to avoid processing DoS inputs
