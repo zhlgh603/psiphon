@@ -93,19 +93,6 @@ def is_valid_iso8601_date(str):
     return true
 
 
-def parse_feedback_response(str):
-    parts = str.split(':')
-    if len(parts) != 2:
-        return None
-    question, answer = parts
-    if not (len(question) > 0 and
-            consists_of(question, string.hexdigits) and
-            len(answer) > 0 and
-            consists_of(answer, string.digits)):
-        return None
-    return (question, answer)
-
-
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
@@ -400,14 +387,18 @@ class ServerInstance(object):
                           ('session_id', request.params['session_id'])])
 
         # Log page view and traffic stats, if available.
+
+        # Traffic stats include session_id so we can report e.g., average bytes
+        # transferred per session by region/sponsor.
+        # NOTE: The session_id isn't associated with any PII.
+
         if request.body:
             try:
-                common_inputs = inputs[:-(len(additional_inputs)-1)] # common inputs, without all status additional inputs
                 stats = json.loads(request.body)
 
                 if stats['bytes_transferred'] > 0:
                     self._log_event('bytes_transferred',
-                                    common_inputs + [('bytes', stats['bytes_transferred'])])
+                                    inputs + [('bytes', stats['bytes_transferred'])])
 
                 # Note: no input validation on page/domain.
                 # Any string is accepted (regex transform may result in arbitrary string).
@@ -415,13 +406,13 @@ class ServerInstance(object):
 
                 for page_view in stats['page_views']:
                     self._log_event('page_views',
-                                    common_inputs + [('page', page_view['page']),
-                                                     ('count', page_view['count'])])
+                                    inputs + [('page', page_view['page']),
+                                              ('count', page_view['count'])])
 
                 for https_req in stats['https_requests']:
                     self._log_event('https_requests',
-                                    common_inputs + [('domain', https_req['domain']),
-                                                     ('count', https_req['count'])])
+                                    inputs + [('domain', https_req['domain']),
+                                              ('count', https_req['count'])])
             except:
                 start_response('403 Forbidden', [])
                 return []
@@ -462,30 +453,25 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
 
-        # Client submits a list of feedback responses; each response value contains
+        self._log_event('feedback', inputs)
+
+        # Client POSTs a list of feedback responses; each response value contains
         # question ID and answer ID
+
+        if request.body:
+            try:
+                for response in json.loads(request.body)['responses']:
+                    self._log_event('feedback_response',
+                                    inputs + [('question', response['question']),
+                                              ('answer', response['answer'])])
+            except:
+                start_response('403 Forbidden', [])
+                return []
+
         if hasattr(request, 'str_params'):
             feedback_responses = request.str_params.getall('response')
         else:
             feedback_responses = request.params.getall('response')
-
-        parsed_feedback_responses = []
-        for feedback_response in feedback_responses:
-            parsed_feedback_response = parse_feedback_response(feedback_response)
-            if not parsed_feedback_response:
-                syslog.syslog(
-                    syslog.LOG_ERR,
-                    'Invalid response in feedback [%s]' % (str(request.params),))
-                start_response('404 Not Found', [])
-                return []
-            parsed_feedback_responses.append(parsed_feedback_response)
-
-        self._log_event('feedback', inputs)
-
-        for question, answer in parsed_feedback_responses:
-            self._log_event('feedback_response',
-                             inputs + [('question', question),
-                                       ('answer', answer)])
 
         # No action, this request is just for feedback logging
         start_response('200 OK', [])
