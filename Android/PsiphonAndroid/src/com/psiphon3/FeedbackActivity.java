@@ -6,7 +6,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
 import java.io.Writer;
+import java.net.URLDecoder;
+import java.util.Locale;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -30,8 +33,11 @@ public class FeedbackActivity extends Activity {
         webView.getSettings().setJavaScriptEnabled(true);
         webView.setWebViewClient(new WebViewClient()
         {
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url)
             {
+                final String feedbackUrl = "feedback?";
+                
                 if (url.startsWith("mailto:"))
                 {
                     Intent intent = new Intent(Intent.ACTION_SEND);
@@ -40,13 +46,43 @@ public class FeedbackActivity extends Activity {
                     startActivity(intent);
                     return true;
                 }
-                else if (url.startsWith("feedback"))
+                else if (url.contains(feedbackUrl))
                 {
-                    Toast.makeText(activity,
-                                   getString(R.string.FeedbackActivity_Success),
-                                   Toast.LENGTH_SHORT).show();
-                    activity.finish();
+                    if (submitFeedback(url.substring(
+                            url.indexOf(feedbackUrl) + feedbackUrl.length())))
+                    {
+                        Toast.makeText(activity,
+                                getString(R.string.FeedbackActivity_Success),
+                                Toast.LENGTH_SHORT).show();
+                        activity.finish();
+                    }
+                    else
+                    {
+                        Toast.makeText(activity,
+                                getString(R.string.FeedbackActivity_Failure),
+                                Toast.LENGTH_SHORT).show();
+                    }
                     return true;
+                }
+                return false;
+            }
+            
+            private boolean submitFeedback(String urlParameters)
+            {
+                final String formDataParameterName = "formdata=";
+                if (urlParameters.startsWith(formDataParameterName))
+                {
+                    String formdata;
+                    try
+                    {
+                        formdata = URLDecoder.decode(urlParameters.substring(formDataParameterName.length()), "utf-8");
+                        // TODO: submit this now.
+                        return true;
+                    }
+                    catch (UnsupportedEncodingException e)
+                    {
+                        // Just fail
+                    }
                 }
                 return false;
             }
@@ -54,7 +90,9 @@ public class FeedbackActivity extends Activity {
 
         // Load the feedback page
         String html = getHTMLContent();
-        webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null);
+        // Get the current locale
+        String language = Locale.getDefault().getLanguage();
+        webView.loadDataWithBaseURL("file:///#" + language, html, "text/html", "utf-8", null);
     }
 
     private String getHTMLContent()
