@@ -21,12 +21,15 @@ import os
 import GeoIP
 
 
-def get_none():
+def get_unknown():
     return {'region': 'None', 'city': 'None', 'isp': 'None'}
+
+def get_region_only(region):
+    return {'region': region, 'city': 'None', 'isp': 'None'}
 
 def get_geoip(network_address):
     try:
-        geoip = get_none()
+        geoip = get_unknown()
 
         # Use the commercial "city" and "isp" databases if available
         city_db_filename = '/usr/local/share/GeoIP/GeoIPCity.dat'
@@ -47,4 +50,4 @@ def get_geoip(network_address):
 
     except NameError:
         # Handle the case where the GeoIP module isn't installed
-        return get_none()
+        return get_unknown()
