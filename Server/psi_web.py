@@ -131,7 +131,7 @@ class ServerInstance(object):
         # and check if there's a corresponding region in the tunnel session
         # database
         client_ip_address = request.remote_addr
-        geoip = psi_geoip.get_none()
+        geoip = psi_geoip.get_unknown()
         if client_ip_address not in ['localhost', '127.0.0.1', self.server_ip_address]:
             geoip = psi_geoip.get_geoip(client_ip_address)
         elif request.params.has_key('client_session_id'):
@@ -143,7 +143,11 @@ class ServerInstance(object):
                 return False
             record = self.redis.get(client_session_id)
             if record:
-                geoip = json.loads(record)
+                try:
+                    geoip = json.loads(record)
+                except ValueError:
+                    # Backwards compatibility case
+                    geoip = psi_geoip.get_region_only(record)
 
         # Hack: log parsing is space delimited, so remove spaces from
         # GeoIP string (ISP names in particular)
