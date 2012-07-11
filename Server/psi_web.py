@@ -34,7 +34,7 @@ import tempfile
 import netifaces
 import socket
 import json
-import iso8601
+import re
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_pyopenssl
 from webob import Request
@@ -82,16 +82,9 @@ def is_valid_relay_protocol(str):
     return str in ['VPN', 'SSH', 'OSSH', '(NONE)']
 
 
+is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})\.(?P<fraction>[0-9]+)(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
 def is_valid_iso8601_date(str):
-    try:
-        iso8601.parse_date(str)
-        # ISO8601 allows spaces, but we don't
-        if str.find(' ') != -1:
-            return False
-    except iso8601.iso8601.ParseError:
-        return False
-    return True
-
+    return is_valid_iso8601_date_regex.match(str) != None
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
