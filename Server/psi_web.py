@@ -450,7 +450,8 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
 
-        self._log_event('feedback', inputs)
+        # Note: no event log here since we get a log per Q/A -- so there's
+        # a possibility of no log at all.
 
         # Client POSTs a list of feedback responses; each response value contains
         # question ID and answer ID
@@ -462,7 +463,7 @@ class ServerInstance(object):
                 # Stats processor must handle this input with care.
 
                 for response in json.loads(request.body)['responses']:                    
-                    self._log_event('feedback_response',
+                    self._log_event('feedback',
                                     inputs + [('question', response['question']),
                                               ('answer', response['answer'])])
             except:
