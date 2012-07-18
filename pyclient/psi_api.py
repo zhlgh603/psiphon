@@ -33,8 +33,9 @@ class Psiphon3Server(object):
 
     def __init__(self, servers, propagation_channel_id, sponsor_id, client_version):
         self.servers = servers
+        # TODO: read the new json config element of the server entry, if present
         (self.ip_address, self.web_server_port, self.web_server_secret,
-         self.web_server_certificate) = binascii.unhexlify(servers[0]).split(" ")
+         self.web_server_certificate) = binascii.unhexlify(servers[0]).split(" ")[:4]
         self.propagation_channel_id = propagation_channel_id
         self.sponsor_id = sponsor_id
         self.client_version = client_version
