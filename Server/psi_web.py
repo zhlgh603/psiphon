@@ -451,7 +451,8 @@ class ServerInstance(object):
 
         additional_inputs = [('relay_protocol', is_valid_relay_protocol),
                              ('session_id', lambda x: is_valid_ip_address(x) or
-                                                      consists_of(x, string.hexdigits))]
+                                                      consists_of(x, string.hexdigits) or
+                                                      x == EMPTY_VALUE)]
         inputs = self._get_inputs(request, 'feedback', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
