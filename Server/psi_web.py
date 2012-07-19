@@ -78,8 +78,11 @@ def is_valid_ip_address(str):
         return False
 
 
+EMPTY_VALUE = '(NONE)'
+
+
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH', '(NONE)']
+    return str in ['VPN', 'SSH', 'OSSH', EMPTY_VALUE]
 
 
 is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})\.(?P<fraction>[0-9]+)(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
@@ -104,10 +107,10 @@ class ServerInstance(object):
         self.server_secret = server_secret
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
-            ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits)),
-            ('sponsor_id', lambda x: consists_of(x, string.hexdigits)),
-            ('client_version', lambda x: consists_of(x, string.digits)),
-            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._'))]
+            ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
+            ('sponsor_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
+            ('client_version', lambda x: consists_of(x, string.digits) or x == EMPTY_VALUE),
+            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()'))]
 
     def _get_inputs(self, request, request_name, additional_inputs=None):
         if additional_inputs is None:
@@ -175,6 +178,8 @@ class ServerInstance(object):
                         syslog.LOG_ERR,
                         'Missing %s in %s [%s]' % (input_name, request_name, str(request.params)))
                     return False
+            if len(value) == 0:
+                value = EMPTY_VALUE 
             if not validator(value):
                 syslog.syslog(
                     syslog.LOG_ERR,
