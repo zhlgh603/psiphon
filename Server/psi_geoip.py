@@ -40,6 +40,12 @@ def get_geoip(network_address):
             if record:
                 geoip['region'] = record['country_code']
                 geoip['city'] = record['city']
+                # Convert City name from ISO-8859-1 to UTF-8 encoding
+                if geoip['city']:
+                    try:
+                        geoip['city'] = geoip['city'].decode('iso-8859-1').encode('utf-8')
+                    except UnicodeDecodeError:
+                        pass
         else:
             geoip['region'] = GeoIP.new(GeoIP.GEOIP_MEMORY_CACHE).country_code_by_name(network_address)
 
