@@ -38,19 +38,23 @@ def get_geoip(network_address):
         if os.path.isfile(city_db_filename):
             record = GeoIP.open(city_db_filename, GeoIP.GEOIP_MEMORY_CACHE).record_by_name(network_address)
             if record:
-                geoip['region'] = record['country_code']
-                geoip['city'] = record['city']
-                # Convert City name from ISO-8859-1 to UTF-8 encoding
-                if geoip['city']:
+                if record['country_code']:
+                    geoip['region'] = record['country_code']
+                if record['city']:
+                    # Convert City name from ISO-8859-1 to UTF-8 encoding
                     try:
-                        geoip['city'] = geoip['city'].decode('iso-8859-1').encode('utf-8')
-                    except UnicodeDecodeError:
+                        geoip['city'] = record['city'].decode('iso-8859-1').encode('utf-8')
+                    except UnicodeDecodeError, ValueError:
                         pass
         else:
-            geoip['region'] = GeoIP.new(GeoIP.GEOIP_MEMORY_CACHE).country_code_by_name(network_address)
+            region = GeoIP.new(GeoIP.GEOIP_MEMORY_CACHE).country_code_by_name(network_address)
+            if region:
+                geoip['region'] = region
 
         if os.path.isfile(isp_db_filename):
-            geoip['isp'] = GeoIP.open(isp_db_filename,GeoIP.GEOIP_MEMORY_CACHE).org_by_name(network_address)
+            isp = GeoIP.open(isp_db_filename,GeoIP.GEOIP_MEMORY_CACHE).org_by_name(network_address)
+            if isp:
+                geoip['isp'] = isp
 
         return geoip
 
