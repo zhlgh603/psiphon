@@ -482,7 +482,17 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
-
+    def check(self, environ, start_response):
+        # Just check the server secret; no logging or action for this request
+        request = Request(environ)
+        if ('server_secret' not in request.params or
+            not constant_time_compare(request.params['server_secret'], self.server_secret)):
+            start_response('404 Not Found', [])
+            return []
+        start_response('200 OK', [])
+        return []
+        
+        
 def get_servers():
     # enumerate all interfaces with an IPv4 address and server entry
     # return an array of server info for each server to be run
@@ -557,7 +567,8 @@ class WebServerThread(threading.Thread):
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
                                      '/speed': server_instance.speed,
-                                     '/feedback': server_instance.feedback}),
+                                     '/feedback': server_instance.feedback,
+                                     '/check': server_instance.check}),
                                 numthreads=self.server_threads, timeout=20)
 
                 # Set maximum request input sizes to avoid processing DoS inputs
