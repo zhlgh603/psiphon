@@ -35,6 +35,7 @@
 #include "webbrowser.h"
 #include "limitsingleinstance.h"
 #include "htmldlg.h"
+#include "server_list_reordering.h"
 
 
 //==== Globals ================================================================
@@ -48,6 +49,7 @@ TCHAR g_szWindowClass[MAX_LOADSTRING];
 HWND g_hWnd;
 ConnectionManager g_connectionManager;
 tstring g_lastTransportSelection;
+ServerListReorder g_serverListReorder;
 
 LimitSingleInstance g_singleInstanceObject(TEXT("Global\\{B88F6262-9CC8-44EF-887D-FB77DC89BB8C}"));
 
@@ -850,6 +852,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         g_lastTransportSelection = GetSelectedTransport();
         g_connectionManager.Toggle(g_lastTransportSelection, GetSplitTunnel());
 
+        // Optimize the server list
+
+        g_serverListReorder.Start(&g_connectionManager.GetServerList());
+
         break;
 
     case WM_SIZE:
@@ -1058,6 +1064,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_DESTROY:
         // Stop VPN if running
+        g_serverListReorder.Stop();
         g_connectionManager.Stop();
         PostQuitMessage(0);
         break;
