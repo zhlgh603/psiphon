@@ -65,6 +65,11 @@ ConnectionManager::~ConnectionManager(void)
     CloseHandle(m_mutex);
 }
 
+ServerList& ConnectionManager::GetServerList()
+{
+    return m_serverList;
+}
+
 void ConnectionManager::OpenHomePages(const TCHAR* defaultHomePage/*=0*/)
 {
     AutoMUTEX lock(m_mutex);
@@ -219,7 +224,7 @@ void ConnectionManager::FetchRemoteServerList(void)
             false) || 
         response.length() <= 0)
     {
-        my_print(false, _T("%s: fetch remote server list failed"), __TFUNCTION__);
+        my_print(false, _T("Fetch remote server list failed"));
         return;
     }
 
@@ -228,7 +233,7 @@ void ConnectionManager::FetchRemoteServerList(void)
     string serverEntryList;
     if (!verifySignedServerList(response.c_str(), serverEntryList))
     {
-        my_print(false, _T("%s: verify remote server list failed"), __TFUNCTION__);
+        my_print(false, _T("Verify remote server list failed"));
         return;
     }
 

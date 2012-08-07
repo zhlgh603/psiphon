@@ -37,6 +37,7 @@ import json
 import re
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_pyopenssl
+from cherrypy.lib import cpstats
 from webob import Request
 import psi_psk
 import psi_config
@@ -482,7 +483,33 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
+    def check(self, environ, start_response):
+        # Just check the server secret; no logging or action for this request
+        request = Request(environ)
+        if ('server_secret' not in request.params or
+            not constant_time_compare(request.params['server_secret'], self.server_secret)):
+            start_response('404 Not Found', [])
+            return []
+        start_response('200 OK', [])
+        return []
 
+    def stats(self, environ, start_response):
+        # Just check the server secret; no logging or action for this request
+        request = Request(environ)
+        if ('server_secret' not in request.params or
+            not constant_time_compare(request.params['server_secret'], self.server_secret) or
+            'stats_client_secret' not in request.params or
+            not hasattr(psi_config, 'STATS_CLIENT_SECRET') or
+            not constant_time_compare(request.params['stats_client_secret'], psi_config.STATS_CLIENT_SECRET)):
+            start_response('404 Not Found', [])
+            return []
+        contents = ''.join(list(cpstats.StatsPage().index()))
+        response_headers = [('Content-Type', 'text/html'),
+                            ('Content-Length', '%d' % (len(contents),))]
+        start_response('200 OK', response_headers)
+        return [contents]
+
+        
 def get_servers():
     # enumerate all interfaces with an IPv4 address and server entry
     # return an array of server info for each server to be run
@@ -557,8 +584,12 @@ class WebServerThread(threading.Thread):
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
                                      '/speed': server_instance.speed,
-                                     '/feedback': server_instance.feedback}),
+                                     '/feedback': server_instance.feedback,
+                                     '/check': server_instance.check,
+                                     '/stats': server_instance.stats}),
                                 numthreads=self.server_threads, timeout=20)
+
+                self.server.stats['Enabled'] = True
 
                 # Set maximum request input sizes to avoid processing DoS inputs
                 self.server.max_request_header_size = 100000
