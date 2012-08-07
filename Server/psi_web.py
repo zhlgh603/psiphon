@@ -509,7 +509,7 @@ class ServerInstance(object):
         start_response('200 OK', response_headers)
         return [contents]
 
-
+        
 def get_servers():
     # enumerate all interfaces with an IPv4 address and server entry
     # return an array of server info for each server to be run
