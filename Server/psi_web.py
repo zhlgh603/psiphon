@@ -499,7 +499,7 @@ class ServerInstance(object):
         if ('server_secret' not in request.params or
             not constant_time_compare(request.params['server_secret'], self.server_secret) or
             'stats_client_secret' not in request.params or
-            not hasattr(psi_config, 'STATS_CLIENT_SECRET')
+            not hasattr(psi_config, 'STATS_CLIENT_SECRET') or
             not constant_time_compare(request.params['stats_client_secret'], psi_config.STATS_CLIENT_SECRET)):
             start_response('404 Not Found', [])
             return []
