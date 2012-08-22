@@ -38,8 +38,9 @@ public:
     virtual tstring GetTransportProtocolName() const = 0;
     virtual tstring GetTransportDisplayName() const = 0;
     virtual bool IsHandshakeRequired(SessionInfo sessionInfo) const = 0;
+    virtual bool IsServerRequestTunnelled() const;
 
-    virtual tstring GetSessionID(SessionInfo sessionInfo) const;
+    virtual tstring GetSessionID(SessionInfo sessionInfo);
     virtual int GetLocalProxyParentPort() const;
     virtual tstring GetLastTransportError() const;
 
@@ -55,6 +56,7 @@ protected:
     // Subclasses must implement this member
     virtual bool GetSSHParams(
                     const SessionInfo& sessionInfo,
+                    const int localSocksProxyPort,
                     const string& sshPassword,
                     tstring& o_serverAddress, 
                     int& o_serverPort, 
@@ -70,6 +72,7 @@ protected:
 protected:
     tstring m_plonkPath;
     PROCESS_INFORMATION m_plonkProcessInfo;
+    int m_localSocksProxyPort;
 };
 
 
@@ -92,6 +95,7 @@ public:
 protected:
     virtual bool GetSSHParams(
                     const SessionInfo& sessionInfo,
+                    const int localSocksProxyPort,
                     const string& sshPassword,
                     tstring& o_serverAddress, 
                     int& o_serverPort, 
@@ -119,6 +123,7 @@ public:
 protected:
     virtual bool GetSSHParams(
                     const SessionInfo& sessionInfo,
+                    const int localSocksProxyPort,
                     const string& sshPassword,
                     tstring& o_serverAddress, 
                     int& o_serverPort, 
