@@ -24,6 +24,7 @@
 #include <WinCrypt.h>
 #include "config.h"
 #include "embeddedvalues.h"
+#include "stopsignal.h"
 
 
 // NOTE: this code depends on built-in Windows crypto services
@@ -241,17 +242,20 @@ void CALLBACK WinHttpStatusCallback(
 }
 
 bool HTTPSRequest::MakeRequest(
-        const bool& cancel,
         const TCHAR* serverAddress,
         int serverWebPort,
         const string& webServerCertificate,
         const TCHAR* requestPath,
         string& response,
+        const StopInfo& stopInfo,
         bool useLocalProxy/*=true*/,
         LPCWSTR additionalHeaders/*=NULL*/,
         LPVOID additionalData/*=NULL*/,
         DWORD additionalDataLength/*=0*/)
 {
+    // Throws if signaled
+    stopInfo.stopSignal->CheckSignal(stopInfo.stopReasons, true);
+
     DWORD dwFlags = SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
                     SECURITY_FLAG_IGNORE_CERT_DATE_INVALID |
                     SECURITY_FLAG_IGNORE_UNKNOWN_CA;
@@ -365,12 +369,13 @@ bool HTTPSRequest::MakeRequest(
 
         if (result == WAIT_TIMEOUT)
         {
-            if (cancel)
+            if (stopInfo.stopSignal->CheckSignal(stopInfo.stopReasons, false))
             {
                 hRequest.WinHttpCloseHandle();
                 WaitForSingleObject(m_closedEvent, INFINITE);
                 CloseHandle(m_closedEvent);
                 m_closedEvent = NULL;
+
                 return false;
             }
         }
