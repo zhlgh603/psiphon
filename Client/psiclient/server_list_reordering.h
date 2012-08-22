@@ -19,31 +19,26 @@
 
 #pragma once
 
+#include "serverlist.h"
 #include "stopsignal.h"
 
-class ITransport;
-class SessionInfo;
 
-
-class ServerRequest
+class ServerListReorder
 {
 public:
-    ServerRequest();
-    virtual ~ServerRequest();
-    bool MakeRequest(
-        bool adhocTransportIfNecessary,
-        const ITransport* currentTransport,
-        const SessionInfo& sessionInfo,
-        const TCHAR* requestPath,
-        string& o_response,
-        const StopInfo& stopInfo,
-        LPCWSTR additionalHeaders=NULL,
-        LPVOID additionalData=NULL,
-        DWORD additionalDataLength=0);
+    ServerListReorder();
+    virtual ~ServerListReorder();
+
+    void Start(ServerList* serverList);
+    void Stop();
 
 private:
-    void GetTempTransports(
-        const SessionInfo& sessionInfo,
-        vector<auto_ptr<ITransport>>& o_tempTransports);
+    static DWORD WINAPI ReorderServerListThread(void* data);
 
+    HANDLE m_thread;
+    ServerList* m_serverList;
+
+    // We use a custom stop signal because we only want to respond to Stop()
+    // being called, and no other events.
+    StopSignal m_stopSignal;
 };

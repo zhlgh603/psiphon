@@ -86,16 +86,20 @@ ServerRequest::~ServerRequest()
 }
 
 bool ServerRequest::MakeRequest(
-        const bool& cancel,
+        bool adhocIfNeeded,
         const ITransport* currentTransport,
         const SessionInfo& sessionInfo,
         const TCHAR* requestPath,
         string& response,
+        const StopInfo& stopInfo,
         LPCWSTR additionalHeaders/*=NULL*/,
         LPVOID additionalData/*=NULL*/,
         DWORD additionalDataLength/*=0*/)
 {
     // See comments at the top of this file for full discussion of logic.
+
+    // Throws if signaled
+    stopInfo.stopSignal->CheckSignal(stopInfo.stopReasons, true);
 
     assert(requestPath);
 
@@ -109,17 +113,23 @@ bool ServerRequest::MakeRequest(
         HTTPSRequest httpsRequest;
         bool requestSuccess = 
             httpsRequest.MakeRequest(
-                cancel,
                 NarrowToTString(sessionInfo.GetServerAddress()).c_str(),
                 sessionInfo.GetWebPort(),
                 sessionInfo.GetWebServerCertificate(),
                 requestPath,
                 response,
-                true, // use local proxy
+                stopInfo,
+                currentTransport->IsServerRequestTunnelled(), // use local proxy?
                 additionalHeaders,
                 additionalData,
                 additionalDataLength);
         return requestSuccess;
+    }
+    else if (!adhocIfNeeded)
+    {
+        // If ad hoc/temporary connections aren't allowed, and the transport
+        // isn't currently connected, bail.
+        return false;
     }
 
     // We don't have a connected transport. 
@@ -134,13 +144,13 @@ bool ServerRequest::MakeRequest(
     {
         HTTPSRequest httpsRequest;
         if (httpsRequest.MakeRequest(
-                cancel,
                 NarrowToTString(sessionInfo.GetServerAddress()).c_str(),
                 *port_iter,
                 sessionInfo.GetWebServerCertificate(),
                 requestPath,
                 response,
-                true, // use local proxy
+                stopInfo,
+                false, // don't use local proxy -- there's no transport, and there may be bad/remnant system proxy settings
                 additionalHeaders,
                 additionalData,
                 additionalDataLength))
@@ -174,22 +184,22 @@ bool ServerRequest::MakeRequest(
 
             // Throws on failure
             connection.Connect(
+                stopInfo,
                 (*transport_iter).get(),
                 NULL, // not collecting stats
                 sessionInfo, 
                 NULL, // no handshake allowed
-                tstring(), // splitTunnelingFilePath -- not providing it
-                cancel);
+                tstring()); // splitTunnelingFilePath -- not providing it
 
             HTTPSRequest httpsRequest;
             if (httpsRequest.MakeRequest(
-                    cancel,
                     NarrowToTString(sessionInfo.GetServerAddress()).c_str(),
                     sessionInfo.GetWebPort(),
                     sessionInfo.GetWebServerCertificate(),
                     requestPath,
                     response,
-                    true, // use local proxy
+                    stopInfo,
+                    (*transport_iter).get()->IsServerRequestTunnelled(), // use local proxy?
                     additionalHeaders,
                     additionalData,
                     additionalDataLength))

@@ -44,6 +44,8 @@
     <ClCompile Include="htmldlg.cpp">
       <Filter>WebCtrl</Filter>
     </ClCompile>
+    <ClCompile Include="server_list_reordering.cpp" />
+    <ClCompile Include="stopsignal.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h" />
@@ -506,6 +508,8 @@
     <ClInclude Include="htmldlg.h">
       <Filter>WebCtrl</Filter>
     </ClInclude>
+    <ClInclude Include="server_list_reordering.h" />
+    <ClInclude Include="stopsignal.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="psiclient.rc" />

@@ -89,6 +89,15 @@ bool LocalProxy::DoStart()
     Cleanup();
     
     int localHttpProxyPort = UserLocalHTTPProxyPort();
+
+    // Test if the localHttpProxyPort is already in use.  If it is, try to find
+    // one that is available.
+    if (!TestForOpenPort(localHttpProxyPort, 10, m_stopInfo))
+    {
+        my_print(false, _T("HTTP proxy could not find an available port."));
+        return false;
+    }
+
     if (!StartPolipo(localHttpProxyPort))
     {
         Cleanup();
@@ -102,6 +111,7 @@ bool LocalProxy::DoStart()
     m_systemProxySettings->SetHttpsProxyPort(localHttpProxyPort);
 
     my_print(true, _T("Polipo successfully started."));
+    my_print(false, _T("HTTP proxy is running on localhost port %d."), localHttpProxyPort);
 
     return true;
 }
@@ -151,8 +161,14 @@ void LocalProxy::StopImminent()
     }
 }
 
-void LocalProxy::DoStop()
+void LocalProxy::DoStop(bool cleanly)
 {
+    if (!cleanly) 
+    {
+        m_stopInfo.stopSignal->SignalStop(STOP_REASON_UNEXPECTED_DISCONNECT);
+    }
+
+    Cleanup();
 }
 
 void LocalProxy::Cleanup()
@@ -161,14 +177,7 @@ void LocalProxy::Cleanup()
     if (m_polipoProcessInfo.hProcess != 0
         && m_polipoProcessInfo.hProcess != INVALID_HANDLE_VALUE)
     {
-        GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, m_polipoProcessInfo.dwProcessId);
-        WaitForSingleObject(m_polipoProcessInfo.hProcess, 100);
-        if (!TerminateProcess(m_polipoProcessInfo.hProcess, 0) ||
-            WAIT_OBJECT_0 != WaitForSingleObject(m_polipoProcessInfo.hProcess, TERMINATE_PROCESS_WAIT_MS))
-        {
-            my_print(false, _T("TerminateProcess failed for process with PID %d"), m_polipoProcessInfo.dwProcessId);
-            my_print(false, _T("Please terminate this process manually"));
-        }
+        StopProcess(m_polipoProcessInfo.dwProcessId, m_polipoProcessInfo.hProcess);
     }
 
     if (m_polipoProcessInfo.hProcess != 0
@@ -195,12 +204,22 @@ void LocalProxy::Cleanup()
     if (!m_finalStatsSent && m_statsCollector && m_bytesTransferred > 0)
     {
         my_print(true, _T("%s: Stopped dirtily. Sending final stats."), __TFUNCTION__);
-        (void)m_statsCollector->SendStatusMessage(
+        if (m_statsCollector->SendStatusMessage(
                                 true, // Note: there's a timeout side-effect when final=false
                                 m_pageViewEntries, 
                                 m_httpsRequestEntries, 
-                                m_bytesTransferred);
-        my_print(true, _T("%s: Stopped dirtily. Final stats sent."), __TFUNCTION__);
+                                m_bytesTransferred))
+        {
+            m_finalStatsSent = true;
+            my_print(true, _T("%s: Stopped dirtily. Final stats sent."), __TFUNCTION__);
+        }
+        else
+        {
+            // Not setting m_finalStatsSent to true if SendStatusMessage failed.
+            // This will allow the possibility of trying again a bit later (this
+            // function is called from both DoStop and the destructor).
+            my_print(true, _T("%s: Stopped dirtily. Final stats send failed."), __TFUNCTION__);
+        }
     }
 }
 
@@ -290,7 +309,7 @@ bool LocalProxy::StartPolipo(int localHttpProxyPort)
                         localHttpProxyPort,
                         POLIPO_CONNECTION_TIMEOUT_SECONDS*1000,
                         m_polipoProcessInfo.hProcess,
-                        GetSignalStopFlags());
+                        m_stopInfo);
 
     if (ERROR_OPERATION_ABORTED == connected)
     {
@@ -298,7 +317,7 @@ bool LocalProxy::StartPolipo(int localHttpProxyPort)
     }
     else if (ERROR_SUCCESS != connected)
     {
-        my_print(false, _T("%s - Failed to connect to Polipo (%d, %d)"), __TFUNCTION__, connected, GetLastError());
+        my_print(false, _T("Failed to start the HTTP proxy (%d, %d)"), connected, GetLastError());
         return false;
     }
 

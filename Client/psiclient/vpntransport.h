@@ -44,10 +44,11 @@ public:
 
     virtual tstring GetTransportProtocolName() const;
     virtual tstring GetTransportDisplayName() const;
-    virtual tstring GetSessionID(SessionInfo sessionInfo) const;
+    virtual tstring GetSessionID(SessionInfo sessionInfo);
     virtual int GetLocalProxyParentPort() const;
     virtual tstring GetLastTransportError() const;
     virtual bool IsHandshakeRequired(SessionInfo sessionInfo) const;
+    virtual bool IsServerRequestTunnelled() const;
 
     virtual bool Cleanup();
 
@@ -83,4 +84,5 @@ private:
     HANDLE m_stateChangeEvent;
     HRASCONN m_rasConnection;
     unsigned int m_lastErrorCode;
+    tstring m_pppIPAddress;
 };
