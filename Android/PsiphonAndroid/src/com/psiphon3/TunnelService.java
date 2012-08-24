@@ -20,7 +20,6 @@
 package com.psiphon3;
 
 import java.io.IOException;
-import java.util.Date;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -290,18 +289,28 @@ public class TunnelService extends Service implements Utils.MyLog.ILogger, IStop
 
             MyLog.i(R.string.socks_starting);
 
-            int port = Utils.findAvailablePort(PsiphonConstants.SOCKS_PORT, 10);
-            if(port == 0)
+            // If polipo is already running, we must use the same SOCKS port that polipo is
+            // already using as it's parent proxy port.
+            if (Polipo.isPolipoThreadRunning())
             {
-                MyLog.e(R.string.socks_ports_failed);
-                runAgain = false;
-
-                //request tunnel stop
-                stopTunnel();
-
-                return runAgain;
+                if (!Utils.isPortAvailable(PsiphonData.getPsiphonData().getSocksPort()))
+                {
+                    MyLog.e(R.string.socks_port_in_use, PsiphonData.getPsiphonData().getSocksPort());
+                    runAgain = false;
+                    return runAgain;
+                }
             }
-            PsiphonData.getPsiphonData().setSocksPort(port);
+            else
+            {
+                int port = Utils.findAvailablePort(PsiphonConstants.SOCKS_PORT, 10);
+                if(port == 0)
+                {
+                    MyLog.e(R.string.socks_ports_failed);
+                    runAgain = false;
+                    return runAgain;
+                }
+                PsiphonData.getPsiphonData().setSocksPort(port);
+            }
             socks = conn.createDynamicPortForwarder(PsiphonData.getPsiphonData().getSocksPort());
             MyLog.i(R.string.socks_running, PsiphonData.getPsiphonData().getSocksPort());
 
@@ -321,10 +330,6 @@ public class TunnelService extends Service implements Utils.MyLog.ILogger, IStop
             {
                 MyLog.e(R.string.http_proxy_ports_failed);
                 runAgain = false;
-
-                //request tunnel stop
-                stopTunnel();
-
                 return runAgain;
             }
 
