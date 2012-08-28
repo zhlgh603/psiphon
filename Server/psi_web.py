@@ -247,6 +247,7 @@ class ServerInstance(object):
         config = psinet.handshake(
                     self.server_ip_address,
                     client_ip_address,
+                    inputs_lookup['client_region'],
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_platform'],
