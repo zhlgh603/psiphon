@@ -26,6 +26,7 @@ import syslog
 import traceback
 import redis
 import json
+import socket
 import psi_config
 import psi_geoip
 
