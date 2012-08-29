@@ -243,6 +243,21 @@ class ServerInstance(object):
         #
         self._log_event('handshake', inputs)
         client_ip_address = request.remote_addr
+
+        # If the request is tunnelled, we can get the last octet of the client's
+        # actual IP address from the discovery redis.
+        if self._is_request_tunnelled(client_ip_address):
+            client_ip_address = None
+            if request.params.has_key('client_session_id'):
+                client_session_id = request.params['client_session_id']
+                record = self.discovery_redis.get(client_session_id)
+                if record:
+                    self.discovery_redis.delete(client_session_id)
+                    discovery_info = json.loads(record)
+                    # Handshake will correctly handle a client_ip_address string with less than three dots
+                    # See the docs for socket.inet_aton
+                    client_ip_address = discovery_info['client_ip_last_octet']
+                
         # logger callback will add log entry for each server IP address discovered
         def discovery_logger(server_ip_address):
             unknown = '0' if server_ip_address in known_servers else '1'
@@ -251,20 +266,6 @@ class ServerInstance(object):
                                        ('unknown', unknown)])
 
         inputs_lookup = dict(inputs)
-
-        # If the request is tunnelled, we can get the last octet of the client's
-        # actual IP address from the discovery redis.
-        if self._is_request_tunnelled(client_ip_address):
-            client_session_id = inputs_lookup['client_session_id']
-            record = self.discovery_redis.get(client_session_id)
-            if record:
-                self.discovery_redis.delete(client_session_id)
-                discovery_info = json.loads(record)
-                # Handshake will correctly handle a client_ip_address string with less than three dots
-                # See the docs for socket.inet_aton
-                client_ip_address = discovery_info['client_ip_last_octet']
-            else:
-                client_ip_address = None
 
         config = psinet.handshake(
                     self.server_ip_address,
