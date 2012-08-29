@@ -94,7 +94,7 @@ try:
         # TODO: Consider implementing the discovery algorithm here so that
         # this does not need to be stored
         try:
-            client_ip_last_octet = str(ord(socket.inet_aton(ip_address)[-1]))
+            client_ip_last_octet = str(ord(socket.inet_aton(rhost)[-1]))
             redis_discovery = redis.StrictRedis(
                     host=psi_config.DISCOVERY_DB_HOST,
                     port=psi_config.DISCOVERY_DB_PORT,
