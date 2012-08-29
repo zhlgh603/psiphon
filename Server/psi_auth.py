@@ -76,13 +76,13 @@ try:
         rhost = os.environ['PAM_RHOST']
         geoip = psi_geoip.get_geoip(rhost)
     
-        r = redis.StrictRedis(
+        redis_session = redis.StrictRedis(
                 host=psi_config.SESSION_DB_HOST,
                 port=psi_config.SESSION_DB_PORT,
                 db=psi_config.SESSION_DB_INDEX)
     
-        r.set(session_id, json.dumps(geoip))
-        r.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
+        redis_session.set(session_id, json.dumps(geoip))
+        redis_session.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
         
         # Now fill in the discovery database
         # NOTE: We are storing the last octet of the user's IP address
@@ -94,9 +94,12 @@ try:
         # this does not need to be stored
         try:
             client_ip_last_octet = str(ord(socket.inet_aton(ip_address)[-1]))
-            r.select(psi_config.DISCOVERY_DB_INDEX)
-            r.set(session_id, json.dumps({'client_ip_last_octet' : client_ip_last_octet})
-            r.expire(session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
+            redis_discovery = redis.StrictRedis(
+                    host=psi_config.DISCOVERY_DB_HOST,
+                    port=psi_config.DISCOVERY_DB_PORT,
+                    db=psi_config.DISCOVERY_DB_INDEX)
+            redis_discovery.set(session_id, json.dumps({'client_ip_last_octet' : client_ip_last_octet})
+            redis_discovery.expire(session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
         except socket.error:
             pass
 
