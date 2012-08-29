@@ -98,7 +98,7 @@ try:
                     host=psi_config.DISCOVERY_DB_HOST,
                     port=psi_config.DISCOVERY_DB_PORT,
                     db=psi_config.DISCOVERY_DB_INDEX)
-            redis_discovery.set(session_id, json.dumps({'client_ip_last_octet' : client_ip_last_octet})
+            redis_discovery.set(session_id, json.dumps({'client_ip_last_octet' : client_ip_last_octet}))
             redis_discovery.expire(session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
         except socket.error:
             pass
