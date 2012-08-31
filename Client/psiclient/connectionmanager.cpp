@@ -487,10 +487,38 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* object)
     return 0;
 }
 
+void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
+{
+    ofstream out("..\\..\\Test\\test-conn-info.json");
+    if (!out) 
+    { 
+        my_print(true, _T("%s: cannot open session info file"), __TFUNCTION__);
+        return; 
+    }
+
+    out << "{\n" 
+        << "\"server_ip\": \"" << sessionInfo.GetServerAddress() << "\",\n"
+        << "\"server_web_port\": \"" << sessionInfo.GetWebPort() << "\",\n"
+        << "\"client_session_id\": \"" << sessionInfo.GetClientSessionID() << "\",\n"
+        << "\"propagation_channel_id\": \"" << PROPAGATION_CHANNEL_ID << "\",\n"
+        << "\"sponsor_id\": \"" << SPONSOR_ID << "\",\n"
+        << "\"client_version\": \"" << CLIENT_VERSION << "\",\n"
+        << "\"server_secret\": \"" << sessionInfo.GetWebServerSecret() << "\",\n"
+        << "\"relay_protocol\": \"" << TStringToNarrow(transport->GetTransportProtocolName()) << "\",\n"
+        << "\"session_id\": \"" << TStringToNarrow(transport->GetSessionID(sessionInfo)) << "\",\n"
+        << "\"last_connected\": \"" << "None" << "\",\n"
+        << "\"known_server\": \"" << sessionInfo.GetServerAddress() << "\"\n"
+        << "}";
+
+    out.close();
+}
+
 void ConnectionManager::DoPostConnect(const SessionInfo& sessionInfo)
 {
     // Called from connection thread
     // NOTE: no lock while waiting for network events
+
+    WriteSessionInfo(sessionInfo, m_transport);
 
     SetState(CONNECTION_MANAGER_STATE_CONNECTED);
 
