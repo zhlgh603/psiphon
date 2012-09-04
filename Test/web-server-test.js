@@ -1,9 +1,29 @@
+var spawn = require('child_process').spawn;
 var fs = require('fs');
 var https = require('https');
 var tunnel = require('tunnel');
 var Q = require('q');
+var _ = require('underscore');
 
-var SAMPLE_SIZE = 20;
+var SAMPLE_SIZE = 20, PROCESS_COUNT = 1;
+
+var i;
+
+/* Not spawning child processes for now, but I'll leave the code
+if (!_.include(process.argv, 'childproc')) {
+  for (i = 0; i < PROCESS_COUNT; i++) {
+    var child = spawn(process.argv[0], process.argv.slice(1).concat('childproc'));
+    child.on('exit', function(code) {
+      console.log('childproc exited with', code);
+    });
+
+    child.stdout.on('data', function(data) {
+      console.log('childproc said:', data.toString());
+    });
+  }
+  return;
+}
+*/
 
 var args = process.argv.splice(2);
 
@@ -37,7 +57,10 @@ var tunnelingAgent = tunnel.httpsOverHttp({
 // promise will be resolved with a positive value on success, negative on failure
 function makeRequest(tunnelReq, httpsReq, host, path, port) {
   var deferred = Q.defer();
-  var startTime = 0;
+  var startTime = 0, responseTime;
+
+  // Make sure we don't hit (polipo's) request cache
+  path = addCacheBreaker(path);
 
   var reqType = httpsReq ? https : http;
 
@@ -49,46 +72,67 @@ function makeRequest(tunnelReq, httpsReq, host, path, port) {
   };
 
   var req = reqType.request(reqOptions, function(res) {
-    if (res.statusCode === 200) {
-      return deferred.resolve(getTickCount() - startTime);
-    }
-    else {
+    responseTime = getTickCount() - startTime;
+
+    var resDone = function() {
+      // Protect again getting called twice
+      if (deferred) {
+        deferred.resolve({
+          error: null,
+          responseTime: responseTime,
+          endTime: getTickCount() - startTime});
+        deferred = null;
+        return;
+      }
+    };
+
+    res.on('end', resDone);
+    res.on('close', resDone);
+
+    //res.on('data', function(data) { console.log(data.length); });
+
+    if (res.statusCode !== 200) {
       mylog('Error: ' + res.statusCode + ' for ' + path);
-      return deferred.resolve(-res.statusCode);
+      deferred.resolve({error: res.statusCode});
+      return;
     }
   });
 
   startTime = getTickCount();
 
-  req.end();
-
   req.on('error', function(e) {
     mylog(e + ': ' + e.code);
-    return deferred.resolve(-999);
+    deferred.resolve({error: 999});
+    return;
   });
+
+  req.end();
 
   return deferred.promise;
 }
 
 
-// Takes an array of times and errors.
+// Takes an array of request results that look like:
+//   {error: nn, responseTime: nn, endTime: nn}
 // Returns an object that looks like:
 //   { avg_time: 100, error_rate: 0.2 }
 function reduceResults(results) {
-  var reduced = { avg_time: 0, error_rate: 0, count: 0 };
+  var reduced = { avgResponseTime: 0, avgEndTime: 0, errorRate: 0, count: 0 };
   results.forEach(function(elem) {
-    if (elem < 0) {
+    if (elem.error) {
       // error
-      reduced.error_rate += 1;
+      reduced.errorRate += 1;
     }
     else {
-      reduced.avg_time += elem;
+      reduced.avgResponseTime += elem.responseTime;
+      reduced.avgEndTime += elem.endTime;
       reduced.count += 1;
     }
   });
 
   if (reduced.count > 0) {
-    reduced.avg_time = reduced.avg_time / reduced.count;
+    reduced.avgResponseTime = reduced.avgResponseTime / reduced.count;
+    reduced.avgEndTime = reduced.avgEndTime / reduced.count;
   }
 
   return reduced;
@@ -143,6 +187,11 @@ function requestString(type, testConf) {
   return '/' + type + '?' + toQueryParams(testConf);
 }
 
+function addCacheBreaker(requestString) {
+  return requestString +
+         ((requestString.indexOf('?') < 0) ? '?' : '&') +
+         'cachebreak=' + Math.random();
+}
 
 function testServerRequest(tunneled, type, testConf) {
   var deferred = Q.defer();
@@ -161,6 +210,10 @@ function testServerRequest(tunneled, type, testConf) {
   }).end();
 
   return deferred.promise;
+}
+
+function addHexInfoToReq(conf, info) {
+  return _.extend(_.clone(conf), {sponsor_id: info});
 }
 
 /* serial/parallel experimentation
@@ -193,7 +246,7 @@ var seq = Q.resolve();
 seq = seq.then(function() {
   var reqType = 'handshake';
   var tunneled = true;
-  return testServerRequest(tunneled, reqType, testConf)
+  return testServerRequest(tunneled, reqType, addHexInfoToReq(testConf, '00'))
           .then(function(results) {
             mylog(
               reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
@@ -204,7 +257,7 @@ seq = seq.then(function() {
 seq = seq.then(function() {
   var reqType = 'handshake';
   var tunneled = false;
-  return testServerRequest(tunneled, reqType, testConf)
+  return testServerRequest(tunneled, reqType, addHexInfoToReq(testConf, '01'))
           .then(function(results) {
             mylog(
               reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
@@ -212,22 +265,11 @@ seq = seq.then(function() {
           });
 });
 
-
-seq = seq.then(function() {
-  var reqType = 'connected';
-  var tunneled = true;
-  return testServerRequest(tunneled, reqType, testConf)
-          .then(function(results) {
-            mylog(
-              reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
-              results);
-          });
-});
 
 seq = seq.then(function() {
   var reqType = 'connected';
   var tunneled = false;
-  return testServerRequest(tunneled, reqType, testConf)
+  return testServerRequest(tunneled, reqType, addHexInfoToReq(testConf, '04'))
           .then(function(results) {
             mylog(
               reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
@@ -235,15 +277,36 @@ seq = seq.then(function() {
           });
 });
 
+seq = seq.then(function() {
+  var reqType = 'connected';
+  var tunneled = true;
+  return testServerRequest(tunneled, reqType, addHexInfoToReq(testConf, '03'))
+          .then(function(results) {
+            mylog(
+              reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
+              results);
+          });
+});
+
+
+seq = seq.then(function() {
+  return testSiteRequest(true, '72.21.203.148', '/0ubz-2q11-gi9y/en.html')
+          .then(function(results) {
+            mylog(
+              'Request BY IP to: https://s3.amazonaws.com/0ubz-2q11-gi9y/en.html\n  ',
+              results);
+          });
+});
 
 seq = seq.then(function() {
   return testSiteRequest(true, 's3.amazonaws.com', '/0ubz-2q11-gi9y/en.html')
           .then(function(results) {
             mylog(
-              'Request to: https://s3.amazonaws.com/0ubz-2q11-gi9y/en.html\n  ',
+              'Request BY NAME to: https://s3.amazonaws.com/0ubz-2q11-gi9y/en.html\n  ',
               results);
           });
 });
+
 
 seq.then(function() {
   mylog("all done");

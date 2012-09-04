@@ -487,6 +487,7 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* object)
     return 0;
 }
 
+#if defined TESTING && defined _DEBUG
 void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
 {
     ofstream out("..\\..\\Test\\test-conn-info.json");
@@ -512,13 +513,16 @@ void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
 
     out.close();
 }
+#endif //TESTING
 
 void ConnectionManager::DoPostConnect(const SessionInfo& sessionInfo)
 {
     // Called from connection thread
     // NOTE: no lock while waiting for network events
 
+#if defined TESTING && defined _DEBUG
     WriteSessionInfo(sessionInfo, m_transport);
+#endif
 
     SetState(CONNECTION_MANAGER_STATE_CONNECTED);
 
