@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "stopsignal.h"
+
 
 class WorkerThreadSynch
 {
@@ -58,7 +60,7 @@ public:
     // false otherwise.
     // synchronizedExitCounter can be null if not needed.
     virtual bool Start(
-        const bool& externalStopSignalFlag, 
+        const StopInfo& stopInfo,
         WorkerThreadSynch* workerThreadSynch);
 
     // Blocking call. Tell the thread to stop and wait for it to do so.
@@ -91,8 +93,6 @@ public:
     };
 
 protected:
-    const vector<const bool*>& GetSignalStopFlags() const;
-
     // Called to do worker set-up before going into busy-wait loop
     virtual bool DoStart() = 0;
 
@@ -104,7 +104,9 @@ protected:
     virtual void StopImminent() = 0;
 
     // Called when the implementation should stop and clean up.
-    virtual void DoStop() = 0;
+    // `cleanly` indicates whether the stop is clean (expected, triggered)
+    // or not (something died).
+    virtual void DoStop(bool cleanly) = 0;
 
     // The actual thread function.
     static DWORD WINAPI Thread(void* object);
@@ -115,9 +117,8 @@ protected:
     HANDLE m_stoppedEvent;
     HANDLE m_mutex;
 
-    const bool* m_externalStopSignalFlag;
     bool m_internalSignalStopFlag;
-    vector<const bool*> m_signalStopFlags;
+    StopInfo m_stopInfo;
 
     WorkerThreadSynch* m_workerThreadSynch;
 };

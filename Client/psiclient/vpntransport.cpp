@@ -89,9 +89,13 @@ tstring VPNTransport::GetTransportDisplayName() const
     return TRANSPORT_DISPLAY_NAME;
 }
 
-tstring VPNTransport::GetSessionID(SessionInfo sessionInfo) const
+tstring VPNTransport::GetSessionID(SessionInfo sessionInfo)
 {
-    return GetPPPIPAddress();
+    if (m_pppIPAddress.empty())
+    {
+        m_pppIPAddress = GetPPPIPAddress();
+    }
+    return m_pppIPAddress;
 }
 
 int VPNTransport::GetLocalProxyParentPort() const
@@ -109,6 +113,11 @@ tstring VPNTransport::GetLastTransportError() const
 bool VPNTransport::IsHandshakeRequired(SessionInfo sessionInfo) const
 {
     return true;
+}
+
+bool VPNTransport::IsServerRequestTunnelled() const
+{
+    return false;
 }
 
 bool VPNTransport::Cleanup()
@@ -434,8 +443,9 @@ bool VPNTransport::WaitForConnectionStateToChangeFrom(ConnectionState state, DWO
             // Let the loop condition check.
             continue;
         }
-        else if (TestBoolArray(GetSignalStopFlags())) // stop event signalled
+        else if (m_stopInfo.stopSignal->CheckSignal(m_stopInfo.stopReasons, false)) // stop event signalled
         {
+            // TODO: Maybe this should let CheckSignalStop throw
             throw Abort();
         }
         else

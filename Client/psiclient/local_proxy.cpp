@@ -92,7 +92,7 @@ bool LocalProxy::DoStart()
 
     // Test if the localHttpProxyPort is already in use.  If it is, try to find
     // one that is available.
-    if (!TestForOpenPort(localHttpProxyPort, 10, GetSignalStopFlags()))
+    if (!TestForOpenPort(localHttpProxyPort, 10, m_stopInfo))
     {
         my_print(false, _T("HTTP proxy could not find an available port."));
         return false;
@@ -161,8 +161,14 @@ void LocalProxy::StopImminent()
     }
 }
 
-void LocalProxy::DoStop()
+void LocalProxy::DoStop(bool cleanly)
 {
+    if (!cleanly) 
+    {
+        m_stopInfo.stopSignal->SignalStop(STOP_REASON_UNEXPECTED_DISCONNECT);
+    }
+
+    Cleanup();
 }
 
 void LocalProxy::Cleanup()
@@ -198,12 +204,22 @@ void LocalProxy::Cleanup()
     if (!m_finalStatsSent && m_statsCollector && m_bytesTransferred > 0)
     {
         my_print(true, _T("%s: Stopped dirtily. Sending final stats."), __TFUNCTION__);
-        (void)m_statsCollector->SendStatusMessage(
+        if (m_statsCollector->SendStatusMessage(
                                 true, // Note: there's a timeout side-effect when final=false
                                 m_pageViewEntries, 
                                 m_httpsRequestEntries, 
-                                m_bytesTransferred);
-        my_print(true, _T("%s: Stopped dirtily. Final stats sent."), __TFUNCTION__);
+                                m_bytesTransferred))
+        {
+            m_finalStatsSent = true;
+            my_print(true, _T("%s: Stopped dirtily. Final stats sent."), __TFUNCTION__);
+        }
+        else
+        {
+            // Not setting m_finalStatsSent to true if SendStatusMessage failed.
+            // This will allow the possibility of trying again a bit later (this
+            // function is called from both DoStop and the destructor).
+            my_print(true, _T("%s: Stopped dirtily. Final stats send failed."), __TFUNCTION__);
+        }
     }
 }
 
@@ -293,7 +309,7 @@ bool LocalProxy::StartPolipo(int localHttpProxyPort)
                         localHttpProxyPort,
                         POLIPO_CONNECTION_TIMEOUT_SECONDS*1000,
                         m_polipoProcessInfo.hProcess,
-                        GetSignalStopFlags());
+                        m_stopInfo);
 
     if (ERROR_OPERATION_ABORTED == connected)
     {
