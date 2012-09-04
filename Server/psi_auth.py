@@ -26,6 +26,7 @@ import syslog
 import traceback
 import redis
 import json
+import socket
 import psi_config
 import psi_geoip
 
@@ -76,13 +77,32 @@ try:
         rhost = os.environ['PAM_RHOST']
         geoip = psi_geoip.get_geoip(rhost)
     
-        r = redis.StrictRedis(
+        redis_session = redis.StrictRedis(
                 host=psi_config.SESSION_DB_HOST,
                 port=psi_config.SESSION_DB_PORT,
                 db=psi_config.SESSION_DB_INDEX)
     
-        r.set(session_id, json.dumps(geoip))
-        r.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
+        redis_session.set(session_id, json.dumps(geoip))
+        redis_session.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
+        
+        # Now fill in the discovery database
+        # NOTE: We are storing the last octet of the user's IP address
+        # to be used by the discovery algorithm done in handshake when
+        # the web request is made through the SSH/SSH+ tunnel
+        # This is potentially PII.  We have a short (5 minute) expiry on
+        # this data, and it will also be discarded immediately after use
+        # TODO: Consider implementing the discovery algorithm here so that
+        # this does not need to be stored
+        try:
+            client_ip_last_octet = str(ord(socket.inet_aton(rhost)[-1]))
+            redis_discovery = redis.StrictRedis(
+                    host=psi_config.DISCOVERY_DB_HOST,
+                    port=psi_config.DISCOVERY_DB_PORT,
+                    db=psi_config.DISCOVERY_DB_INDEX)
+            redis_discovery.set(session_id, json.dumps({'client_ip_last_octet' : client_ip_last_octet}))
+            redis_discovery.expire(session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
+        except socket.error:
+            pass
 
 except Exception as e:
     for line in traceback.format_exc().split('\n'):

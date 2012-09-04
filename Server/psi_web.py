@@ -37,6 +37,7 @@ import json
 import re
 from cherrypy import wsgiserver, HTTPError
 from cherrypy.wsgiserver import ssl_pyopenssl
+from cherrypy.lib import cpstats
 from webob import Request
 import psi_psk
 import psi_config
@@ -99,10 +100,14 @@ def split_len(seq, length):
 class ServerInstance(object):
 
     def __init__(self, ip_address, server_secret):
-        self.redis = redis.StrictRedis(
+        self.session_redis = redis.StrictRedis(
             host=psi_config.SESSION_DB_HOST,
             port=psi_config.SESSION_DB_PORT,
             db=psi_config.SESSION_DB_INDEX)
+        self.discovery_redis = redis.StrictRedis(
+            host=psi_config.DISCOVERY_DB_HOST,
+            port=psi_config.DISCOVERY_DB_PORT,
+            db=psi_config.DISCOVERY_DB_INDEX)
         self.server_ip_address = ip_address
         self.server_secret = server_secret
         self.COMMON_INPUTS = [
@@ -111,6 +116,9 @@ class ServerInstance(object):
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('client_version', lambda x: consists_of(x, string.digits) or x == EMPTY_VALUE),
             ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()'))]
+
+    def _is_request_tunnelled(self, client_ip_address):
+        return client_ip_address in ['localhost', '127.0.0.1', self.server_ip_address]
 
     def _get_inputs(self, request, request_name, additional_inputs=None):
         if additional_inputs is None:
@@ -128,7 +136,7 @@ class ServerInstance(object):
         # database
         client_ip_address = request.remote_addr
         geoip = psi_geoip.get_unknown()
-        if client_ip_address not in ['localhost', '127.0.0.1', self.server_ip_address]:
+        if not self._is_request_tunnelled(client_ip_address):
             geoip = psi_geoip.get_geoip(client_ip_address)
         elif request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
@@ -137,7 +145,7 @@ class ServerInstance(object):
                     syslog.LOG_ERR,
                     'Invalid client_session_id in %s [%s]' % (request_name, str(request.params)))
                 return False
-            record = self.redis.get(client_session_id)
+            record = self.session_redis.get(client_session_id)
             if record:
                 try:
                     geoip = json.loads(record)
@@ -235,6 +243,21 @@ class ServerInstance(object):
         #
         self._log_event('handshake', inputs)
         client_ip_address = request.remote_addr
+
+        # If the request is tunnelled, we can get the last octet of the client's
+        # actual IP address from the discovery redis.
+        if self._is_request_tunnelled(client_ip_address):
+            client_ip_address = None
+            if request.params.has_key('client_session_id'):
+                client_session_id = request.params['client_session_id']
+                record = self.discovery_redis.get(client_session_id)
+                if record:
+                    self.discovery_redis.delete(client_session_id)
+                    discovery_info = json.loads(record)
+                    # Handshake will correctly handle a client_ip_address string with less than three dots
+                    # See the docs for socket.inet_aton
+                    client_ip_address = discovery_info['client_ip_last_octet']
+                
         # logger callback will add log entry for each server IP address discovered
         def discovery_logger(server_ip_address):
             unknown = '0' if server_ip_address in known_servers else '1'
@@ -243,9 +266,11 @@ class ServerInstance(object):
                                        ('unknown', unknown)])
 
         inputs_lookup = dict(inputs)
+
         config = psinet.handshake(
                     self.server_ip_address,
                     client_ip_address,
+                    inputs_lookup['client_region'],
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_platform'],
@@ -421,7 +446,7 @@ class ServerInstance(object):
 
         # Clean up session data
         if request.params['connected'] == '0' and request.params.has_key('client_session_id'):
-            self.redis.delete(request.params['client_session_id'])
+            self.session_redis.delete(request.params['client_session_id'])
 
         # No action, this request is just for stats logging
         start_response('200 OK', [])
@@ -482,7 +507,33 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
+    def check(self, environ, start_response):
+        # Just check the server secret; no logging or action for this request
+        request = Request(environ)
+        if ('server_secret' not in request.params or
+            not constant_time_compare(request.params['server_secret'], self.server_secret)):
+            start_response('404 Not Found', [])
+            return []
+        start_response('200 OK', [])
+        return []
 
+    def stats(self, environ, start_response):
+        # Just check the server secret; no logging or action for this request
+        request = Request(environ)
+        if ('server_secret' not in request.params or
+            not constant_time_compare(request.params['server_secret'], self.server_secret) or
+            'stats_client_secret' not in request.params or
+            not hasattr(psi_config, 'STATS_CLIENT_SECRET') or
+            not constant_time_compare(request.params['stats_client_secret'], psi_config.STATS_CLIENT_SECRET)):
+            start_response('404 Not Found', [])
+            return []
+        contents = ''.join(list(cpstats.StatsPage().index()))
+        response_headers = [('Content-Type', 'text/html'),
+                            ('Content-Length', '%d' % (len(contents),))]
+        start_response('200 OK', response_headers)
+        return [contents]
+
+        
 def get_servers():
     # enumerate all interfaces with an IPv4 address and server entry
     # return an array of server info for each server to be run
@@ -557,8 +608,12 @@ class WebServerThread(threading.Thread):
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
                                      '/speed': server_instance.speed,
-                                     '/feedback': server_instance.feedback}),
+                                     '/feedback': server_instance.feedback,
+                                     '/check': server_instance.check,
+                                     '/stats': server_instance.stats}),
                                 numthreads=self.server_threads, timeout=20)
+
+                self.server.stats['Enabled'] = True
 
                 # Set maximum request input sizes to avoid processing DoS inputs
                 self.server.max_request_header_size = 100000

@@ -55,7 +55,12 @@ SSHTransportBase::~SSHTransportBase()
     (void)Cleanup();
 }
 
-tstring SSHTransportBase::GetSessionID(SessionInfo sessionInfo) const
+bool SSHTransportBase::IsServerRequestTunnelled() const
+{
+    return true;
+}
+
+tstring SSHTransportBase::GetSessionID(SessionInfo sessionInfo)
 {
     return NarrowToTString(sessionInfo.GetSSHSessionID());
 }
@@ -178,7 +183,7 @@ void SSHTransportBase::TransportConnectHelper(
 
     // Test if the localSocksProxyPort is already in use.  If it is, try to find
     // one that is available.
-    if (!TestForOpenPort(m_localSocksProxyPort, 10, GetSignalStopFlags()))
+    if (!TestForOpenPort(m_localSocksProxyPort, 10, m_stopInfo))
     {
         my_print(false, _T("Local SOCKS proxy could not find an available port."));
         throw TransportFailed();
@@ -216,7 +221,7 @@ void SSHTransportBase::TransportConnectHelper(
                         m_localSocksProxyPort,
                         SSH_CONNECTION_TIMEOUT_SECONDS*1000,
                         m_plonkProcessInfo.hProcess,
-                        GetSignalStopFlags());
+                        m_stopInfo);
 
     if (ERROR_OPERATION_ABORTED == connected)
     {

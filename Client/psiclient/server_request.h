@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "stopsignal.h"
+
 class ITransport;
 class SessionInfo;
 
@@ -29,11 +31,12 @@ public:
     ServerRequest();
     virtual ~ServerRequest();
     bool MakeRequest(
-        const bool& cancel,
+        bool adhocTransportIfNecessary,
         const ITransport* currentTransport,
         const SessionInfo& sessionInfo,
         const TCHAR* requestPath,
         string& o_response,
+        const StopInfo& stopInfo,
         LPCWSTR additionalHeaders=NULL,
         LPVOID additionalData=NULL,
         DWORD additionalDataLength=0);

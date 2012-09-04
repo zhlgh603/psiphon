@@ -46,7 +46,7 @@ public:
     //static void GetFactory(tstring& o_transportName, TransportFactory& o_transportFactory);
 
     // Only valid when connected
-    virtual tstring GetSessionID(SessionInfo sessionInfo) const = 0;
+    virtual tstring GetSessionID(SessionInfo sessionInfo) = 0;
 
     // Find out what port, if any, the local proxy should connect to in order 
     // to use this transport.
@@ -60,6 +60,10 @@ public:
     // can connect.
     virtual bool IsHandshakeRequired(SessionInfo sessionInfo) const = 0;
 
+    // Returns true if requests to the server should be tunnelled/proxied
+    // through the transport. If not, then the local proxy should not be used.
+    virtual bool IsServerRequestTunnelled() const = 0;
+
     // Call to create the connection.
     // A failed attempt must clean itself up as needed.
     // May throw TransportFailed or Abort
@@ -67,7 +71,7 @@ public:
     void Connect(
             SessionInfo sessionInfo, 
             SystemProxySettings* systemProxySettings,
-            const bool& stopSignalFlag,
+            const StopInfo& stopInfo,
             WorkerThreadSynch* workerThreadSynch);
 
     // Do any necessary final cleanup. 
@@ -95,7 +99,7 @@ protected:
     // IWorkerThread implementation
     virtual bool DoStart();
     virtual void StopImminent();
-    virtual void DoStop();
+    virtual void DoStop(bool cleanly);
     // The implementing class must implement this
     virtual bool DoPeriodicCheck() = 0;
 
