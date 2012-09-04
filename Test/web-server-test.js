@@ -5,12 +5,17 @@ var Q = require('q');
 
 var SAMPLE_SIZE = 20;
 
+var args = process.argv.splice(2);
 
 // Load the connection info from the file written by the client.
 var testConf = JSON.parse(fs.readFileSync('test-conn-info.json'));
-// Use the "Testing" propagation channel
-testConf.propagation_channel_id = '143BC085C848270E';
 
+// Use the "Testing" propagation channel
+if (args.length === 0 || args[0].length !== 16) {
+  console.log('Usage: test propagation_channel_id required');
+  process.exit(1);
+}
+testConf.propagation_channel_id = args[0];
 
 function mylog() {
   console.log.apply(console, arguments);
@@ -23,8 +28,8 @@ function getTickCount() {
 
 var tunnelingAgent = tunnel.httpsOverHttp({
   proxy: { // Proxy settings
-    host: 'localhost', 
-    port: 8080, 
+    host: 'localhost',
+    port: 8080,
     method: 'GET'
   }
 });
@@ -93,7 +98,7 @@ function reduceResults(results) {
 function testSiteRequest(httpsReq, host, path) {
   var deferredOverall = Q.defer();
   var deferredUntunneled = Q.defer(), deferredTunneled = Q.defer();
-  var reqs, i;  
+  var reqs, i;
 
   // Do the untunneled requests first
   reqs = [];
@@ -142,7 +147,7 @@ function requestString(type, testConf) {
 function testServerRequest(tunneled, type, testConf) {
   var deferred = Q.defer();
 
-  var reqs, i;  
+  var reqs, i;
 
   reqs = [];
   for (i = 0; i < SAMPLE_SIZE; i++) {
