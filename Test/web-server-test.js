@@ -5,7 +5,7 @@ var tunnel = require('tunnel');
 var Q = require('q');
 var _ = require('underscore');
 
-var SAMPLE_SIZE = 20, PROCESS_COUNT = 1;
+var SAMPLE_SIZE = 10, PROCESS_COUNT = 1;
 
 var i;
 
@@ -139,41 +139,6 @@ function reduceResults(results) {
 }
 
 
-function testSiteRequest(httpsReq, host, path) {
-  var deferredOverall = Q.defer();
-  var deferredUntunneled = Q.defer(), deferredTunneled = Q.defer();
-  var reqs, i;
-
-  // Do the untunneled requests first
-  reqs = [];
-  for (i = 0; i < SAMPLE_SIZE; i++) {
-    reqs.push(makeRequest(false, httpsReq, host, path));
-  }
-
-  Q.all(reqs).then(function(results) {
-    deferredUntunneled.resolve(reduceResults(results));
-  }).end();
-
-  // Then the tunneled requests
-  reqs = [];
-  for (i = 0; i < SAMPLE_SIZE; i++) {
-    reqs.push(makeRequest(true, httpsReq, host, path));
-  }
-
-  Q.all(reqs)
-   .then(function(results) {
-      deferredTunneled.resolve(reduceResults(results));
-    }).end();
-
-  // Process the overall results
-
-  Q.spread([deferredUntunneled.promise, deferredTunneled.promise], function(untunneledResult, tunneledResult) {
-    deferredOverall.resolve({ untunneled: untunneledResult, tunneled: tunneledResult });
-  });
-
-  return deferredOverall.promise;
-}
-
 function toQueryParams(obj) {
   var key;
   var params = [];
@@ -193,7 +158,7 @@ function addCacheBreaker(requestString) {
          'cachebreak=' + Math.random();
 }
 
-function testServerRequest(tunneled, type, testConf) {
+function testServerRequestParallel(tunneled, type, testConf) {
   var deferred = Q.defer();
 
   var reqs, i;
@@ -212,33 +177,129 @@ function testServerRequest(tunneled, type, testConf) {
   return deferred.promise;
 }
 
+function testServerRequestSerial(tunneled, type, testConf) {
+  var deferred = Q.defer();
+  var results = [];
+
+  var reqFunc = function(result) {
+    if (result) results.push(result);
+    return makeRequest(tunneled, true, testConf.server_ip, requestString(type, testConf), 8080);
+  };
+
+  var req = Q.resolve();
+  var i;
+  for (i = 0; i < SAMPLE_SIZE; i++) {
+    req = req.then(reqFunc);
+  }
+
+  // Handle the last request
+  req.then(function(result) {
+    // We get the result for the last request...
+    results.push(result);
+    // ...and then we process all the results
+    results = reduceResults(results);
+    results.tunneled = tunneled;
+    deferred.resolve(results);
+  }).end();
+
+  return deferred.promise;
+}
+
+function testServerRequest(parallelReqs, tunneled, type, testConf) {
+  if (arguments.length !== 4) {
+    throw('testServerRequest: bad args');
+  }
+
+  if (parallelReqs) {
+    return testServerRequestParallel(tunneled, type, testConf);
+  }
+  else {
+    return testServerRequestSerial(tunneled, type, testConf);
+  }
+}
+
+function testSiteRequestParallel(tunneled, httpsReq, host, path) {
+  var deferred = Q.defer();
+  var reqs, i;
+
+  reqs = [];
+  for (i = 0; i < SAMPLE_SIZE; i++) {
+    reqs.push(makeRequest(tunneled, httpsReq, host, path));
+  }
+
+  Q.all(reqs).then(function(results) {
+    results = reduceResults(results);
+    deferred.resolve(results);
+  }).end();
+
+  return deferred.promise;
+}
+
+function testSiteRequestSerial(tunneled, httpsReq, host, path) {
+  var deferred = Q.defer();
+  var results = [];
+
+  var reqFunc = function(result) {
+    if (result) results.push(result);
+    return makeRequest(tunneled, httpsReq, host, path);
+  };
+
+  var req = Q.resolve();
+  var i;
+  for (i = 0; i < SAMPLE_SIZE; i++) {
+    req = req.then(reqFunc);
+  }
+
+  // Handle the last request
+  req.then(function(result) {
+    // We get the result for the last request...
+    results.push(result);
+    // ...and then we process all the results
+    results = reduceResults(results);
+    results.tunneled = tunneled;
+    deferred.resolve(results);
+  }).end();
+
+  return deferred.promise;
+}
+
+
+function testSiteRequest(parallelReqs, tunneled, httpsReq, host, path) {
+  if (arguments.length !== 5) {
+    throw('testSiteRequest: bad args');
+  }
+
+  if (parallelReqs) {
+    return testSiteRequestParallel(tunneled, httpsReq, host, path);
+  }
+  else {
+    return testSiteRequestSerial(tunneled, httpsReq, host, path);
+  }
+}
+
 function addHexInfoToReq(conf, info) {
   return _.extend(_.clone(conf), {sponsor_id: info});
 }
 
-/* serial/parallel experimentation
-function fi(i) {
-  var deferred = Q.defer();
-  setTimeout(function(){console.log(i); deferred.resolve();}, Math.random()*1000);
-  return deferred.promise;
+function outputServerReqResults(parallelReqs, reqType, tunneled, results) {
+  console.log(
+    reqType + ' test: ' +
+    (tunneled ? '' : 'not ') + 'tunneled: ' +
+    (parallelReqs ? 'parallel: ' : 'serial: ') +
+    '\n  ',
+    results);
+  console.log(''); // empty line
 }
 
-reqs = [];
-for (i = 0; i < 10; i++) {
-  reqs.push(fi(i));
+function outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results) {
+  console.log(
+    (tunneled ? '' : 'not ') + 'tunneled request: ' +
+    (parallelReqs ? 'parallel: ' : 'serial: ') +
+    (useHttps ? 'https://' : 'http://') + host + path +
+    '\n  ',
+    results);
+  console.log(''); // empty line
 }
-
-
-mylog('REDUCING');
-reqs.reduce(function(soFar, p) {
-  return soFar.then(p);
-}, Q.resolve());
-mylog('REDUCED');
-
-//Q.all(reqs).then(function(){console.log('DONE');}).end();
-
-return;
-*/
 
 var seq = Q.resolve();
 
@@ -246,22 +307,20 @@ var seq = Q.resolve();
 seq = seq.then(function() {
   var reqType = 'handshake';
   var tunneled = true;
-  return testServerRequest(tunneled, reqType, addHexInfoToReq(testConf, '00'))
+  var parallelReqs = false;
+  return testServerRequest(parallelReqs, tunneled, reqType, addHexInfoToReq(testConf, '00'))
           .then(function(results) {
-            mylog(
-              reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
-              results);
+            outputServerReqResults(parallelReqs, reqType, tunneled, results);
           });
 });
 
 seq = seq.then(function() {
   var reqType = 'handshake';
   var tunneled = false;
-  return testServerRequest(tunneled, reqType, addHexInfoToReq(testConf, '01'))
+  var parallelReqs = false;
+  return testServerRequest(parallelReqs, tunneled, reqType, addHexInfoToReq(testConf, '01'))
           .then(function(results) {
-            mylog(
-              reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
-              results);
+            outputServerReqResults(parallelReqs, reqType, tunneled, results);
           });
 });
 
@@ -269,41 +328,69 @@ seq = seq.then(function() {
 seq = seq.then(function() {
   var reqType = 'connected';
   var tunneled = false;
-  return testServerRequest(tunneled, reqType, addHexInfoToReq(testConf, '04'))
+  var parallelReqs = false;
+  return testServerRequest(parallelReqs, tunneled, reqType, addHexInfoToReq(testConf, '04'))
           .then(function(results) {
-            mylog(
-              reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
-              results);
+            outputServerReqResults(parallelReqs, reqType, tunneled, results);
           });
 });
 
 seq = seq.then(function() {
   var reqType = 'connected';
   var tunneled = true;
-  return testServerRequest(tunneled, reqType, addHexInfoToReq(testConf, '03'))
+  var parallelReqs = false;
+  return testServerRequest(parallelReqs, tunneled, reqType, addHexInfoToReq(testConf, '03'))
           .then(function(results) {
-            mylog(
-              reqType + ' test: ' + (results.tunneled?'':'not ') + 'tunneled\n  ',
-              results);
+            outputServerReqResults(parallelReqs, reqType, tunneled, results);
           });
 });
 
 
 seq = seq.then(function() {
-  return testSiteRequest(true, '72.21.203.148', '/0ubz-2q11-gi9y/en.html')
+  var tunneled = false;
+  var useHttps = true;
+  var host = 's3.amazonaws.com';
+  var path = '/0ubz-2q11-gi9y/en.html';
+  var parallelReqs = false;
+  return testSiteRequest(parallelReqs, tunneled, useHttps, host, path)
           .then(function(results) {
-            mylog(
-              'Request BY IP to: https://s3.amazonaws.com/0ubz-2q11-gi9y/en.html\n  ',
-              results);
+            outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results);
           });
 });
 
 seq = seq.then(function() {
-  return testSiteRequest(true, 's3.amazonaws.com', '/0ubz-2q11-gi9y/en.html')
+  var tunneled = true;
+  var useHttps = true;
+  var host = 's3.amazonaws.com';
+  var path = '/0ubz-2q11-gi9y/en.html';
+  var parallelReqs = false;
+  return testSiteRequest(parallelReqs, tunneled, useHttps, host, path)
           .then(function(results) {
-            mylog(
-              'Request BY NAME to: https://s3.amazonaws.com/0ubz-2q11-gi9y/en.html\n  ',
-              results);
+            outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results);
+          });
+});
+
+seq = seq.then(function() {
+  var tunneled = false;
+  var useHttps = true;
+  var host = '72.21.203.148';
+  var path = '/0ubz-2q11-gi9y/en.html';
+  var parallelReqs = false;
+  return testSiteRequest(parallelReqs, tunneled, useHttps, host, path)
+          .then(function(results) {
+            outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results);
+          });
+});
+
+seq = seq.then(function() {
+  var tunneled = true;
+  var useHttps = true;
+  var host = '72.21.203.148';
+  var path = '/0ubz-2q11-gi9y/en.html';
+  var parallelReqs = false;
+  return testSiteRequest(parallelReqs, tunneled, useHttps, host, path)
+          .then(function(results) {
+            outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results);
           });
 });
 
