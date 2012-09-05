@@ -5,7 +5,7 @@ var tunnel = require('tunnel');
 var Q = require('q');
 var _ = require('underscore');
 
-var SAMPLE_SIZE = 10, PROCESS_COUNT = 1;
+var SAMPLE_SIZE = 100, PROCESS_COUNT = 1;
 var TIMEOUT = 30000;
 
 var i;
@@ -110,7 +110,7 @@ function makeRequest(tunnelReq, httpsReq, host, path, port) {
 
   // This doesn't seem to affect the amount of time allowed to connect. Some googling
   // suggests it's instead for how long to leave the socket open with no traffic.
-  req.setTimeout(TIMEOUT);
+  //req.setTimeout(TIMEOUT);
 
   req.end();
 
@@ -123,23 +123,24 @@ function makeRequest(tunnelReq, httpsReq, host, path, port) {
 // Returns an object that looks like:
 //   { avg_time: 100, error_rate: 0.2 }
 function reduceResults(results) {
-  var reduced = { avgResponseTime: 0, avgEndTime: 0, errorRate: 0, count: 0 };
+  var reduced = { avgResponseTime: 0, avgEndTime: 0, count: 0, errorCount: 0 };
 
   results.forEach(function(elem) {
+    reduced.count += 1;
     if (elem.error) {
       // error
-      reduced.errorRate += 1;
+      reduced.errorCount += 1;
     }
     else {
       reduced.avgResponseTime += elem.responseTime;
       reduced.avgEndTime += elem.endTime;
-      reduced.count += 1;
     }
   });
 
-  if (reduced.count > 0) {
-    reduced.avgResponseTime = reduced.avgResponseTime / reduced.count;
-    reduced.avgEndTime = reduced.avgEndTime / reduced.count;
+  var successCount = reduced.successCount - reduced.errorCount;
+  if (successCount > 0) {
+    reduced.avgResponseTime = reduced.avgResponseTime / successCount;
+    reduced.avgEndTime = reduced.avgEndTime / successCount;
   }
 
   return reduced;
