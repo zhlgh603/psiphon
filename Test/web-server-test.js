@@ -6,6 +6,7 @@ var Q = require('q');
 var _ = require('underscore');
 
 var SAMPLE_SIZE = 10, PROCESS_COUNT = 1;
+var TIMEOUT = 30000;
 
 var i;
 
@@ -101,10 +102,15 @@ function makeRequest(tunnelReq, httpsReq, host, path, port) {
   startTime = getTickCount();
 
   req.on('error', function(e) {
-    mylog(e + ': ' + e.code);
+    // Commenting this out because there are a lot of ETIMEDOUT errors with big parallel tests
+    //mylog(e + ': ' + e.code);
     deferred.resolve({error: 999});
     return;
   });
+
+  // This doesn't seem to affect the amount of time allowed to connect. Some googling
+  // suggests it's instead for how long to leave the socket open with no traffic.
+  req.setTimeout(TIMEOUT);
 
   req.end();
 
@@ -118,6 +124,7 @@ function makeRequest(tunnelReq, httpsReq, host, path, port) {
 //   { avg_time: 100, error_rate: 0.2 }
 function reduceResults(results) {
   var reduced = { avgResponseTime: 0, avgEndTime: 0, errorRate: 0, count: 0 };
+
   results.forEach(function(elem) {
     if (elem.error) {
       // error
@@ -158,37 +165,43 @@ function addCacheBreaker(requestString) {
          'cachebreak=' + Math.random();
 }
 
-function testServerRequestParallel(tunneled, type, testConf) {
+function testServerRequestParallel(serverReqOptions) {
   var deferred = Q.defer();
 
   var reqs, i;
 
   reqs = [];
-  for (i = 0; i < SAMPLE_SIZE; i++) {
-    reqs.push(makeRequest(tunneled, true, testConf.server_ip, requestString(type, testConf), 8080));
+  for (i = 0; i < serverReqOptions.count; i++) {
+    reqs.push(makeRequest(serverReqOptions.tunneled, true,
+                          serverReqOptions.testConf.server_ip,
+                          requestString(serverReqOptions.reqType, serverReqOptions.testConf),
+                          8080));
   }
 
   Q.all(reqs).then(function(results) {
     results = reduceResults(results);
-    results.tunneled = tunneled;
+    results.tunneled = serverReqOptions.tunneled;
     deferred.resolve(results);
   }).end();
 
   return deferred.promise;
 }
 
-function testServerRequestSerial(tunneled, type, testConf) {
+function testServerRequestSerial(serverReqOptions) {
   var deferred = Q.defer();
   var results = [];
 
   var reqFunc = function(result) {
     if (result) results.push(result);
-    return makeRequest(tunneled, true, testConf.server_ip, requestString(type, testConf), 8080);
+    return makeRequest(serverReqOptions.tunneled, true,
+                       serverReqOptions.testConf.server_ip,
+                       requestString(serverReqOptions.reqType, serverReqOptions.testConf),
+                       8080);
   };
 
   var req = Q.resolve();
   var i;
-  for (i = 0; i < SAMPLE_SIZE; i++) {
+  for (i = 0; i < serverReqOptions.count; i++) {
     req = req.then(reqFunc);
   }
 
@@ -198,55 +211,58 @@ function testServerRequestSerial(tunneled, type, testConf) {
     results.push(result);
     // ...and then we process all the results
     results = reduceResults(results);
-    results.tunneled = tunneled;
+    results.tunneled = serverReqOptions.tunneled;
     deferred.resolve(results);
   }).end();
 
   return deferred.promise;
 }
 
-function testServerRequest(parallelReqs, tunneled, type, testConf) {
-  if (arguments.length !== 4) {
+function testServerRequest(serverReqOptions) {
+  if (arguments.length !== 1) {
     throw('testServerRequest: bad args');
   }
 
-  if (parallelReqs) {
-    return testServerRequestParallel(tunneled, type, testConf);
+  if (serverReqOptions.parallel) {
+    return testServerRequestParallel(serverReqOptions);
   }
   else {
-    return testServerRequestSerial(tunneled, type, testConf);
+    return testServerRequestSerial(serverReqOptions);
   }
 }
 
-function testSiteRequestParallel(tunneled, httpsReq, host, path) {
+function testSiteRequestParallel(siteReqOptions) {
   var deferred = Q.defer();
   var reqs, i;
 
   reqs = [];
-  for (i = 0; i < SAMPLE_SIZE; i++) {
-    reqs.push(makeRequest(tunneled, httpsReq, host, path));
+  for (i = 0; i < siteReqOptions.count; i++) {
+    reqs.push(makeRequest(siteReqOptions.tunneled, siteReqOptions.httpsReq,
+                          siteReqOptions.host, siteReqOptions.path));
   }
 
   Q.all(reqs).then(function(results) {
     results = reduceResults(results);
+    results.tunneled = siteReqOptions.tunneled;
     deferred.resolve(results);
   }).end();
 
   return deferred.promise;
 }
 
-function testSiteRequestSerial(tunneled, httpsReq, host, path) {
+function testSiteRequestSerial(siteReqOptions) {
   var deferred = Q.defer();
   var results = [];
 
   var reqFunc = function(result) {
     if (result) results.push(result);
-    return makeRequest(tunneled, httpsReq, host, path);
+    return makeRequest(siteReqOptions.tunneled, siteReqOptions.httpsReq,
+                       siteReqOptions.host, siteReqOptions.path);
   };
 
   var req = Q.resolve();
   var i;
-  for (i = 0; i < SAMPLE_SIZE; i++) {
+  for (i = 0; i < siteReqOptions.count; i++) {
     req = req.then(reqFunc);
   }
 
@@ -256,7 +272,7 @@ function testSiteRequestSerial(tunneled, httpsReq, host, path) {
     results.push(result);
     // ...and then we process all the results
     results = reduceResults(results);
-    results.tunneled = tunneled;
+    results.tunneled = siteReqOptions.tunneled;
     deferred.resolve(results);
   }).end();
 
@@ -264,135 +280,186 @@ function testSiteRequestSerial(tunneled, httpsReq, host, path) {
 }
 
 
-function testSiteRequest(parallelReqs, tunneled, httpsReq, host, path) {
-  if (arguments.length !== 5) {
+function testSiteRequest(siteReqOptions) {
+  if (arguments.length !== 1) {
     throw('testSiteRequest: bad args');
   }
 
-  if (parallelReqs) {
-    return testSiteRequestParallel(tunneled, httpsReq, host, path);
+  if (siteReqOptions.parallel) {
+    return testSiteRequestParallel(siteReqOptions);
   }
   else {
-    return testSiteRequestSerial(tunneled, httpsReq, host, path);
+    return testSiteRequestSerial(siteReqOptions);
   }
 }
 
 function addHexInfoToReq(conf, info) {
+  info = info.toString();
+
+  var padLeft = function (string, pad, length) {
+    return (new Array(length+1).join(pad)+string).slice(-length);
+  };
+
+  info = padLeft(info, '0', info.length + (info.length % 2));
+
   return _.extend(_.clone(conf), {sponsor_id: info});
 }
 
-function outputServerReqResults(parallelReqs, reqType, tunneled, results) {
+// This is super rough
+function makeFilename(/*...*/) {
+  var i, s = '';
+  for (i = 0; i < arguments.length; i++) {
+    s += encodeURIComponent(arguments[i].toString()+';');
+  }
+  return s;
+}
+
+function outputServerReqResults(serverReqOptions, results) {
   console.log(
-    reqType + ' test: ' +
-    (tunneled ? '' : 'not ') + 'tunneled: ' +
-    (parallelReqs ? 'parallel: ' : 'serial: ') +
+    serverReqOptions.reqType + ' test: ' +
+    (serverReqOptions.tunneled ? '' : 'not ') + 'tunneled: ' +
+    (serverReqOptions.parallel ? 'parallel: ' : 'serial: ') +
+    '\n  ',
+    results);
+  console.log(''); // empty line
+  writeServerReqResultsToCSV(serverReqOptions.parallel, serverReqOptions.reqType,
+                             serverReqOptions.tunneled, results);
+}
+
+function writeServerReqResultsToCSV(
+            parallel,
+            reqType,
+            tunneled,
+            results) {
+  var filename = makeFilename(parallel, reqType, tunneled) + '.csv';
+  var csv = '"' + _.values(results).join('","') + '"\n';
+  fs.appendFile(filename, csv);
+}
+
+function outputSiteReqResults(siteReqOptionsClone, results) {
+  console.log(
+    (siteReqOptionsClone.tunneled ? '' : 'not ') + 'tunneled request: ' +
+    (siteReqOptionsClone.parallel ? 'parallel: ' : 'serial: ') +
+    (siteReqOptionsClone.useHttps ? 'https://' : 'http://') +
+    siteReqOptionsClone.host + siteReqOptionsClone.path +
     '\n  ',
     results);
   console.log(''); // empty line
 }
 
-function outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results) {
-  console.log(
-    (tunneled ? '' : 'not ') + 'tunneled request: ' +
-    (parallelReqs ? 'parallel: ' : 'serial: ') +
-    (useHttps ? 'https://' : 'http://') + host + path +
-    '\n  ',
-    results);
-  console.log(''); // empty line
+// Call like
+//   seq = seq.then(delayNext);
+function delayNext() {
+  var deferred = Q.defer();
+  var delay = 1000;
+  setTimeout(function() {
+    mylog('delay', delay, 'ms');
+    deferred.resolve();
+  }, delay);
+  return deferred.promise;
 }
 
+function makeServerRequestAndOutputFn(serverReqOptions) {
+  var serverReqOptionsClone = _.clone(serverReqOptions);
+  var fn = function() {
+    return testServerRequest(serverReqOptionsClone)
+              .then(function(results) {
+                outputServerReqResults(serverReqOptionsClone, results);
+                return Q.resolve();
+              });
+  };
+  return fn;
+}
+
+function makeSiteRequestAndOutputFn(siteReqOptions) {
+  var siteReqOptionsClone = _.clone(siteReqOptions);
+  var fn = function() {
+    return testSiteRequest(siteReqOptionsClone)
+              .then(function(results) {
+                outputSiteReqResults(siteReqOptionsClone, results);
+                return Q.resolve();
+              });
+  };
+  return fn;
+}
+
+// Start out with a resolved promise
 var seq = Q.resolve();
 
+var serverReqOptions = {
+  reqType: 'handshake',
+  tunneled: false,
+  parallel: true,
+  testConf: testConf,
+  count: SAMPLE_SIZE
+};
 
-seq = seq.then(function() {
-  var reqType = 'handshake';
-  var tunneled = true;
-  var parallelReqs = false;
-  return testServerRequest(parallelReqs, tunneled, reqType, addHexInfoToReq(testConf, '00'))
-          .then(function(results) {
-            outputServerReqResults(parallelReqs, reqType, tunneled, results);
-          });
-});
+var testNum = 1;
 
-seq = seq.then(function() {
-  var reqType = 'handshake';
-  var tunneled = false;
-  var parallelReqs = false;
-  return testServerRequest(parallelReqs, tunneled, reqType, addHexInfoToReq(testConf, '01'))
-          .then(function(results) {
-            outputServerReqResults(parallelReqs, reqType, tunneled, results);
-          });
-});
+/*
+for (i = 1; i <= 25; i++) {
+  serverReqOptions.count = i*5;
+  serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, serverReqOptions.count);
+  serverReqOptions.reqType = 'connected';
 
+  serverReqOptions.tunneled = true;
+  seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
+  seq = seq.then(delayNext);
 
-seq = seq.then(function() {
-  var reqType = 'connected';
-  var tunneled = false;
-  var parallelReqs = false;
-  return testServerRequest(parallelReqs, tunneled, reqType, addHexInfoToReq(testConf, '04'))
-          .then(function(results) {
-            outputServerReqResults(parallelReqs, reqType, tunneled, results);
-          });
-});
+  serverReqOptions.tunneled = false;
+  seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
+  seq = seq.then(delayNext);
+}
 
-seq = seq.then(function() {
-  var reqType = 'connected';
-  var tunneled = true;
-  var parallelReqs = false;
-  return testServerRequest(parallelReqs, tunneled, reqType, addHexInfoToReq(testConf, '03'))
-          .then(function(results) {
-            outputServerReqResults(parallelReqs, reqType, tunneled, results);
-          });
-});
+return;
+*/
 
+serverReqOptions.count = SAMPLE_SIZE;
 
-seq = seq.then(function() {
-  var tunneled = false;
-  var useHttps = true;
-  var host = 's3.amazonaws.com';
-  var path = '/0ubz-2q11-gi9y/en.html';
-  var parallelReqs = false;
-  return testSiteRequest(parallelReqs, tunneled, useHttps, host, path)
-          .then(function(results) {
-            outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results);
-          });
-});
+serverReqOptions.reqType = 'handshake';
+serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, testNum++);
+serverReqOptions.tunneled = true;
+seq = seq.then(delayNext);
+seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
+serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, testNum++);
+serverReqOptions.tunneled = false;
+seq = seq.then(delayNext);
+seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
 
-seq = seq.then(function() {
-  var tunneled = true;
-  var useHttps = true;
-  var host = 's3.amazonaws.com';
-  var path = '/0ubz-2q11-gi9y/en.html';
-  var parallelReqs = false;
-  return testSiteRequest(parallelReqs, tunneled, useHttps, host, path)
-          .then(function(results) {
-            outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results);
-          });
-});
+serverReqOptions.reqType = 'connected';
+serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, testNum++);
+serverReqOptions.tunneled = true;
+seq = seq.then(delayNext);
+seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
+serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, testNum++);
+serverReqOptions.tunneled = false;
+seq = seq.then(delayNext);
+seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
 
-seq = seq.then(function() {
-  var tunneled = false;
-  var useHttps = true;
-  var host = '72.21.203.148';
-  var path = '/0ubz-2q11-gi9y/en.html';
-  var parallelReqs = false;
-  return testSiteRequest(parallelReqs, tunneled, useHttps, host, path)
-          .then(function(results) {
-            outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results);
-          });
-});
+var siteReqOptions = {
+  count: SAMPLE_SIZE,
+  parallel: true,
+  tunneled: true,
+  httpsReq: true,
+  host: 's3.amazonaws.com',
+  path: '/0ubz-2q11-gi9y/en.html'
+};
 
-seq = seq.then(function() {
-  var tunneled = true;
-  var useHttps = true;
-  var host = '72.21.203.148';
-  var path = '/0ubz-2q11-gi9y/en.html';
-  var parallelReqs = false;
-  return testSiteRequest(parallelReqs, tunneled, useHttps, host, path)
-          .then(function(results) {
-            outputSiteReqResults(parallelReqs, useHttps, host, path, tunneled, results);
-          });
-});
+siteReqOptions.host = 's3.amazonaws.com';
+siteReqOptions.tunneled = false;
+seq = seq.then(delayNext);
+seq = seq.then(makeSiteRequestAndOutputFn(siteReqOptions));
+siteReqOptions.tunneled = true;
+seq = seq.then(delayNext);
+seq = seq.then(makeSiteRequestAndOutputFn(siteReqOptions));
+
+siteReqOptions.host = '72.21.203.148';
+siteReqOptions.tunneled = false;
+seq = seq.then(delayNext);
+seq = seq.then(makeSiteRequestAndOutputFn(siteReqOptions));
+siteReqOptions.tunneled = true;
+seq = seq.then(delayNext);
+seq = seq.then(makeSiteRequestAndOutputFn(siteReqOptions));
 
 
 seq.then(function() {
