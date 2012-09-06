@@ -44,6 +44,7 @@ Thumbs.db
 
 # Folders to ignore
 .hg
+.git
 .svn
 .CVS
 intermediate
