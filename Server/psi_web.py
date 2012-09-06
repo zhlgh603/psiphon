@@ -95,7 +95,7 @@ def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
 
 
-# ===== Main Code =====
+# ===== Psiphon Web Server =====
 
 class ServerInstance(object):
 
@@ -671,6 +671,59 @@ class WebServerThread(threading.Thread):
                 raise
 
 
+# ===== GeoIP Service =====
+
+class GeoIPServerInstance(object):
+
+    def geoip(self, environ, start_response):
+        request = Request(environ)
+        geoip = psi_geoip.get_geoip(request.params['ip'])
+        response_headers = [('Content-type', 'text/plain')]
+        start_response('200 OK', response_headers)
+        return [json.dumps(geoip)]
+
+
+class GeoIPServerThread(threading.Thread):
+
+    def __init__(self):
+        #super(WebServerThread, self).__init__(self)
+        threading.Thread.__init__(self)
+        self.server = None
+
+    def stop_server(self):
+        # Retry loop in case self.server.stop throws an exception
+        for i in range(5):
+            try:
+                if self.server:
+                    # blocks until server stops
+                    self.server.stop()
+                    self.server = None
+                break
+            except Exception as e:
+                # Log errors
+                for line in traceback.format_exc().split('\n'):
+                    syslog.syslog(syslog.LOG_ERR, line)
+                time.sleep(i)
+
+    def run(self):
+        try:
+            server_instance = GeoIPServerInstance()
+            self.server = wsgiserver.CherryPyWSGIServer(
+                            ('127.0.0.1', int(psi_config.GEOIP_SERVICE_PORT)),
+                            wsgiserver.WSGIPathInfoDispatcher(
+                                {'/geoip': server_instance.geoip}))
+
+            # Blocks until server stopped
+            syslog.syslog(syslog.LOG_INFO, 'started GeoIP service on port %d' % (psi_config.GEOIP_SERVICE_PORT,))
+            self.server.start()
+        except Exception as e:
+            # Log other errors and abort
+            for line in traceback.format_exc().split('\n'):
+                syslog.syslog(syslog.LOG_ERR, line)
+            raise
+
+# ===== Main Process =====
+
 def main():
     syslog.openlog(psi_config.SYSLOG_IDENT, syslog.LOG_NDELAY, psi_config.SYSLOG_FACILITY)
     threads = []
@@ -690,7 +743,13 @@ def main():
         thread = WebServerThread(*server_info, server_threads=threads_per_server)
         thread.start()
         threads.append(thread)
-    print 'Servers running...'
+    print 'Web servers running...'
+
+    geoip_thread = GeoIPServerThread()
+    geoip_thread.start()
+    threads.append(geoip_thread)
+    print 'GeoIP server running...'
+
     try:
         while True:
             time.sleep(60)
