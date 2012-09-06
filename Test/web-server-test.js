@@ -137,7 +137,7 @@ function reduceResults(results) {
     }
   });
 
-  var successCount = reduced.successCount - reduced.errorCount;
+  var successCount = reduced.count - reduced.errorCount;
   if (successCount > 0) {
     reduced.avgResponseTime = reduced.avgResponseTime / successCount;
     reduced.avgEndTime = reduced.avgEndTime / successCount;
