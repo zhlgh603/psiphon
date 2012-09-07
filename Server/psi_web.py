@@ -134,11 +134,10 @@ class ServerInstance(object):
         # tunnel. In this case, check if the client provided a client_session_id
         # and check if there's a corresponding region in the tunnel session
         # database
+        # Update: now we also cache GeoIP lookups done outside the tunnel
         client_ip_address = request.remote_addr
         geoip = psi_geoip.get_unknown()
-        if not self._is_request_tunnelled(client_ip_address):
-            geoip = psi_geoip.get_geoip(client_ip_address)
-        elif request.params.has_key('client_session_id'):
+        if request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
             if not consists_of(client_session_id, string.hexdigits):
                 syslog.syslog(
@@ -152,6 +151,16 @@ class ServerInstance(object):
                 except ValueError:
                     # Backwards compatibility case
                     geoip = psi_geoip.get_region_only(record)
+            elif not self._is_request_tunnelled(client_ip_address):
+                geoip = psi_geoip.get_geoip(client_ip_address)
+                # Cache the result for subsequent requests with the same client_session_id
+                if len(client_session_id) > 0:
+                    self.session_redis.set(client_session_id, json.dumps(geoip))
+                    self.session_redis.expire(client_session_id, psi_config.SESSION_EXPIRE_SECONDS)
+            # else: is-tunnelled and no cache, so GeoIP is unknown
+        elif not self._is_request_tunnelled(client_ip_address):
+            # Can't use cache without a client_session_id
+            geoip = psi_geoip.get_geoip(client_ip_address)
 
         # Hack: log parsing is space delimited, so remove spaces from
         # GeoIP string (ISP names in particular)
