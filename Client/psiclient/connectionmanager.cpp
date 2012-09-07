@@ -508,7 +508,10 @@ void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
         << "\"relay_protocol\": \"" << TStringToNarrow(transport->GetTransportProtocolName()) << "\",\n"
         << "\"session_id\": \"" << TStringToNarrow(transport->GetSessionID(sessionInfo)) << "\",\n"
         << "\"last_connected\": \"" << "None" << "\",\n"
-        << "\"known_server\": \"" << sessionInfo.GetServerAddress() << "\"\n"
+        << "\"ssh_port\": \"" << sessionInfo.GetSSHPort() << "\",\n"
+        << "\"ssh_username\": \"" << sessionInfo.GetSSHUsername() << "\",\n"
+        << "\"ssh_password\": \"" << sessionInfo.GetSSHPassword() << "\",\n"
+        << "\"ssh_hostkey\": \"" << sessionInfo.GetSSHHostKey() << "\"\n"
         << "}";
 
     out.close();
