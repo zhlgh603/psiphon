@@ -11,7 +11,7 @@
 
 ## Run the tests
 
-1. Connect with the Windows client.
+1. Run the debug build of the Windows client, with the debug command. Let it connect.
    * SSH(+) makes more sense than VPN.
 
 2. `node web-server-test.js <test_propagation_channel_id>`
