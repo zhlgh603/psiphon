@@ -1,11 +1,12 @@
 var spawn = require('child_process').spawn;
 var fs = require('fs');
 var https = require('https');
+var http = require('http');
 var tunnel = require('tunnel');
 var Q = require('q');
 var _ = require('underscore');
 
-var SAMPLE_SIZE = 100, PROCESS_COUNT = 1;
+var SAMPLE_SIZE = 20, PROCESS_COUNT = 1;
 var TIMEOUT = 30000;
 
 var i;
@@ -47,11 +48,27 @@ function getTickCount() {
   return new Date().getTime();
 }
 
-var tunnelingAgent = tunnel.httpsOverHttp({
+var httpsOverHttpTunnelingAgent = tunnel.httpsOverHttp({
   proxy: { // Proxy settings
     host: 'localhost',
     port: 8080,
     method: 'GET'
+  },
+
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:15.0) Gecko/20100101 Firefox/15.0'
+  }
+});
+
+var httpOverHttpTunnelingAgent = tunnel.httpOverHttp({
+  proxy: { // Proxy settings
+    host: 'localhost',
+    port: 2001,
+    method: 'GET'
+  },
+
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:15.0) Gecko/20100101 Firefox/15.0'
   }
 });
 
@@ -64,6 +81,7 @@ function makeRequest(tunnelReq, httpsReq, host, path, port) {
   path = addCacheBreaker(path);
 
   var reqType = httpsReq ? https : http;
+  var tunnelingAgent = httpsReq ? httpsOverHttpTunnelingAgent : httpOverHttpTunnelingAgent;
 
   var reqOptions = {
     host: host,
@@ -90,7 +108,7 @@ function makeRequest(tunnelReq, httpsReq, host, path, port) {
     res.on('end', resDone);
     res.on('close', resDone);
 
-    //res.on('data', function(data) { console.log(data.length); });
+    //res.on('data', function(data) { console.log(data.length, data.toString()); });
 
     if (res.statusCode !== 200) {
       mylog('Error: ' + res.statusCode + ' for ' + path);
@@ -126,6 +144,7 @@ function reduceResults(results) {
   var reduced = { avgResponseTime: 0, avgEndTime: 0, count: 0, errorCount: 0 };
 
   results.forEach(function(elem) {
+    //console.log(elem);
     reduced.count += 1;
     if (elem.error) {
       // error
@@ -414,6 +433,7 @@ for (i = 1; i <= 25; i++) {
 
 return;
 */
+
 
 serverReqOptions.count = SAMPLE_SIZE;
 
