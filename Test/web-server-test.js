@@ -5,6 +5,8 @@ var http = require('http');
 var tunnel = require('tunnel');
 var Q = require('q');
 var _ = require('underscore');
+var SSHTunnel = require('./ssh-tunnel');
+
 
 var SAMPLE_SIZE = 20, PROCESS_COUNT = 1;
 var TIMEOUT = 30000;
@@ -38,6 +40,20 @@ if (args.length === 0 || args[0].length !== 16) {
   process.exit(1);
 }
 testConf.propagation_channel_id = args[0];
+
+testConf.plonk = '../Client/psiclient/3rdParty/plonk.exe';
+testConf.polipo = '../Client/psiclient/3rdParty/polipo.exe';
+
+
+testConf.socks_proxy_port = 3001;
+testConf.http_proxy_port = 3002;
+var sshTunnel = new SSHTunnel(testConf);
+sshTunnel.on('exit', function() {console.log('SSHTUnnel exited', arguments);});
+sshTunnel.connect();
+setTimeout(function(){sshTunnel.disconnect();}, 10000);
+
+return;
+
 
 function mylog() {
   console.log.apply(console, arguments);

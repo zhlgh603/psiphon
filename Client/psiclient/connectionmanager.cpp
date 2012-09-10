@@ -511,7 +511,9 @@ void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
         << "\"ssh_port\": \"" << sessionInfo.GetSSHPort() << "\",\n"
         << "\"ssh_username\": \"" << sessionInfo.GetSSHUsername() << "\",\n"
         << "\"ssh_password\": \"" << sessionInfo.GetSSHPassword() << "\",\n"
-        << "\"ssh_hostkey\": \"" << sessionInfo.GetSSHHostKey() << "\"\n"
+        << "\"ssh_hostkey\": \"" << sessionInfo.GetSSHHostKey() << "\",\n"
+        << "\"ssh_obfsport\": \"" << sessionInfo.GetSSHObfuscatedPort() << "\",\n"
+        << "\"ssh_obfskey\": \"" << sessionInfo.GetSSHObfuscatedKey() << "\"\n"
         << "}";
 
     out.close();
