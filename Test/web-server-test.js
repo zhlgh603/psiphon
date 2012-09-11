@@ -48,6 +48,7 @@ testConf.polipo = '../Client/psiclient/3rdParty/polipo.exe';
 testConf.socks_proxy_port = 3001;
 testConf.http_proxy_port = 3002;
 var sshTunnel = new SSHTunnel(testConf);
+sshTunnel.on('connect', function() {console.log('SSHTUnnel connected', arguments);});
 sshTunnel.on('exit', function() {console.log('SSHTUnnel exited', arguments);});
 sshTunnel.connect();
 setTimeout(function(){sshTunnel.disconnect();}, 10000);
