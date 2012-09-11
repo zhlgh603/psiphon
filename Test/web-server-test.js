@@ -8,7 +8,6 @@ var SSHTunnel = require('./ssh-tunnel');
 
 var SAMPLE_SIZE = 10, PROCESS_COUNT = 1;
 var TIMEOUT = 30000;
-
 var i;
 
 /* Not spawning child processes for now, but I'll leave the code
@@ -42,17 +41,6 @@ testConf.propagation_channel_id = args[0];
 testConf.plonk = '../Client/psiclient/3rdParty/plonk.exe';
 testConf.polipo = '../Client/psiclient/3rdParty/polipo.exe';
 
-/*
-testConf.socks_proxy_port = 3001;
-testConf.http_proxy_port = 3002;
-var sshTunnel = new SSHTunnel(testConf);
-sshTunnel.on('connect', function() {console.log('SSHTUnnel connected', arguments);});
-sshTunnel.on('exit', function() {console.log('SSHTUnnel exited', arguments);});
-sshTunnel.connect();
-setTimeout(function(){sshTunnel.disconnect();}, 10000);
-
-return;
-*/
 
 function mylog() {
   console.log.apply(console, arguments);
@@ -137,6 +125,37 @@ function makeSiteRequestAndOutputFn(siteReqOptions) {
   return fn;
 }
 
+var nextLocalPort = 10000;
+
+// testConf will be modified with the `socks_proxy_port` and `http_proxy_port`
+// used, and a `disconnect()` function which tears down the tunnel.
+// The returned promise will be resolved when the connection is established.
+function createTunnel(testConf) {
+  var deferred = Q.defer();
+
+  testConf.socks_proxy_port = nextLocalPort++;
+  testConf.http_proxy_port = nextLocalPort++;
+
+  var sshTunnel = new SSHTunnel(testConf);
+
+  sshTunnel.once('connected', function() { deferred.resolve(); });
+
+  sshTunnel.once('exit', function(unexpected) {
+    sshTunnel.removeAllListeners();
+    if (!deferred.promise.isResolved()) {
+      // unexpected ought to be true, but we won't bother checking
+      deferred.reject(new Error('unexpected disconnect', testConf.socks_proxy_port, testConf.http_proxy_port));
+    }
+  });
+
+  sshTunnel.connect();
+
+  // Set the disconnect function
+  testConf.disconnect = _.bind(sshTunnel.disconnect, sshTunnel);
+
+  return deferred.promise;
+}
+
 // Start out with a resolved promise
 var seq = Q.resolve();
 
@@ -149,6 +168,42 @@ var serverReqOptions = {
 };
 
 var testNum = 1;
+
+
+serverReqOptions.count = 5;
+var tunnels = [];
+var tunnel;
+for (i = 0; i < 5; i++) {
+  tunnel = { testConf: _.clone(testConf), promise: null };
+  tunnels.push(tunnel);
+
+  tunnel.testConf.socks_proxy_port = nextLocalPort++;
+  tunnel.testConf.http_proxy_port = nextLocalPort++;
+  tunnel.testConf.ossh = true;
+
+  tunnel.promise = createTunnel(tunnel.testConf);
+}
+
+var requests = [];
+Q.all(_.pluck(tunnels, 'promise')).then(function() {
+  // All the tunnels are connected
+  console.log('all tunnels connected\n');
+
+  _.each(tunnels, function(tunnel) {
+    serverReqOptions.testConf = tunnel.testConf;
+    serverReqOptions.reqType = 'connected';
+    serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, testNum++);
+    serverReqOptions.tunneled = true;
+    makeServerRequestAndOutputFn(serverReqOptions)()
+      .then(function() {
+        tunnel.testConf.disconnect();
+      }).end();
+  });
+});
+
+return;
+
+
 
 /*
 for (i = 1; i <= 25; i++) {
