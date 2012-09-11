@@ -10,7 +10,7 @@ more fields:
     http_proxy_port: the local port that the HTTP proxy should listen on
   }
 
-SSHTunnel is an event emitter. It will emit 'connect' when the proxies are ready
+SSHTunnel is an event emitter. It will emit 'connected' when the proxies are ready
 and 'exit' when the proxies have stopped. 'exit' has an `unexpected` argument
 indicating whether the stoppage was requested or not.
 */
@@ -29,7 +29,7 @@ SSHTunnel.prototype.connect = function(options) {
   if (options) this.options = options;
 
   var plonkArgs = [
-    '-ssh', '-C', '-N', '-batch',
+    '-ssh', '-C', '-N', '-batch', '-v',
     '-l', this.options.ssh_username,
     '-pw', this.options.ssh_password,
     '-D', this.options.socks_proxy_port,
@@ -53,7 +53,7 @@ SSHTunnel.prototype.connect = function(options) {
     'proxyPort=' + this.options.http_proxy_port,
     'diskCacheRoot=""',
     'disableLocalInterface=true',
-    'logLevel=1',
+    'logLevel=0xFF',
     'socksParentProxy=127.0.0.1:' + this.options.socks_proxy_port,
     'psiphonServer=' + this.options.server_ip
   ];
@@ -62,21 +62,23 @@ SSHTunnel.prototype.connect = function(options) {
 
   this.plonk.on('exit', _.bind(this._plonkExit, this));
 
-  console.log(plonkArgs);
-  this.plonk.stdout.on('data', function(data){console.log(data.toString());});
-  this.plonk.stderr.on('data', function(data){console.log(data.toString());});
-
   this.polipo.on('exit', _.bind(this._polipoExit, this));
 
   this._disconnectExpected = false;
 
   // TODO: Figure out how to tell when plonk and polipo are up and running.
   // (Maybe try to open a socket to them like we do in the Windows client?)
-  // Cheap hack:
+  // Cheap hack: With verbose logging on, we see this message (as part of a longer,
+  // multi-line message) twice from plonk when the connection is complete:
+  var magicMessage = 'Initialised AES-256 SDCTR server->client encryption';
+  var magicMessageSeen = 0;
   var that = this;
-  this._connectTimeout = setTimeout(function() {
-    that.emit('connect');
-  }, 1000);
+  this.plonk.stderr.on('data', function(data) {
+    if (data.toString().indexOf(magicMessage) >= 0) {
+      if (magicMessageSeen) { that.emit('connected'); }
+      magicMessageSeen += 1;
+    }
+  });
 };
 
 SSHTunnel.prototype.disconnect = function() {
@@ -86,7 +88,7 @@ SSHTunnel.prototype.disconnect = function() {
 };
 
 SSHTunnel.prototype._plonkExit = function() {
-  console.log('plonk exited', arguments);
+  if (!this._disconnectExpected) console.log('plonk exited', arguments);
 
   clearTimeout(this._connectTimeout);
 
@@ -99,7 +101,7 @@ SSHTunnel.prototype._plonkExit = function() {
 };
 
 SSHTunnel.prototype._polipoExit = function() {
-  console.log('polipo exited', arguments);
+  if (!this._disconnectExpected) console.log('polipo exited', arguments);
 
   clearTimeout(this._connectTimeout);
 

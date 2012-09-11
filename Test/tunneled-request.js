@@ -86,7 +86,7 @@ function makeRequest(proxyPort, tunnelReq, httpsReq, host, path, port/*optional*
     //res.on('data', function(data) { console.log(data.length, data.toString()); });
 
     if (res.statusCode !== 200) {
-      mylog('Error: ' + res.statusCode + ' for ' + path);
+      console.log('Error: ' + res.statusCode + ' for ' + path + '\n');
       deferred.resolve({error: res.statusCode});
       return;
     }
@@ -96,7 +96,7 @@ function makeRequest(proxyPort, tunnelReq, httpsReq, host, path, port/*optional*
 
   req.on('error', function(e) {
     // Commenting this out because there are a lot of ETIMEDOUT errors with big parallel tests
-    //mylog(e + ': ' + e.code);
+    //console.log(e + ': ' + e.code + '\n');
     deferred.resolve({error: 999});
     return;
   });
@@ -115,6 +115,7 @@ function toQueryParams(obj) {
   var key;
   var params = [];
   for (key in obj) {
+    if (!_.isFunction(obj[key]))
     params.push(key+'='+obj[key]);
   }
   return params.join('&');
