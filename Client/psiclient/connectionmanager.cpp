@@ -499,7 +499,7 @@ void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
 
     out << "{\n" 
         << "\"server_ip\": \"" << sessionInfo.GetServerAddress() << "\",\n"
-        << "\"server_web_port\": \"" << sessionInfo.GetWebPort() << "\",\n"
+        << "\"server_web_port\": " << sessionInfo.GetWebPort() << ",\n"
         << "\"client_session_id\": \"" << sessionInfo.GetClientSessionID() << "\",\n"
         << "\"propagation_channel_id\": \"" << PROPAGATION_CHANNEL_ID << "\",\n"
         << "\"sponsor_id\": \"" << SPONSOR_ID << "\",\n"
@@ -508,12 +508,13 @@ void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
         << "\"relay_protocol\": \"" << TStringToNarrow(transport->GetTransportProtocolName()) << "\",\n"
         << "\"session_id\": \"" << TStringToNarrow(transport->GetSessionID(sessionInfo)) << "\",\n"
         << "\"last_connected\": \"" << "None" << "\",\n"
-        << "\"ssh_port\": \"" << sessionInfo.GetSSHPort() << "\",\n"
+        << "\"ssh_port\": " << sessionInfo.GetSSHPort() << ",\n"
         << "\"ssh_username\": \"" << sessionInfo.GetSSHUsername() << "\",\n"
         << "\"ssh_password\": \"" << sessionInfo.GetSSHPassword() << "\",\n"
         << "\"ssh_hostkey\": \"" << sessionInfo.GetSSHHostKey() << "\",\n"
         << "\"ssh_obfsport\": \"" << sessionInfo.GetSSHObfuscatedPort() << "\",\n"
-        << "\"ssh_obfskey\": \"" << sessionInfo.GetSSHObfuscatedKey() << "\"\n"
+        << "\"ssh_obfskey\": \"" << sessionInfo.GetSSHObfuscatedKey() << "\",\n"
+        << "\"http_proxy_port\": " << DEFAULT_LOCAL_HTTP_PROXY_PORT << "\n"
         << "}";
 
     out.close();
