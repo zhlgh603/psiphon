@@ -1,3 +1,20 @@
+/*
+Creates a SSH tunnel/SOCKS proxy and accompanying chained HTTP proxy.
+
+`options` is the `testConf` object from `web-server-test.js` along with a few
+more fields:
+  {
+    plonk: path to plonk.exe (can be relative)
+    polipo: path to polipo.exe (can be relative)
+    socks_proxy_port: the local port that the SOCKS proxy should listen on
+    http_proxy_port: the local port that the HTTP proxy should listen on
+  }
+
+SSHTunnel is an event emitter. It will emit 'connect' when the proxies are ready
+and 'exit' when the proxies have stopped. 'exit' has an `unexpected` argument
+indicating whether the stoppage was requested or not.
+*/
+
 var _ = require('underscore');
 var spawn = require('child_process').spawn;
 
@@ -50,33 +67,48 @@ SSHTunnel.prototype.connect = function(options) {
   this.plonk.stderr.on('data', function(data){console.log(data.toString());});
 
   this.polipo.on('exit', _.bind(this._polipoExit, this));
+
+  this._disconnectExpected = false;
+
+  // TODO: Figure out how to tell when plonk and polipo are up and running.
+  // (Maybe try to open a socket to them like we do in the Windows client?)
+  // Cheap hack:
+  var that = this;
+  this._connectTimeout = setTimeout(function() {
+    that.emit('connect');
+  }, 1000);
 };
 
 SSHTunnel.prototype.disconnect = function() {
   // This will trigger also killing polipo
+  this._disconnectExpected = true;
   this.plonk.kill();
 };
 
 SSHTunnel.prototype._plonkExit = function() {
   console.log('plonk exited', arguments);
 
+  clearTimeout(this._connectTimeout);
+
   // Kill the other process
   this.polipo.removeAllListeners('exit');
   this.polipo.kill();
 
   // And let the caller know
-  this.emit('exit');
+  this.emit('exit', this._disconnectExpected);
 };
 
 SSHTunnel.prototype._polipoExit = function() {
   console.log('polipo exited', arguments);
+
+  clearTimeout(this._connectTimeout);
 
   // Kill the other process
   this.plonk.removeAllListeners('exit');
   this.plonk.kill();
 
   // And let the caller know
-  this.emit('exit');
+  this.emit('exit', this._disconnectExpected);
 };
 
 
