@@ -1,14 +1,12 @@
 var spawn = require('child_process').spawn;
 var fs = require('fs');
-var https = require('https');
-var http = require('http');
-var tunnel = require('tunnel');
 var Q = require('q');
 var _ = require('underscore');
+var request = require('./tunneled-request');
 var SSHTunnel = require('./ssh-tunnel');
 
 
-var SAMPLE_SIZE = 20, PROCESS_COUNT = 1;
+var SAMPLE_SIZE = 10, PROCESS_COUNT = 1;
 var TIMEOUT = 30000;
 
 var i;
@@ -44,7 +42,7 @@ testConf.propagation_channel_id = args[0];
 testConf.plonk = '../Client/psiclient/3rdParty/plonk.exe';
 testConf.polipo = '../Client/psiclient/3rdParty/polipo.exe';
 
-
+/*
 testConf.socks_proxy_port = 3001;
 testConf.http_proxy_port = 3002;
 var sshTunnel = new SSHTunnel(testConf);
@@ -54,292 +52,11 @@ sshTunnel.connect();
 setTimeout(function(){sshTunnel.disconnect();}, 10000);
 
 return;
-
+*/
 
 function mylog() {
   console.log.apply(console, arguments);
   console.log('');
-}
-
-function getTickCount() {
-  return new Date().getTime();
-}
-
-var httpsOverHttpTunnelingAgent = tunnel.httpsOverHttp({
-  proxy: { // Proxy settings
-    host: 'localhost',
-    port: 8080,
-    method: 'GET'
-  },
-
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:15.0) Gecko/20100101 Firefox/15.0'
-  }
-});
-
-var httpOverHttpTunnelingAgent = tunnel.httpOverHttp({
-  proxy: { // Proxy settings
-    host: 'localhost',
-    port: 2001,
-    method: 'GET'
-  },
-
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:15.0) Gecko/20100101 Firefox/15.0'
-  }
-});
-
-// promise will be resolved with a positive value on success, negative on failure
-function makeRequest(tunnelReq, httpsReq, host, path, port) {
-  var deferred = Q.defer();
-  var startTime = 0, responseTime;
-
-  // Make sure we don't hit (polipo's) request cache
-  path = addCacheBreaker(path);
-
-  var reqType = httpsReq ? https : http;
-  var tunnelingAgent = httpsReq ? httpsOverHttpTunnelingAgent : httpOverHttpTunnelingAgent;
-
-  var reqOptions = {
-    host: host,
-    port: port ? port : (httpsReq ? 443 : 80),
-    path: path,
-    agent: tunnelReq ? tunnelingAgent : null
-  };
-
-  var req = reqType.request(reqOptions, function(res) {
-    responseTime = getTickCount() - startTime;
-
-    var resDone = function() {
-      // Protect again getting called twice
-      if (deferred) {
-        deferred.resolve({
-          error: null,
-          responseTime: responseTime,
-          endTime: getTickCount() - startTime});
-        deferred = null;
-        return;
-      }
-    };
-
-    res.on('end', resDone);
-    res.on('close', resDone);
-
-    //res.on('data', function(data) { console.log(data.length, data.toString()); });
-
-    if (res.statusCode !== 200) {
-      mylog('Error: ' + res.statusCode + ' for ' + path);
-      deferred.resolve({error: res.statusCode});
-      return;
-    }
-  });
-
-  startTime = getTickCount();
-
-  req.on('error', function(e) {
-    // Commenting this out because there are a lot of ETIMEDOUT errors with big parallel tests
-    //mylog(e + ': ' + e.code);
-    deferred.resolve({error: 999});
-    return;
-  });
-
-  // This doesn't seem to affect the amount of time allowed to connect. Some googling
-  // suggests it's instead for how long to leave the socket open with no traffic.
-  //req.setTimeout(TIMEOUT);
-
-  req.end();
-
-  return deferred.promise;
-}
-
-
-// Takes an array of request results that look like:
-//   {error: nn, responseTime: nn, endTime: nn}
-// Returns an object that looks like:
-//   { avg_time: 100, error_rate: 0.2 }
-function reduceResults(results) {
-  var reduced = { avgResponseTime: 0, avgEndTime: 0, count: 0, errorCount: 0 };
-
-  results.forEach(function(elem) {
-    //console.log(elem);
-    reduced.count += 1;
-    if (elem.error) {
-      // error
-      reduced.errorCount += 1;
-    }
-    else {
-      reduced.avgResponseTime += elem.responseTime;
-      reduced.avgEndTime += elem.endTime;
-    }
-  });
-
-  var successCount = reduced.count - reduced.errorCount;
-  if (successCount > 0) {
-    reduced.avgResponseTime = reduced.avgResponseTime / successCount;
-    reduced.avgEndTime = reduced.avgEndTime / successCount;
-  }
-
-  return reduced;
-}
-
-
-function toQueryParams(obj) {
-  var key;
-  var params = [];
-  for (key in obj) {
-    params.push(key+'='+obj[key]);
-  }
-  return params.join('&');
-}
-
-function requestString(type, testConf) {
-  return '/' + type + '?' + toQueryParams(testConf);
-}
-
-function addCacheBreaker(requestString) {
-  return requestString +
-         ((requestString.indexOf('?') < 0) ? '?' : '&') +
-         'cachebreak=' + Math.random();
-}
-
-function testServerRequestParallel(serverReqOptions) {
-  var deferred = Q.defer();
-
-  var reqs, i;
-
-  reqs = [];
-  for (i = 0; i < serverReqOptions.count; i++) {
-    reqs.push(makeRequest(serverReqOptions.tunneled, true,
-                          serverReqOptions.testConf.server_ip,
-                          requestString(serverReqOptions.reqType, serverReqOptions.testConf),
-                          8080));
-  }
-
-  Q.all(reqs).then(function(results) {
-    results = reduceResults(results);
-    results.tunneled = serverReqOptions.tunneled;
-    deferred.resolve(results);
-  }).end();
-
-  return deferred.promise;
-}
-
-function testServerRequestSerial(serverReqOptions) {
-  var deferred = Q.defer();
-  var results = [];
-
-  var reqFunc = function(result) {
-    if (result) results.push(result);
-    return makeRequest(serverReqOptions.tunneled, true,
-                       serverReqOptions.testConf.server_ip,
-                       requestString(serverReqOptions.reqType, serverReqOptions.testConf),
-                       8080);
-  };
-
-  var req = Q.resolve();
-  var i;
-  for (i = 0; i < serverReqOptions.count; i++) {
-    req = req.then(reqFunc);
-  }
-
-  // Handle the last request
-  req.then(function(result) {
-    // We get the result for the last request...
-    results.push(result);
-    // ...and then we process all the results
-    results = reduceResults(results);
-    results.tunneled = serverReqOptions.tunneled;
-    deferred.resolve(results);
-  }).end();
-
-  return deferred.promise;
-}
-
-function testServerRequest(serverReqOptions) {
-  if (arguments.length !== 1) {
-    throw('testServerRequest: bad args');
-  }
-
-  if (serverReqOptions.parallel) {
-    return testServerRequestParallel(serverReqOptions);
-  }
-  else {
-    return testServerRequestSerial(serverReqOptions);
-  }
-}
-
-function testSiteRequestParallel(siteReqOptions) {
-  var deferred = Q.defer();
-  var reqs, i;
-
-  reqs = [];
-  for (i = 0; i < siteReqOptions.count; i++) {
-    reqs.push(makeRequest(siteReqOptions.tunneled, siteReqOptions.httpsReq,
-                          siteReqOptions.host, siteReqOptions.path));
-  }
-
-  Q.all(reqs).then(function(results) {
-    results = reduceResults(results);
-    results.tunneled = siteReqOptions.tunneled;
-    deferred.resolve(results);
-  }).end();
-
-  return deferred.promise;
-}
-
-function testSiteRequestSerial(siteReqOptions) {
-  var deferred = Q.defer();
-  var results = [];
-
-  var reqFunc = function(result) {
-    if (result) results.push(result);
-    return makeRequest(siteReqOptions.tunneled, siteReqOptions.httpsReq,
-                       siteReqOptions.host, siteReqOptions.path);
-  };
-
-  var req = Q.resolve();
-  var i;
-  for (i = 0; i < siteReqOptions.count; i++) {
-    req = req.then(reqFunc);
-  }
-
-  // Handle the last request
-  req.then(function(result) {
-    // We get the result for the last request...
-    results.push(result);
-    // ...and then we process all the results
-    results = reduceResults(results);
-    results.tunneled = siteReqOptions.tunneled;
-    deferred.resolve(results);
-  }).end();
-
-  return deferred.promise;
-}
-
-
-function testSiteRequest(siteReqOptions) {
-  if (arguments.length !== 1) {
-    throw('testSiteRequest: bad args');
-  }
-
-  if (siteReqOptions.parallel) {
-    return testSiteRequestParallel(siteReqOptions);
-  }
-  else {
-    return testSiteRequestSerial(siteReqOptions);
-  }
-}
-
-function addHexInfoToReq(conf, info) {
-  info = info.toString();
-
-  var padLeft = function (string, pad, length) {
-    return (new Array(length+1).join(pad)+string).slice(-length);
-  };
-
-  info = padLeft(info, '0', info.length + (info.length % 2));
-
-  return _.extend(_.clone(conf), {sponsor_id: info});
 }
 
 // This is super rough
@@ -399,7 +116,7 @@ function delayNext() {
 function makeServerRequestAndOutputFn(serverReqOptions) {
   var serverReqOptionsClone = _.clone(serverReqOptions);
   var fn = function() {
-    return testServerRequest(serverReqOptionsClone)
+    return request.testServerRequest(serverReqOptionsClone)
               .then(function(results) {
                 outputServerReqResults(serverReqOptionsClone, results);
                 return Q.resolve();
@@ -411,7 +128,7 @@ function makeServerRequestAndOutputFn(serverReqOptions) {
 function makeSiteRequestAndOutputFn(siteReqOptions) {
   var siteReqOptionsClone = _.clone(siteReqOptions);
   var fn = function() {
-    return testSiteRequest(siteReqOptionsClone)
+    return request.testSiteRequest(siteReqOptionsClone)
               .then(function(results) {
                 outputSiteReqResults(siteReqOptionsClone, results);
                 return Q.resolve();
@@ -436,7 +153,7 @@ var testNum = 1;
 /*
 for (i = 1; i <= 25; i++) {
   serverReqOptions.count = i*5;
-  serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, serverReqOptions.count);
+  serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, serverReqOptions.count);
   serverReqOptions.reqType = 'connected';
 
   serverReqOptions.tunneled = true;
@@ -455,26 +172,27 @@ return;
 serverReqOptions.count = SAMPLE_SIZE;
 
 serverReqOptions.reqType = 'handshake';
-serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, testNum++);
+serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, testNum++);
 serverReqOptions.tunneled = true;
 seq = seq.then(delayNext);
 seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
-serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, testNum++);
+serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, testNum++);
 serverReqOptions.tunneled = false;
 seq = seq.then(delayNext);
 seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
 
 serverReqOptions.reqType = 'connected';
-serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, testNum++);
+serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, testNum++);
 serverReqOptions.tunneled = true;
 seq = seq.then(delayNext);
 seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
-serverReqOptions.testConf = addHexInfoToReq(serverReqOptions.testConf, testNum++);
+serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, testNum++);
 serverReqOptions.tunneled = false;
 seq = seq.then(delayNext);
 seq = seq.then(makeServerRequestAndOutputFn(serverReqOptions));
 
 var siteReqOptions = {
+  testConf: testConf,
   count: SAMPLE_SIZE,
   parallel: true,
   tunneled: true,
