@@ -148,12 +148,19 @@ function createTunnel(testConf) {
     }
   });
 
-  sshTunnel.connect();
+  //setTimeout(function() {
+    sshTunnel.connect();
+  //}, 0);//Math.random()*10000);
 
   // Set the disconnect function
   testConf.disconnect = _.bind(sshTunnel.disconnect, sshTunnel);
 
   return deferred.promise;
+}
+
+
+function downloadRequestTest() {
+
 }
 
 // Start out with a resolved promise
@@ -170,16 +177,16 @@ var serverReqOptions = {
 var testNum = 1;
 
 
-serverReqOptions.count = 5;
+serverReqOptions.count = 1;
 var tunnels = [];
 var tunnel;
-for (i = 0; i < 5; i++) {
+for (i = 0; i < 200; i++) {
   tunnel = { testConf: _.clone(testConf), promise: null };
   tunnels.push(tunnel);
 
   tunnel.testConf.socks_proxy_port = nextLocalPort++;
   tunnel.testConf.http_proxy_port = nextLocalPort++;
-  tunnel.testConf.ossh = true;
+  tunnel.testConf.ossh = false;
 
   tunnel.promise = createTunnel(tunnel.testConf);
 }
@@ -190,16 +197,27 @@ Q.all(_.pluck(tunnels, 'promise')).then(function() {
   console.log('all tunnels connected\n');
 
   _.each(tunnels, function(tunnel) {
-    serverReqOptions.testConf = tunnel.testConf;
-    serverReqOptions.reqType = 'connected';
-    serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, testNum++);
-    serverReqOptions.tunneled = true;
-    makeServerRequestAndOutputFn(serverReqOptions)()
-      .then(function() {
-        tunnel.testConf.disconnect();
-      }).end();
+    if (false) {
+      serverReqOptions.testConf = tunnel.testConf;
+      serverReqOptions.reqType = 'connected';
+      serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, testNum++);
+      serverReqOptions.tunneled = true;
+      makeServerRequestAndOutputFn(serverReqOptions)()
+        .then(function() {
+          tunnel.testConf.disconnect();
+        }).end();
+    }
+    else {
+      tunnel.testConf.disconnect();
+    }
   });
-});
+}, function() {
+  console.log('some tunnels failed');
+
+  _.each(tunnels, function(tunnel) {
+    tunnel.testConf.disconnect();
+  });
+}).end();
 
 return;
 
