@@ -73,7 +73,9 @@ SSHTunnel.prototype.connect = function(options) {
   var magicMessage = 'Initialised AES-256 SDCTR server->client encryption';
   var magicMessageSeen = 0;
   var that = this;
+  this.lastError = null;
   this.plonk.stderr.on('data', function(data) {
+    that.lastError = data.toString();
     if (data.toString().indexOf(magicMessage) >= 0) {
       if (magicMessageSeen) { that.emit('connected'); }
       magicMessageSeen += 1;
@@ -88,7 +90,7 @@ SSHTunnel.prototype.disconnect = function() {
 };
 
 SSHTunnel.prototype._plonkExit = function() {
-  if (!this._disconnectExpected) console.log('plonk exited', arguments);
+  if (!this._disconnectExpected) console.log('plonk exited', this.lastError, arguments);
 
   clearTimeout(this._connectTimeout);
 
@@ -101,7 +103,7 @@ SSHTunnel.prototype._plonkExit = function() {
 };
 
 SSHTunnel.prototype._polipoExit = function() {
-  if (!this._disconnectExpected) console.log('polipo exited', arguments);
+  if (!this._disconnectExpected) console.log('polipo exited', this.lastError, arguments);
 
   clearTimeout(this._connectTimeout);
 
