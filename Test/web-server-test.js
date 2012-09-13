@@ -95,7 +95,7 @@ function delayNext() {
   var deferred = Q.defer();
   var delay = 1000;
   setTimeout(function() {
-    mylog('delay', delay, 'ms');
+    console.log('delay', delay, 'ms');
     deferred.resolve();
   }, delay);
   return deferred.promise;
@@ -218,6 +218,12 @@ function connectTunnels(tunnelCount, ossh) {
 }
 
 function simultaneousTunnels_Test(ossh, stopAtFirstFail) {
+  console.log(
+    arguments.callee.name,
+    (ossh ? 'OSSH' : 'SSH'),
+    'stopAtFirstFail:'+stopAtFirstFail);
+
+  var deferred = Q.defer();
 
   var failReported = false;
   var fail = function(numTunnels, ossh) {
@@ -245,10 +251,23 @@ function simultaneousTunnels_Test(ossh, stopAtFirstFail) {
     numTunnels += 1;
   }
 
+  seq.fin(function() {
+    deferred.resolve();
+  });
+
   seq.end();
+
+  return deferred.promise;
 }
 
 function cumulativeTunnels_Test(ossh, stopAtFirstFail, addDelay) {
+  console.log(
+    arguments.callee.name,
+    (ossh ? 'OSSH' : 'SSH'),
+    'stopAtFirstFail:'+stopAtFirstFail,
+    'addDelay:'+addDelay);
+
+  var deferred = Q.defer();
 
   var makeTunnel = function(ossh, tunnels) {
     var deferred = Q.defer();
@@ -297,13 +316,25 @@ function cumulativeTunnels_Test(ossh, stopAtFirstFail, addDelay) {
   }
 
   seq.fin(function() {
-    return disconnectTunnels(tunnels);
+    disconnectTunnels(tunnels)
+    .then(function() {
+      deferred.resolve();
+    });
   });
 
   seq.end();
+
+  return deferred.promise;
 }
 
-cumulativeTunnels_Test(false, true, false);
+// ssh, no delay
+cumulativeTunnels_Test(false, false, false)
+// ossh, no delay
+.then(_.bind(cumulativeTunnels_Test, null, true, false, false))
+// ssh
+.then(_.bind(simultaneousTunnels_Test, null, false, false))
+// ossh
+.then(_.bind(simultaneousTunnels_Test, null, true, false));
 return;
 
 // Start out with a resolved promise
