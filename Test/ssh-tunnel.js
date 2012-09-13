@@ -65,6 +65,7 @@ SSHTunnel.prototype.connect = function(options) {
   this.polipo.on('exit', _.bind(this._polipoExit, this));
 
   this._disconnectExpected = false;
+  this._exited = false;
 
   // TODO: Figure out how to tell when plonk and polipo are up and running.
   // (Maybe try to open a socket to them like we do in the Windows client?)
@@ -84,9 +85,15 @@ SSHTunnel.prototype.connect = function(options) {
 };
 
 SSHTunnel.prototype.disconnect = function() {
-  // This will trigger also killing polipo
-  this._disconnectExpected = true;
-  this.plonk.kill();
+  if (this._exited) {
+    var that = this;
+    _.defer(function() { that.emit('exit', this._disconnectExpected); });
+  }
+  else {
+    // This will trigger also killing polipo
+    this._disconnectExpected = true;
+    this.plonk.kill();
+  }
 };
 
 SSHTunnel.prototype._plonkExit = function() {
@@ -100,6 +107,7 @@ SSHTunnel.prototype._plonkExit = function() {
 
   // And let the caller know
   this.emit('exit', this._disconnectExpected);
+  this._exited = true;
 };
 
 SSHTunnel.prototype._polipoExit = function() {
@@ -113,6 +121,7 @@ SSHTunnel.prototype._polipoExit = function() {
 
   // And let the caller know
   this.emit('exit', this._disconnectExpected);
+  this._exited = true;
 };
 
 
