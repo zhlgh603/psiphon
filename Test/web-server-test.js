@@ -148,20 +148,163 @@ function createTunnel(testConf) {
     }
   });
 
-  //setTimeout(function() {
-    sshTunnel.connect();
-  //}, 0);//Math.random()*10000);
+  sshTunnel.connect();
 
-  // Set the disconnect function
-  testConf.disconnect = _.bind(sshTunnel.disconnect, sshTunnel);
+  // Set the SSHTunnel object for later use (like disconnecting)
+  testConf.sshTunnel = sshTunnel;
 
   return deferred.promise;
 }
 
+function disconnectTunnel(testConf) {
+  var deferred = Q.defer();
 
-function downloadRequestTest() {
+  if (!testConf.sshTunnel) throw 'disconnectTunnel: not tunnel testConf';
 
+  // Make sure that this doesn't conflict with any connect code.
+  testConf.sshTunnel.removeAllListeners();
+
+  testConf.sshTunnel.once('exit', function(unexpected) {
+    deferred.resolve();
+  });
+
+  testConf.sshTunnel.disconnect();
+
+  return deferred.promise;
 }
+
+function disconnectTunnels(tunnelTestConfs) {
+  var promises = [];
+  _.each(tunnelTestConfs, function(tunnelTestConf) {
+    promises.push(disconnectTunnel(tunnelTestConf));
+  });
+
+  return Q.all(promises);
+}
+
+function connectTunnels(tunnelCount, ossh) {
+  var deferred = Q.defer();
+
+  var tunnels = [];
+  var tunnel;
+  for (i = 0; i < tunnelCount; i++) {
+    tunnel = { testConf: _.clone(testConf), promise: null };
+    tunnels.push(tunnel);
+
+    tunnel.testConf.socks_proxy_port = nextLocalPort++;
+    tunnel.testConf.http_proxy_port = nextLocalPort++;
+    tunnel.testConf.ossh = ossh;
+
+    tunnel.promise = createTunnel(tunnel.testConf);
+  }
+
+  Q.all(_.pluck(tunnels, 'promise')).then(function() {
+    // success
+    console.log('connected all tunnels', tunnels.length, ossh?'OSSH':'SSH');
+    deferred.resolve(_.pluck(tunnels, 'testConf'));
+  }, function() {
+    // Failed to connect all of them.
+    disconnectTunnels(_.pluck(tunnels, 'testConf'))
+    .then(function() {
+      deferred.reject();
+    }, function() {
+      deferred.reject();
+    })
+    .end();
+  })
+  .end();
+
+  return deferred.promise;
+}
+
+function simultaneousTunnels_Test(ossh, stopAtFirstFail) {
+
+  var failReported = false;
+  var fail = function(numTunnels, ossh) {
+    var msg = 'simultaneousTunnels_Test failed at ' + numTunnels + ' for ' + (ossh?'OSSH':'SSH');
+    if (!failReported) {
+      console.log(msg);
+      failReported = true;
+    }
+    if (stopAtFirstFail) throw new Error(msg);
+  };
+
+  // Start out with a resolved promise
+  var seq = Q.resolve();
+  var numTunnels = 1;
+
+  while (numTunnels < 300) {
+    seq = seq.then(_.bind(connectTunnels, null, numTunnels, ossh));
+
+    seq = seq.then(
+      disconnectTunnels,
+      _.bind(fail, null, numTunnels, ossh));
+
+    seq = seq.then(delayNext);
+
+    numTunnels += 1;
+  }
+
+  seq.end();
+}
+
+function cumulativeTunnels_Test(ossh, stopAtFirstFail, addDelay) {
+
+  var makeTunnel = function(ossh, tunnels) {
+    var deferred = Q.defer();
+
+    var tunnelTestConf = _.clone(testConf);
+
+    tunnelTestConf.socks_proxy_port = nextLocalPort++;
+    tunnelTestConf.http_proxy_port = nextLocalPort++;
+    tunnelTestConf.ossh = ossh;
+
+    createTunnel(tunnelTestConf)
+    .then(function() {
+      tunnels.push(tunnelTestConf);
+      console.log('connected', tunnels.length);
+      deferred.resolve();
+    }, function() {
+      deferred.reject();
+    });
+
+    return deferred.promise;
+  };
+
+  var failReported = false;
+  var fail = function(numTunnels, ossh) {
+    var msg = 'cumulativeTunnels_Test failed at ' + tunnels.length + ' for ' + (ossh?'OSSH':'SSH');
+    if (!failReported) {
+      console.log(msg);
+      failReported = true;
+    }
+    if (stopAtFirstFail) throw new Error(msg);
+  };
+
+  // Start out with a resolved promise
+  var seq = Q.resolve();
+  var numTunnels = 1;
+  var tunnels = [];
+
+  while (numTunnels++ < 1000) {
+    seq = seq.then(
+      _.bind(makeTunnel, null, ossh, tunnels),
+      _.bind(fail, null, numTunnels, ossh));
+
+    if (addDelay) {
+      seq = seq.then(delayNext, _.bind(fail, null, numTunnels, ossh));
+    }
+  }
+
+  seq.fin(function() {
+    return disconnectTunnels(tunnels);
+  });
+
+  seq.end();
+}
+
+cumulativeTunnels_Test(false, true, false);
+return;
 
 // Start out with a resolved promise
 var seq = Q.resolve();
