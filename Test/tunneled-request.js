@@ -115,8 +115,9 @@ function toQueryParams(obj) {
   var key;
   var params = [];
   for (key in obj) {
-    if (!_.isFunction(obj[key]))
-    params.push(key+'='+obj[key]);
+    if (!_.isFunction(obj[key]) && !_.isObject(obj[key])) {
+      params.push(key+'='+obj[key]);
+    }
   }
   return params.join('&');
 }

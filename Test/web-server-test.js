@@ -176,7 +176,9 @@ function disconnectTunnel(testConf) {
 function disconnectTunnels(tunnelTestConfs) {
   var promises = [];
   _.each(tunnelTestConfs, function(tunnelTestConf) {
-    promises.push(disconnectTunnel(tunnelTestConf));
+    if (tunnelTestConf) {
+      promises.push(disconnectTunnel(tunnelTestConf));
+    }
   });
 
   return Q.all(promises);
@@ -219,6 +221,7 @@ function connectTunnels(tunnelCount, ossh) {
 
 function simultaneousTunnels_Test(ossh, stopAtFirstFail) {
   console.log(
+    '\n\n',
     arguments.callee.name,
     (ossh ? 'OSSH' : 'SSH'),
     'stopAtFirstFail:'+stopAtFirstFail);
@@ -260,14 +263,26 @@ function simultaneousTunnels_Test(ossh, stopAtFirstFail) {
   return deferred.promise;
 }
 
-function cumulativeTunnels_Test(ossh, stopAtFirstFail, addDelay) {
+// `eachConnectionCallback` will be called each time a connection is successfully
+// established. It is called like `eachConnectionCallback(tunnels)` and is expected
+// to return a promise.
+function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
+                                eachConnectionCallback) {
   console.log(
+    '\n\n',
     arguments.callee.name,
     (ossh ? 'OSSH' : 'SSH'),
     'stopAtFirstFail:'+stopAtFirstFail,
     'addDelay:'+addDelay);
 
   var deferred = Q.defer();
+
+  // Only count non-null tunnels
+  var tunnelCount = function(tunnels) {
+    return _.reduce(tunnels, function(memo, item) {
+      return memo + (item ? 1 : 0);
+    }, 0);
+  };
 
   var makeTunnel = function(ossh, tunnels) {
     var deferred = Q.defer();
@@ -281,7 +296,17 @@ function cumulativeTunnels_Test(ossh, stopAtFirstFail, addDelay) {
     createTunnel(tunnelTestConf)
     .then(function() {
       tunnels.push(tunnelTestConf);
-      console.log('connected', tunnels.length);
+      console.log('connected', tunnelCount(tunnels));
+
+      // Handle the case that the tunnel gets disconnected during the test
+      var idx = tunnels.length-1;
+      tunnelTestConf.sshTunnel.on('exit', function(expected) {
+        if (!expected) {
+          console.log('lost an establied tunnel:', idx);
+          tunnels[idx] = null;
+        }
+      });
+
       deferred.resolve();
     }, function() {
       deferred.reject();
@@ -292,7 +317,7 @@ function cumulativeTunnels_Test(ossh, stopAtFirstFail, addDelay) {
 
   var failReported = false;
   var fail = function(numTunnels, ossh) {
-    var msg = 'cumulativeTunnels_Test failed at ' + tunnels.length + ' for ' + (ossh?'OSSH':'SSH');
+    var msg = 'cumulativeTunnels_Test failed at ' + tunnelCount(tunnels) + ' for ' + (ossh?'OSSH':'SSH');
     if (!failReported) {
       console.log(msg);
       failReported = true;
@@ -305,13 +330,23 @@ function cumulativeTunnels_Test(ossh, stopAtFirstFail, addDelay) {
   var numTunnels = 1;
   var tunnels = [];
 
-  while (numTunnels++ < 1000) {
+  while (numTunnels++ < maxTunnels) {
     seq = seq.then(
       _.bind(makeTunnel, null, ossh, tunnels),
       _.bind(fail, null, numTunnels, ossh));
 
+    if (eachConnectionCallback) {
+      seq = seq.then(
+        _.bind(eachConnectionCallback, null, tunnels),
+        _.bind(fail, null, numTunnels, ossh));
+    }
+
+    // TODO: With this code, the delay will be skipped if the previous statement
+    // fails. This shouldn't be the case.
     if (addDelay) {
-      seq = seq.then(delayNext, _.bind(fail, null, numTunnels, ossh));
+      seq = seq.then(
+        delayNext,
+        _.bind(fail, null, numTunnels, ossh));
     }
   }
 
@@ -327,18 +362,33 @@ function cumulativeTunnels_Test(ossh, stopAtFirstFail, addDelay) {
   return deferred.promise;
 }
 
+function perCumulativeConnectionWork(tunnels) {
+  var serverReqOptions = {
+    reqType: 'connected',
+    tunneled: true,
+    parallel: false,
+    testConf: _.last(tunnels),
+    count: 10
+  };
+
+  return makeServerRequestAndOutputFn(serverReqOptions)();
+}
+
+// Start out with a resolved promise
+var seq = Q.resolve();
+
+
 // ssh, no delay
-cumulativeTunnels_Test(false, false, false)
+seq
+.then(_.bind(cumulativeTunnels_Test, null, 10, false, false, false, perCumulativeConnectionWork))
 // ossh, no delay
-.then(_.bind(cumulativeTunnels_Test, null, true, false, false))
+.then(_.bind(cumulativeTunnels_Test, null, 10000, true, false, false))
 // ssh
 .then(_.bind(simultaneousTunnels_Test, null, false, false))
 // ossh
 .then(_.bind(simultaneousTunnels_Test, null, true, false));
-return;
 
-// Start out with a resolved promise
-var seq = Q.resolve();
+return;
 
 var serverReqOptions = {
   reqType: 'handshake',

@@ -11,7 +11,7 @@ more fields:
   }
 
 SSHTunnel is an event emitter. It will emit 'connected' when the proxies are ready
-and 'exit' when the proxies have stopped. 'exit' has an `unexpected` argument
+and 'exit' when the proxies have stopped. 'exit' has an `expected` argument
 indicating whether the stoppage was requested or not.
 */
 
