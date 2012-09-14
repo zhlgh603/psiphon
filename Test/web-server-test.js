@@ -263,7 +263,8 @@ function simultaneousTunnels_Test(ossh, stopAtFirstFail) {
 
 // `eachConnectionCallback` will be called each time a connection is successfully
 // established. It is called like `eachConnectionCallback(tunnels)` and is expected
-// to return a promise.
+// to return a promise. `tunnels` is an array of `testConf`. Some items in
+// `tunnels` may be null.
 function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
                                 eachConnectionCallback) {
   console.log(
@@ -358,7 +359,9 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
   return deferred.promise;
 }
 
-function perCumulativeConnectionWork(tunnels) {
+function perCumulativeConnectionWork_requestOnNewTunnel(tunnels) {
+  if (!tunnels || !tunnels.length || !_.last(tunnels)) return;
+
   var serverReqOptions = {
     reqType: 'connected',
     tunneled: true,
@@ -370,13 +373,84 @@ function perCumulativeConnectionWork(tunnels) {
   return makeServerRequestAndOutputFn(serverReqOptions)();
 }
 
+// Take an array of results from request.testServerRequest and combine them into
+// a single result.
+function combineResults(resultsArray) {
+  if (!resultsArray || !resultsArray.length || !_.first(resultsArray)) return;
+
+  // Using basic introspection, set up our result object.
+  var result = _.clone(_.first(resultsArray));
+  var key;
+  // Clear out the numbers.
+  for (key in result) {
+    if (_.isNumber(result[key])) {
+      result[key] = 0;
+    }
+  }
+
+  // There are certain keys we need the result to have
+  if (!_.has(result, 'count') || !_.has(result, 'errorCount')) {
+    throw 'combineResults: bad result structure';
+  }
+
+  _.each(resultsArray, function(item) {
+    if (!item) return;
+    var key;
+    for (key in result) {
+      if (_.isNumber(result[key])) {
+        result[key] += item[key];
+      }
+    }
+  });
+
+  var successCount = result.count - result.errorCount;
+  for (key in result) {
+    if (_.isNumber(result[key]) && key !== 'count' && key !== 'errorCount') {
+      result[key] = result[key] / successCount;
+    }
+  }
+
+  return result;
+}
+
+function perCumulativeConnectionWork_downloadOnAllTunnels(tunnelTestConfs) {
+  if (!tunnelTestConfs || !tunnelTestConfs.length || !_.last(tunnelTestConfs)) return;
+
+  var deferred = Q.defer();
+
+  var serverReqOptions = {
+    reqType: 'download',
+    tunneled: true,
+    parallel: false,
+    count: 1,
+    testConf: null
+  };
+
+  var reqPromises = [];
+  _.each(tunnelTestConfs, function(tunnelTestConf) {
+    serverReqOptions.testConf = tunnelTestConf;
+    reqPromises.push(request.testServerRequest(_.clone(serverReqOptions)));
+  });
+
+  Q.all(reqPromises)
+  .then(function(resultsArray) {
+    var results = combineResults(resultsArray);
+    outputServerReqResults(serverReqOptions, results);
+    return Q.resolve();
+  })
+  .then(function() { deferred.resolve(); })
+  .end();
+
+  return deferred.promise;
+}
+
 // Start out with a resolved promise
 var seq = Q.resolve();
 
 
 // ssh, no delay
 seq
-.then(_.bind(cumulativeTunnels_Test, null, 2000, false, false, false, perCumulativeConnectionWork));
+.then(_.bind(cumulativeTunnels_Test, null, 2000, false, false, false, perCumulativeConnectionWork_downloadOnAllTunnels));
 return;
 
 seq
