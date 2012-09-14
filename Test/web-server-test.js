@@ -128,7 +128,7 @@ function makeSiteRequestAndOutputFn(siteReqOptions) {
 var nextLocalPort = 10000;
 
 // testConf will be modified with the `socks_proxy_port` and `http_proxy_port`
-// used, and a `disconnect()` function which tears down the tunnel.
+// used, and a `sshTunnel` object.
 // The returned promise will be resolved when the connection is established.
 function createTunnel(testConf) {
   var deferred = Q.defer();
@@ -193,8 +193,6 @@ function connectTunnels(tunnelCount, ossh) {
     tunnel = { testConf: _.clone(testConf), promise: null };
     tunnels.push(tunnel);
 
-    tunnel.testConf.socks_proxy_port = nextLocalPort++;
-    tunnel.testConf.http_proxy_port = nextLocalPort++;
     tunnel.testConf.ossh = ossh;
 
     tunnel.promise = createTunnel(tunnel.testConf);
@@ -289,8 +287,6 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
 
     var tunnelTestConf = _.clone(testConf);
 
-    tunnelTestConf.socks_proxy_port = nextLocalPort++;
-    tunnelTestConf.http_proxy_port = nextLocalPort++;
     tunnelTestConf.ossh = ossh;
 
     createTunnel(tunnelTestConf)
@@ -380,7 +376,10 @@ var seq = Q.resolve();
 
 // ssh, no delay
 seq
-.then(_.bind(cumulativeTunnels_Test, null, 10, false, false, false, perCumulativeConnectionWork))
+.then(_.bind(cumulativeTunnels_Test, null, 2000, false, false, false, perCumulativeConnectionWork));
+return;
+
+seq
 // ossh, no delay
 .then(_.bind(cumulativeTunnels_Test, null, 10000, true, false, false))
 // ssh
@@ -399,51 +398,6 @@ var serverReqOptions = {
 };
 
 var testNum = 1;
-
-
-serverReqOptions.count = 1;
-var tunnels = [];
-var tunnel;
-for (i = 0; i < 200; i++) {
-  tunnel = { testConf: _.clone(testConf), promise: null };
-  tunnels.push(tunnel);
-
-  tunnel.testConf.socks_proxy_port = nextLocalPort++;
-  tunnel.testConf.http_proxy_port = nextLocalPort++;
-  tunnel.testConf.ossh = false;
-
-  tunnel.promise = createTunnel(tunnel.testConf);
-}
-
-var requests = [];
-Q.all(_.pluck(tunnels, 'promise')).then(function() {
-  // All the tunnels are connected
-  console.log('all tunnels connected\n');
-
-  _.each(tunnels, function(tunnel) {
-    if (false) {
-      serverReqOptions.testConf = tunnel.testConf;
-      serverReqOptions.reqType = 'connected';
-      serverReqOptions.testConf = request.addHexInfoToReq(serverReqOptions.testConf, testNum++);
-      serverReqOptions.tunneled = true;
-      makeServerRequestAndOutputFn(serverReqOptions)()
-        .then(function() {
-          tunnel.testConf.disconnect();
-        }).end();
-    }
-    else {
-      tunnel.testConf.disconnect();
-    }
-  });
-}, function() {
-  console.log('some tunnels failed');
-
-  _.each(tunnels, function(tunnel) {
-    tunnel.testConf.disconnect();
-  });
-}).end();
-
-return;
 
 
 
