@@ -95,7 +95,7 @@ def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
 
 
-# ===== Main Code =====
+# ===== Psiphon Web Server =====
 
 class ServerInstance(object):
 
@@ -134,11 +134,10 @@ class ServerInstance(object):
         # tunnel. In this case, check if the client provided a client_session_id
         # and check if there's a corresponding region in the tunnel session
         # database
+        # Update: now we also cache GeoIP lookups done outside the tunnel
         client_ip_address = request.remote_addr
         geoip = psi_geoip.get_unknown()
-        if not self._is_request_tunnelled(client_ip_address):
-            geoip = psi_geoip.get_geoip(client_ip_address)
-        elif request.params.has_key('client_session_id'):
+        if request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
             if not consists_of(client_session_id, string.hexdigits):
                 syslog.syslog(
@@ -152,6 +151,16 @@ class ServerInstance(object):
                 except ValueError:
                     # Backwards compatibility case
                     geoip = psi_geoip.get_region_only(record)
+            elif not self._is_request_tunnelled(client_ip_address):
+                geoip = psi_geoip.get_geoip(client_ip_address)
+                # Cache the result for subsequent requests with the same client_session_id
+                if len(client_session_id) > 0:
+                    self.session_redis.set(client_session_id, json.dumps(geoip))
+                    self.session_redis.expire(client_session_id, psi_config.SESSION_EXPIRE_SECONDS)
+            # else: is-tunnelled and no cache, so GeoIP is unknown
+        elif not self._is_request_tunnelled(client_ip_address):
+            # Can't use cache without a client_session_id
+            geoip = psi_geoip.get_geoip(client_ip_address)
 
         # Hack: log parsing is space delimited, so remove spaces from
         # GeoIP string (ISP names in particular)
@@ -671,6 +680,59 @@ class WebServerThread(threading.Thread):
                 raise
 
 
+# ===== GeoIP Service =====
+
+class GeoIPServerInstance(object):
+
+    def geoip(self, environ, start_response):
+        request = Request(environ)
+        geoip = psi_geoip.get_geoip(request.params['ip'])
+        response_headers = [('Content-type', 'text/plain')]
+        start_response('200 OK', response_headers)
+        return [json.dumps(geoip)]
+
+
+class GeoIPServerThread(threading.Thread):
+
+    def __init__(self):
+        #super(WebServerThread, self).__init__(self)
+        threading.Thread.__init__(self)
+        self.server = None
+
+    def stop_server(self):
+        # Retry loop in case self.server.stop throws an exception
+        for i in range(5):
+            try:
+                if self.server:
+                    # blocks until server stops
+                    self.server.stop()
+                    self.server = None
+                break
+            except Exception as e:
+                # Log errors
+                for line in traceback.format_exc().split('\n'):
+                    syslog.syslog(syslog.LOG_ERR, line)
+                time.sleep(i)
+
+    def run(self):
+        try:
+            server_instance = GeoIPServerInstance()
+            self.server = wsgiserver.CherryPyWSGIServer(
+                            ('127.0.0.1', int(psi_config.GEOIP_SERVICE_PORT)),
+                            wsgiserver.WSGIPathInfoDispatcher(
+                                {'/geoip': server_instance.geoip}))
+
+            # Blocks until server stopped
+            syslog.syslog(syslog.LOG_INFO, 'started GeoIP service on port %d' % (psi_config.GEOIP_SERVICE_PORT,))
+            self.server.start()
+        except Exception as e:
+            # Log other errors and abort
+            for line in traceback.format_exc().split('\n'):
+                syslog.syslog(syslog.LOG_ERR, line)
+            raise
+
+# ===== Main Process =====
+
 def main():
     syslog.openlog(psi_config.SYSLOG_IDENT, syslog.LOG_NDELAY, psi_config.SYSLOG_FACILITY)
     threads = []
@@ -690,7 +752,13 @@ def main():
         thread = WebServerThread(*server_info, server_threads=threads_per_server)
         thread.start()
         threads.append(thread)
-    print 'Servers running...'
+    print 'Web servers running...'
+
+    geoip_thread = GeoIPServerThread()
+    geoip_thread.start()
+    threads.append(geoip_thread)
+    print 'GeoIP server running...'
+
     try:
         while True:
             time.sleep(60)
