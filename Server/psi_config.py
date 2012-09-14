@@ -36,6 +36,7 @@ UPGRADE_DOWNLOAD_PATH = '/opt/PsiphonV/download'
 ROUTES_PATH = '/opt/PsiphonV/routes'
 ROUTE_FILE_NAME_TEMPLATE = '%s.route.zlib'
 DATA_FILE_NAME = posixpath.join(HOST_SOURCE_ROOT, 'Automation', 'psi_ops.dat')
+GEOIP_SERVICE_PORT = 6000
 
 
 #==== VPN =====================================================================
