@@ -428,6 +428,7 @@ function perCumulativeConnectionWork_downloadOnAllTunnels(tunnelTestConfs) {
 
   var reqPromises = [];
   _.each(tunnelTestConfs, function(tunnelTestConf) {
+    if (!tunnelTestConf) return;
     serverReqOptions.testConf = tunnelTestConf;
     reqPromises.push(request.testServerRequest(_.clone(serverReqOptions)));
   });
