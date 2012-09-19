@@ -38,6 +38,7 @@ if (args.length === 0 || args[0].length !== 16) {
 }
 testConf.propagation_channel_id = args[0];
 
+// These only make sense for Windows. For other platforms, these are ignored.
 testConf.plonk = '../Client/psiclient/3rdParty/plonk.exe';
 testConf.polipo = '../Client/psiclient/3rdParty/polipo.exe';
 
@@ -240,7 +241,7 @@ function simultaneousTunnels_Test(ossh, stopAtFirstFail) {
   var seq = Q.resolve();
   var numTunnels = 1;
 
-  while (numTunnels < 300) {
+  while (numTunnels <= 300) {
     seq = seq.then(_.bind(connectTunnels, null, numTunnels, ossh));
 
     seq = seq.then(
@@ -327,7 +328,7 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
   var numTunnels = 1;
   var tunnels = [];
 
-  while (numTunnels++ < maxTunnels) {
+  while (numTunnels++ <= maxTunnels) {
     seq = seq.then(
       _.bind(makeTunnel, null, ossh, tunnels),
       _.bind(fail, null, numTunnels, ossh));
@@ -451,7 +452,7 @@ var seq = Q.resolve();
 
 // ssh, no delay
 seq
-.then(_.bind(cumulativeTunnels_Test, null, 2000, false, false, false, perCumulativeConnectionWork_downloadOnAllTunnels));
+.then(_.bind(cumulativeTunnels_Test, null, 2, false, false, false, perCumulativeConnectionWork_downloadOnAllTunnels));
 return;
 
 seq

@@ -28,66 +28,17 @@ require('util').inherits(SSHTunnel, require('events').EventEmitter);
 SSHTunnel.prototype.connect = function(options) {
   if (options) this.options = options;
 
-  var plonkArgs = [
-    '-ssh', '-C', '-N', '-batch', '-v',
-    '-l', this.options.ssh_username,
-    '-pw', this.options.ssh_password,
-    '-D', this.options.socks_proxy_port,
-    this.options.server_ip
-  ];
-
-  if (this.options.ossh) {
-    plonkArgs.push(
-      '-P', this.options.ssh_obfsport,
-      '-z',
-      '-Z', this.options.ssh_obfskey);
-  }
-  else {
-    plonkArgs.push(
-      '-P', this.options.ssh_port);
-  }
-
-  this.plonk = spawn(this.options.plonk, plonkArgs);
-
-  var polipoArgs = [
-    'proxyPort=' + this.options.http_proxy_port,
-    'diskCacheRoot=""',
-    'disableLocalInterface=true',
-    'logLevel=0xFF',
-    'socksParentProxy=127.0.0.1:' + this.options.socks_proxy_port,
-    'psiphonServer=' + this.options.server_ip
-  ];
-
-  this.polipo = spawn(this.options.polipo, polipoArgs);
-
-  this.plonk.on('exit', _.bind(this._plonkExit, this));
-
-  this.polipo.on('exit', _.bind(this._polipoExit, this));
+  this._plonkRun();
+  this._polipoRun();
 
   this._disconnectExpected = false;
   this._exited = false;
-
-  // TODO: Figure out how to tell when plonk and polipo are up and running.
-  // (Maybe try to open a socket to them like we do in the Windows client?)
-  // Cheap hack: With verbose logging on, we see this message (as part of a longer,
-  // multi-line message) twice from plonk when the connection is complete:
-  var magicMessage = 'Initialised AES-256 SDCTR server->client encryption';
-  var magicMessageSeen = 0;
-  var that = this;
-  this.lastError = null;
-  this.plonk.stderr.on('data', function(data) {
-    that.lastError = data.toString();
-    if (data.toString().indexOf(magicMessage) >= 0) {
-      if (magicMessageSeen) { that.emit('connected'); }
-      magicMessageSeen += 1;
-    }
-  });
 };
 
 SSHTunnel.prototype.disconnect = function() {
   if (this._exited) {
-    var that = this;
-    _.defer(function() { that.emit('exit', this._disconnectExpected); });
+    var self = this;
+    _.defer(function() { self.emit('exit', this._disconnectExpected); });
   }
   else {
     // This will trigger also killing polipo
@@ -124,5 +75,104 @@ SSHTunnel.prototype._polipoExit = function() {
   this._exited = true;
 };
 
+SSHTunnel.prototype._plonkRun = function() {
+  var self = this, args;
+
+  if (process.platform === 'win32') {
+    args = [
+      '-ssh', '-C', '-N', '-batch', '-v',
+      '-l', this.options.ssh_username,
+      '-pw', this.options.ssh_password,
+      '-D', this.options.socks_proxy_port,
+      this.options.server_ip
+    ];
+
+    if (this.options.ossh) {
+      args.push(
+        '-P', this.options.ssh_obfsport,
+        '-z',
+        '-Z', this.options.ssh_obfskey);
+    }
+    else {
+      args.push(
+        '-P', this.options.ssh_port);
+    }
+
+    this.plonk = spawn(this.options.plonk, args);
+
+  }
+  else {
+    // Linux, probably. We're not really using plonk, but we'll keep using that name.
+
+    if (this.options.ossh) {
+      // A customized SSH client is needed for obfuscated support
+      throw new Error('OSSH is only supported on Windows');
+    }
+
+    args = [
+      '-N', '-tt', '-o', 'ConnectTimeout=100', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'StrictHostKeyChecking=no', '-o', 'NumberOfPasswordPrompts=1',
+      '-p', this.options.ssh_port,
+      '-D', this.options.socks_proxy_port,
+      this.options.ssh_username + '@' + this.options.server_ip
+    ];
+
+    var pty = require('pty.js');
+
+    this.plonk = pty.spawn('ssh', args);
+
+    this.plonk.on('data', function(data) {
+      if (data.toString().indexOf('Password:') >= 0) {
+        self.plonk.write(self.options.ssh_password + '\n');
+
+        // Cheap hack
+        setTimeout(function() {
+          self.emit('connected');
+        }, 500);
+      }
+    });
+  }
+
+  this.plonk.on('exit', _.bind(this._plonkExit, this));
+
+  // TODO: Figure out how to tell when plonk and polipo are up and running.
+  // (Maybe try to open a socket to them like we do in the Windows client?)
+
+  if (process.platform === 'win32') {
+    // Cheap hack: With verbose logging on, we see this message (as part of a longer,
+    // multi-line message) twice from plonk when the connection is complete:
+    var magicMessage = 'Initialised AES-256 SDCTR server->client encryption';
+    var magicMessageSeen = 0;
+    this.lastError = null;
+    this.plonk.stderr.on('data', function(data) {
+      self.lastError = data.toString();
+      if (data.toString().indexOf(magicMessage) >= 0) {
+        if (magicMessageSeen) { self.emit('connected'); }
+        magicMessageSeen += 1;
+      }
+    });
+  }
+  else {
+    // For other platforms, this is done in the .on('data') handler above.
+  }
+};
+
+SSHTunnel.prototype._polipoRun = function() {
+  var args = [
+    'proxyPort=' + this.options.http_proxy_port,
+    'diskCacheRoot=""',
+    'disableLocalInterface=true',
+    'logLevel=0xFF',
+    'socksParentProxy=127.0.0.1:' + this.options.socks_proxy_port
+  ];
+
+  if (process.platform !== 'win32') {
+    // Linux
+    this.options.polipo = 'polipo';
+  }
+
+  this.polipo = spawn(this.options.polipo, args);
+
+  this.polipo.on('exit', _.bind(this._polipoExit, this));
+};
 
 module.exports = SSHTunnel;
