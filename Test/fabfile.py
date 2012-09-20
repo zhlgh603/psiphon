@@ -12,16 +12,16 @@ env.hosts = ['ec2-50-18-128-177.us-west-1.compute.amazonaws.com']
 def install_packages():
     print 'Installing apt packages...'
     sudo('add-apt-repository -y ppa:chris-lea/node.js')
-    sudo('apt-get update')
-    sudo('apt-get -y install build-essential nodejs npm')
+    sudo('apt-get -qq update')
+    sudo('apt-get -y -qq install build-essential nodejs npm')
     print 'apt packages installed'
 
     print 'Installing npm packages...'
     put('package.json', 'package.json')
     # Uses the dependencies in package.json
-    run('npm i')
+    run('npm i &> /dev/null')
     # Additional dependencies needed for this test
-    run('npm i pty.js')
+    run('npm i pty.js &> /dev/null')
     print 'npm packages installed'
 
 
