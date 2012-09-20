@@ -162,6 +162,8 @@ SSHTunnel.prototype._polipoRun = function() {
     'diskCacheRoot=""',
     'disableLocalInterface=true',
     'logLevel=0xFF',
+    'allowedPorts=1-65535',
+    'tunnelAllowedPorts=1-65535',
     'socksParentProxy=127.0.0.1:' + this.options.socks_proxy_port
   ];
 

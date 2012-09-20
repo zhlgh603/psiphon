@@ -9,22 +9,20 @@ env.user = config.instance_username
 env.hosts = ['ec2-50-18-128-177.us-west-1.compute.amazonaws.com']
 
 
-def uname():
-    run('uname -a')
-
-
 def install_packages():
     print 'Installing apt packages...'
+    sudo('add-apt-repository -y ppa:chris-lea/node.js')
+    sudo('apt-get update')
     sudo('apt-get -y install build-essential nodejs npm')
+    print 'apt packages installed'
 
     print 'Installing npm packages...'
-    # Assumes the presence of a package.json file with dependencies
+    put('package.json', 'package.json')
+    # Uses the dependencies in package.json
     run('npm i')
-
     # Additional dependencies needed for this test
     run('npm i pty.js')
-
-    print 'Installed'
+    print 'npm packages installed'
 
 
 def upload_files():
@@ -32,7 +30,6 @@ def upload_files():
     put('web-server-test.js', 'web-server-test.js')
     put('tunneled-request.js', 'tunneled-request.js')
     put('ssh-tunnel.js', 'ssh-tunnel.js')
-    put('package.json', 'package.json')
     put(config.test_config_json_filename, 'test-conn-info.json')
     print 'Uploaded'
 
@@ -43,7 +40,15 @@ def web_server_test():
     print 'Done'
 
 
-def go():
-    upload_files()
+def clear_results():
+    run('rm *.csv')
+
+
+def prepare():
     install_packages()
+
+
+def go():
+    clear_results()
+    upload_files()
     web_server_test()
