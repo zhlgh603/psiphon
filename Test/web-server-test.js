@@ -76,7 +76,12 @@ function writeServerReqResultsToCSV(
             results) {
   var filename = makeFilename(parallel, reqType, tunneled) + '.csv';
   var csv = '"' + _.values(results).join('","') + '"\n';
-  fs.appendFile(filename, csv);
+
+  // fs.appendFile is not available in Node 0.6.x
+  //fs.appendFile(filename, csv);
+
+  var fd = fs.openSync(filename, 'a');
+  fs.writeSync(fd, csv, null);
 }
 
 function outputSiteReqResults(siteReqOptionsClone, results) {
