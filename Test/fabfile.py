@@ -6,14 +6,15 @@ import config
 env.key_filename = config.key_filename
 env.user = config.instance_username
 
-env.hosts = ['ec2-50-18-128-177.us-west-1.compute.amazonaws.com']
+env.hosts = [u'ec2-50-18-128-177.us-west-1.compute.amazonaws.com', u'ec2-50-18-243-222.us-west-1.compute.amazonaws.com', u'ec2-204-236-148-82.us-west-1.compute.amazonaws.com', u'ec2-184-169-190-192.us-west-1.compute.amazonaws.com']
 
 
 def install_packages():
     print 'Installing apt packages...'
     sudo('add-apt-repository -y ppa:chris-lea/node.js')
     sudo('apt-get -qq update')
-    sudo('apt-get -y -qq install build-essential nodejs npm')
+    sudo('apt-get -y -qq install build-essential nodejs npm polipo')
+    sudo('service polipo stop')
     print 'apt packages installed'
 
     print 'Installing npm packages...'
@@ -41,7 +42,7 @@ def web_server_test():
 
 
 def clear_results():
-    run('rm *.csv')
+    run('rm -f *.csv')
 
 
 def prepare():
