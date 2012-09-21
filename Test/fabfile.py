@@ -35,6 +35,13 @@ def upload_files():
     print 'Uploaded'
 
 
+def download_results():
+    print 'Downloading results...'
+    local('mkdir -p results')
+    get('*.csv', 'results/%(host)s-%(basename)s')
+    print 'Results downloaded'
+
+
 def web_server_test():
     print 'Running test...'
     run('node web-server-test.js %s' % config.test_propagation_channel_id)
@@ -42,6 +49,7 @@ def web_server_test():
 
 
 def clear_results():
+    local('rm -rf results')
     run('rm -f *.csv')
 
 
@@ -53,3 +61,5 @@ def go():
     clear_results()
     upload_files()
     web_server_test()
+
+    download_results()
