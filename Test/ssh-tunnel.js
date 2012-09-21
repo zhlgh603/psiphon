@@ -28,8 +28,8 @@ require('util').inherits(SSHTunnel, require('events').EventEmitter);
 SSHTunnel.prototype.connect = function(options) {
   if (options) this.options = options;
 
-  this._plonkRun();
   this._polipoRun();
+  this._plonkRun();
 
   this._disconnectExpected = false;
   this._exited = false;
