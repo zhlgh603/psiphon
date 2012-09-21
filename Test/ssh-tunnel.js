@@ -15,8 +15,10 @@ and 'exit' when the proxies have stopped. 'exit' has an `expected` argument
 indicating whether the stoppage was requested or not.
 */
 
-var _ = require('underscore');
 var spawn = require('child_process').spawn;
+var net = require('net');
+var _ = require('underscore');
+var Q = require('q');
 
 
 function SSHTunnel(options) {
@@ -25,15 +27,23 @@ function SSHTunnel(options) {
 
 require('util').inherits(SSHTunnel, require('events').EventEmitter);
 
+
 SSHTunnel.prototype.connect = function(options) {
   if (options) this.options = options;
 
   this._polipoRun();
   this._plonkRun();
 
+  var self = this;
+  Q.all([this._polipoPromise, this._plonkPromise])
+    .then(function() {
+      self.emit('connected');
+    }).end();
+
   this._disconnectExpected = false;
   this._exited = false;
 };
+
 
 SSHTunnel.prototype.disconnect = function() {
   if (this._exited) {
@@ -46,6 +56,7 @@ SSHTunnel.prototype.disconnect = function() {
     this.plonk.kill();
   }
 };
+
 
 SSHTunnel.prototype._plonkExit = function() {
   if (!this._disconnectExpected) console.log('plonk exited', this.lastError, arguments);
@@ -61,6 +72,7 @@ SSHTunnel.prototype._plonkExit = function() {
   this._exited = true;
 };
 
+
 SSHTunnel.prototype._polipoExit = function() {
   if (!this._disconnectExpected) console.log('polipo exited', this.lastError, arguments);
 
@@ -74,6 +86,7 @@ SSHTunnel.prototype._polipoExit = function() {
   this.emit('exit', this._disconnectExpected);
   this._exited = true;
 };
+
 
 SSHTunnel.prototype._plonkRun = function() {
   var self = this, args;
@@ -99,7 +112,6 @@ SSHTunnel.prototype._plonkRun = function() {
     }
 
     this.plonk = spawn(this.options.plonk, args);
-
   }
   else {
     // Linux, probably. We're not really using plonk, but we'll keep using that name.
@@ -123,38 +135,31 @@ SSHTunnel.prototype._plonkRun = function() {
     this.plonk.on('data', function(data) {
       if (data.toString().indexOf('Password:') >= 0) {
         self.plonk.write(self.options.ssh_password + '\n');
-
-        // Cheap hack
-        setTimeout(function() {
-          self.emit('connected');
-        }, 500);
       }
     });
   }
 
   this.plonk.on('exit', _.bind(this._plonkExit, this));
 
-  // TODO: Figure out how to tell when plonk and polipo are up and running.
-  // (Maybe try to open a socket to them like we do in the Windows client?)
-
-  if (process.platform === 'win32') {
-    // Cheap hack: With verbose logging on, we see this message (as part of a longer,
-    // multi-line message) twice from plonk when the connection is complete:
-    var magicMessage = 'Initialised AES-256 SDCTR server->client encryption';
-    var magicMessageSeen = 0;
-    this.lastError = null;
+  this.lastError = null;
+  if (this.plonk.hasOwnProperty('stderr')) {
     this.plonk.stderr.on('data', function(data) {
       self.lastError = data.toString();
-      if (data.toString().indexOf(magicMessage) >= 0) {
-        if (magicMessageSeen) { self.emit('connected'); }
-        magicMessageSeen += 1;
-      }
     });
   }
   else {
-    // For other platforms, this is done in the .on('data') handler above.
+    // The pty.js version doesn't have stderr -- it emits 'data' directly
+    this.plonk.on('data', function(data) {
+      self.lastError = data.toString();
+    });
   }
+
+  // Resolve a promise when the process is up and running.
+  var deferred = Q.defer();
+  this._plonkPromise = deferred.promise;
+  this._resolveWhenConnectable(deferred, this.options.socks_proxy_port);
 };
+
 
 SSHTunnel.prototype._polipoRun = function() {
   var args = [
@@ -175,6 +180,36 @@ SSHTunnel.prototype._polipoRun = function() {
   this.polipo = spawn(this.options.polipo, args);
 
   this.polipo.on('exit', _.bind(this._polipoExit, this));
+
+  // Resolve a promise when the process is up and running.
+  var deferred = Q.defer();
+  this._polipoPromise = deferred.promise;
+  this._resolveWhenConnectable(deferred, this.options.http_proxy_port);
 };
+
+
+SSHTunnel.prototype._resolveWhenConnectable = function(deferred, port) {
+  var doConnectabilityCheck = function() {
+    var client = net.connect({ port: port });
+
+    client.on('connect', function() {
+      deferred.resolve();
+      client.end();
+      client.removeAllListeners();
+    });
+
+    // TODO: This is not very robust. If there's some permanent problem, we'll
+    // keep retrying forever. We should probably figure out the set of expected
+    // errors (e.g., ECONNREFUSED) and also use a timeout. And then reject
+    // deferred if all fails.
+    client.on('error', function() {
+      // We expect errors. Try again a bit later.
+      _.delay(doConnectabilityCheck, 100);
+    });
+  };
+
+  _.delay(doConnectabilityCheck, 100);
+};
+
 
 module.exports = SSHTunnel;

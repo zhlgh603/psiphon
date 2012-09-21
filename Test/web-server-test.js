@@ -233,8 +233,8 @@ function simultaneousTunnels_Test(ossh, stopAtFirstFail) {
   var deferred = Q.defer();
 
   var failReported = false;
-  var fail = function(numTunnels, ossh) {
-    var msg = 'simultaneousTunnels_Test failed at ' + numTunnels + ' for ' + (ossh?'OSSH':'SSH');
+  var fail = function(numTunnels, ossh, error) {
+    var msg = 'simultaneousTunnels_Test failed at ' + numTunnels + ' for ' + (ossh?'OSSH: ':'SSH: ') + error;
     if (!failReported) {
       console.log(msg);
       failReported = true;
@@ -319,8 +319,8 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
   };
 
   var failReported = false;
-  var fail = function(numTunnels, ossh) {
-    var msg = 'cumulativeTunnels_Test failed at ' + tunnelCount(tunnels) + ' for ' + (ossh?'OSSH':'SSH');
+  var fail = function(ossh, error) {
+    var msg = 'cumulativeTunnels_Test failed at ' + tunnelCount(tunnels) + ' for ' + (ossh?'OSSH: ':'SSH: ') + error;
     if (!failReported) {
       console.log(msg);
       failReported = true;
@@ -336,12 +336,12 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
   while (numTunnels++ <= maxTunnels) {
     seq = seq.then(
       _.bind(makeTunnel, null, ossh, tunnels),
-      _.bind(fail, null, numTunnels, ossh));
+      _.bind(fail, null, ossh));
 
     if (eachConnectionCallback) {
       seq = seq.then(
         _.bind(eachConnectionCallback, null, tunnels),
-        _.bind(fail, null, numTunnels, ossh));
+        _.bind(fail, null, ossh));
     }
 
     // TODO: With this code, the delay will be skipped if the previous statement
@@ -349,7 +349,7 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
     if (addDelay) {
       seq = seq.then(
         delayNext,
-        _.bind(fail, null, numTunnels, ossh));
+        _.bind(fail, null, ossh));
     }
   }
 
