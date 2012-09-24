@@ -298,7 +298,7 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
   };
 
   var failReported = false;
-  var fail = function(ossh, error) {
+  var callbackFail = function(error) {
     var msg = 'cumulativeTunnels_Test failed at ' + tunnelCount(tunnels) + ' for ' + (ossh?'OSSH: ':'SSH: ') + error;
     if (!failReported) {
       console.log(msg);
@@ -307,20 +307,41 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
     if (stopAtFirstFail) throw new Error(msg);
   };
 
+  var tunnelFailures = [];
+  var tunnelFail = function(error) {
+    // We don't actually use this array for anything yet...
+    tunnelFailures.push({
+      tunnelCount: tunnelCount(tunnels),
+      error: error.toString()
+    });
+
+    var filename = makeFilename('tunnelfails',
+                                'maxTunnels='+maxTunnels,
+                                (ossh ? 'ossh' : 'ssh'),
+                                'stopAtFirstFail='+stopAtFirstFail,
+                                'addDelay='+addDelay) + '.csv';
+    var csv = '"' + _.values(_.last(tunnelFailures)).join('","') + '"\n';
+    fs.appendFile(filename, csv);
+  };
+
   // Start out with a resolved promise
   var seq = Q.resolve();
+
   var numTunnels = 1;
   var tunnels = [];
+  var failFunc = null;
 
   while (numTunnels++ <= maxTunnels) {
     seq = seq.then(
       _.bind(makeTunnel, null, ossh, tunnels),
-      _.bind(fail, null, ossh));
+      failFunc ? _.bind(failFunc, null) : null);
+    failFunc = tunnelFail;
 
     if (eachConnectionCallback) {
       seq = seq.then(
         _.bind(eachConnectionCallback, null, tunnels),
-        _.bind(fail, null, ossh));
+        failFunc ? _.bind(failFunc, null) : null);
+      failFunc = callbackFail;
     }
 
     // TODO: With this code, the delay will be skipped if the previous statement
@@ -328,7 +349,8 @@ function cumulativeTunnels_Test(maxTunnels, ossh, stopAtFirstFail, addDelay,
     if (addDelay) {
       seq = seq.then(
         delayNext,
-        _.bind(fail, null, ossh));
+        failFunc ? _.bind(failFunc, null) : null);
+      failFunc = null;
     }
   }
 
@@ -436,7 +458,7 @@ var seq = Q.resolve();
 
 // ssh, no delay
 seq
-.then(_.bind(cumulativeTunnels_Test, null, 2, false, false, false, perCumulativeConnectionWork_downloadOnAllTunnels));
+.then(_.bind(cumulativeTunnels_Test, null, 100, false, false, false, perCumulativeConnectionWork_downloadOnAllTunnels));
 return;
 
 seq
