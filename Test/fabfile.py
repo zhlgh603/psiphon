@@ -1,12 +1,20 @@
 from fabric.api import *
-import ec2
-import config
+import json
 
 
-env.key_filename = config.key_filename
-env.user = config.instance_username
+with open('dist-test-config.json') as conf_fp:
+    config = json.load(conf_fp)
 
-env.hosts = [u'ec2-50-18-128-177.us-west-1.compute.amazonaws.com', u'ec2-50-18-243-222.us-west-1.compute.amazonaws.com', u'ec2-204-236-148-82.us-west-1.compute.amazonaws.com', u'ec2-184-169-190-192.us-west-1.compute.amazonaws.com']
+env.key_filename = config['key_filename']
+env.user = config['instance_username']
+
+env.hosts = config['test_hosts']
+
+
+def _read_config(conf_file):
+    with open(conf_file) as conf_fp:
+        config = json.load(conf_fp)
+    return config
 
 
 def install_packages():
@@ -31,7 +39,7 @@ def upload_files():
     put('web-server-test.js', 'web-server-test.js')
     put('tunneled-request.js', 'tunneled-request.js')
     put('ssh-tunnel.js', 'ssh-tunnel.js')
-    put(config.test_config_json_filename, 'test-conn-info.json')
+    put(config['test_config_json_filename'], 'test-conn-info.json')
     print 'Uploaded'
 
 
@@ -44,7 +52,7 @@ def download_results():
 
 def web_server_test():
     print 'Running test...'
-    run('node web-server-test.js %s' % config.test_propagation_channel_id)
+    run('node web-server-test.js %s' % config['test_propagation_channel_id'])
     print 'Done'
 
 
