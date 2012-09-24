@@ -1,4 +1,3 @@
-var spawn = require('child_process').spawn;
 var fs = require('fs');
 var Q = require('q');
 var _ = require('underscore');
@@ -9,22 +8,6 @@ var SSHTunnel = require('./ssh-tunnel');
 var SAMPLE_SIZE = 10, PROCESS_COUNT = 1;
 var TIMEOUT = 30000;
 var i;
-
-/* Not spawning child processes for now, but I'll leave the code
-if (!_.include(process.argv, 'childproc')) {
-  for (i = 0; i < PROCESS_COUNT; i++) {
-    var child = spawn(process.argv[0], process.argv.slice(1).concat('childproc'));
-    child.on('exit', function(code) {
-      console.log('childproc exited with', code);
-    });
-
-    child.stdout.on('data', function(data) {
-      console.log('childproc said:', data.toString());
-    });
-  }
-  return;
-}
-*/
 
 var args = process.argv.splice(2);
 
@@ -77,11 +60,7 @@ function writeServerReqResultsToCSV(
   var filename = makeFilename(parallel, reqType, tunneled) + '.csv';
   var csv = '"' + _.values(results).join('","') + '"\n';
 
-  // fs.appendFile is not available in Node 0.6.x
-  //fs.appendFile(filename, csv);
-
-  var fd = fs.openSync(filename, 'a');
-  fs.writeSync(fd, csv, null);
+  fs.appendFile(filename, csv);
 }
 
 function outputSiteReqResults(siteReqOptionsClone, results) {
