@@ -1,14 +1,21 @@
+// Note that comments are not valid JSON.
+
 {
   "ec2_key": "",
   "ec2_secret": "",
 
+  // Can be wherever you want.
   "ec2_region": "us-west-1",
+
+  // Simple Ubuntu server AMI. Will differ depending on ec2_region.
   "ec2_ami": "ami-3d0c2878",
+
   "ec2_key_pair": "dist-test",
   "ec2_security_group": "dist-test",
   "ec2_instancetype": "m1.small",
   "instance_name_tag": "dist-test",
   "key_filename": "./dist-test.pem",
+
   "instance_username": "ubuntu",
 
   "test_config_json_filename": "dist-test-conn-info.json",
