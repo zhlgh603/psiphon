@@ -143,7 +143,7 @@ function testServerRequestParallel(serverReqOptions) {
                           serverReqOptions.tunneled, true,
                           serverReqOptions.testConf.server_ip,
                           requestString(serverReqOptions.reqType, serverReqOptions.testConf),
-                          8080));
+                          serverReqOptions.testConf.server_web_port));
   }
 
   Q.all(reqs).then(function(results) {
@@ -165,7 +165,7 @@ function testServerRequestSerial(serverReqOptions) {
                        serverReqOptions.tunneled, true,
                        serverReqOptions.testConf.server_ip,
                        requestString(serverReqOptions.reqType, serverReqOptions.testConf),
-                       8080);
+                       serverReqOptions.testConf.server_web_port);
   };
 
   var req = Q.resolve();
