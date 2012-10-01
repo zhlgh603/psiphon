@@ -488,6 +488,7 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* object)
 }
 
 #if defined TESTING && defined _DEBUG
+#pragma message("WARNING: COMPILING WITH TESTING DEFINED")
 void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
 {
     ofstream out("..\\..\\Test\\test-conn-info.json");
