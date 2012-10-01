@@ -166,6 +166,12 @@ ServerEntry ServerList::GetNextServer()
     AutoMUTEX lock(m_mutex);
 
     ServerEntries serverEntryList = GetList();
+
+#if defined TESTING && defined _DEBUG
+	// Disable load-balancing so that we can always use the test server
+	serverEntryList = GetListFromEmbeddedValues();
+#endif
+
     if (serverEntryList.size() < 1)
     {
         throw std::exception("No servers found.  This application is possibly corrupt.");

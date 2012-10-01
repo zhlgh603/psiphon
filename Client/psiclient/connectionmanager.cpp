@@ -487,10 +487,48 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* object)
     return 0;
 }
 
+#if defined TESTING && defined _DEBUG
+void WriteSessionInfo(const SessionInfo& sessionInfo, ITransport* transport)
+{
+    ofstream out("..\\..\\Test\\test-conn-info.json");
+    if (!out) 
+    { 
+        my_print(true, _T("%s: cannot open session info file"), __TFUNCTION__);
+        return; 
+    }
+
+    out << "{\n" 
+        << "\"server_ip\": \"" << sessionInfo.GetServerAddress() << "\",\n"
+        << "\"server_web_port\": " << sessionInfo.GetWebPort() << ",\n"
+        << "\"client_session_id\": \"" << sessionInfo.GetClientSessionID() << "\",\n"
+        << "\"propagation_channel_id\": \"" << PROPAGATION_CHANNEL_ID << "\",\n"
+        << "\"sponsor_id\": \"" << SPONSOR_ID << "\",\n"
+        << "\"client_version\": \"" << CLIENT_VERSION << "\",\n"
+        << "\"server_secret\": \"" << sessionInfo.GetWebServerSecret() << "\",\n"
+        << "\"relay_protocol\": \"" << TStringToNarrow(transport->GetTransportProtocolName()) << "\",\n"
+        << "\"session_id\": \"" << TStringToNarrow(transport->GetSessionID(sessionInfo)) << "\",\n"
+        << "\"last_connected\": \"" << "None" << "\",\n"
+        << "\"ssh_port\": " << sessionInfo.GetSSHPort() << ",\n"
+        << "\"ssh_username\": \"" << sessionInfo.GetSSHUsername() << "\",\n"
+        << "\"ssh_password\": \"" << sessionInfo.GetSSHPassword() << "\",\n"
+        << "\"ssh_hostkey\": \"" << sessionInfo.GetSSHHostKey() << "\",\n"
+        << "\"ssh_obfsport\": \"" << sessionInfo.GetSSHObfuscatedPort() << "\",\n"
+        << "\"ssh_obfskey\": \"" << sessionInfo.GetSSHObfuscatedKey() << "\",\n"
+        << "\"http_proxy_port\": " << DEFAULT_LOCAL_HTTP_PROXY_PORT << "\n"
+        << "}";
+
+    out.close();
+}
+#endif //TESTING
+
 void ConnectionManager::DoPostConnect(const SessionInfo& sessionInfo)
 {
     // Called from connection thread
     // NOTE: no lock while waiting for network events
+
+#if defined TESTING && defined _DEBUG
+    WriteSessionInfo(sessionInfo, m_transport);
+#endif
 
     SetState(CONNECTION_MANAGER_STATE_CONNECTED);
 
