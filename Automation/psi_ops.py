@@ -942,7 +942,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
 
     def setup_server(self, host, server):
         # Check if server is a list
-        if not isinstance(server):
+        if not isinstance(server, list):
             server_list = [server]
         else:
             server_list = server
@@ -963,7 +963,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         
         for s in server_list:
             assert(s.id not in self.__servers)
-            self.__serverss[s.id] = s
+            self.__servers[s.id] = s
 
         # Deploy will upload web server source database data and client builds
         # (Only deploying for the new host, not broadcasting info yet...)
