@@ -1,8 +1,14 @@
 from fabric.api import *
+import fabric.utils
 import json
 
 
-with open('dist-test-config.json') as conf_fp:
+# Set env.configfile on the command line like:
+#  fab --set configfile=dist-test-config.json
+if not 'configfile' in env:
+    fabric.utils.abort('configfile must be set in the fab call:\n  fab --set configfile=dist-test-config.json')
+
+with open(env.configfile) as conf_fp:
     config = json.load(conf_fp)
 
 env.key_filename = config['key_filename']
