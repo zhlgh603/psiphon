@@ -552,7 +552,7 @@ def get_servers():
             if (interface.find('ipsec') == -1 and interface.find('mast') == -1 and
                     netifaces.ifaddresses(interface).has_key(netifaces.AF_INET)):
                 interface_ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
-                server = psinet.get_server_by_ip_address(interface_ip_address)
+                server = psinet.get_server_by_internal_ip_address(interface_ip_address)
                 if server:
                     servers.append(
                         (interface_ip_address,
