@@ -81,7 +81,7 @@ try:
         try:
             request = 'http://127.0.0.1:%d/geoip?ip=%s' % (psi_config.GEOIP_SERVICE_PORT, rhost)
             geoip = json.loads(urllib2.urlopen(request, timeout=1).read())
-        except URLError:
+        except urllib2.URLError:
             # No GeoIP info when the web service doesn't response, but proceed with tunnel...
             # TODO: load this value from psi_geoip.get_unknown(), without incurring overhead
             # of loading psi_geoip
