@@ -90,6 +90,9 @@ is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,
 def is_valid_iso8601_date(str):
     return is_valid_iso8601_date_regex.match(str) != None
 
+def is_valid_boolean_str(str):
+    return str in ['0', '1']
+
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
@@ -180,6 +183,7 @@ class ServerInstance(object):
                 # - Older clients specify client_id for propagation_channel_id
                 # - Older clients don't specify client_platform
                 # - Older clients don't specify last session date
+                # - Older clients don't specify tunnel_whole_device
                 if input_name == 'relay_protocol':
                     value = 'VPN'
                 elif input_name == 'session_id' and request.params.has_key('vpn_client_ip_address'):
@@ -190,6 +194,8 @@ class ServerInstance(object):
                     value = 'Windows'
                 elif input_name == 'last_connected':
                     value = 'Unknown'
+                elif input_name == 'tunnel_whole_device':
+                    value = '0'
                 else:
                     syslog.syslog(
                         syslog.LOG_ERR,
@@ -369,7 +375,8 @@ class ServerInstance(object):
                                                       consists_of(x, string.hexdigits)),
                              ('last_connected', lambda x: is_valid_iso8601_date(x) or
                                                           x == 'None' or
-                                                          x == 'Unknown')]
+                                                          x == 'Unknown'),
+                             ('tunnel_whole_device', is_valid_boolean_str)]
         inputs = self._get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
