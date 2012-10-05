@@ -37,12 +37,14 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.TableLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.psiphon3.PsiphonData.StatusMessage;
 import com.psiphon3.UpgradeManager;
@@ -81,13 +83,44 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
         // "Tunnel Whole Device" option is only available on rooted
         // devices and defaults to true on rooted devices.
         boolean isRooted = Utils.isRooted();
-        m_tunnelWholeDeviceToggle.setEnabled(isRooted);
-        boolean tunnelWholeDevicePreference = PreferenceManager.getDefaultSharedPreferences(this).getBoolean(TUNNEL_WHOLE_DEVICE_PREFERENCE, isRooted);        
-        m_tunnelWholeDeviceToggle.setChecked(tunnelWholeDevicePreference);
-        // Use PsiphonData to communicate the setting to the TunnelService so it doesn't need to
-        // repeat the isRooted check. The preference is retained even if the device becomes "unrooted"
-        // and that's why setTunnelWholeDevice != tunnelWholeDevicePreference.
-        PsiphonData.getPsiphonData().setTunnelWholeDevice(isRooted && tunnelWholeDevicePreference);
+        
+        m_tunnelWholeDeviceToggle.setEnabled(isRooted || !PsiphonData.getPsiphonData().getTunnelWholeDeviceDisabled());
+        
+        if (!isRooted)
+        {
+            // No root: we leave the whole-device checkbox visible, unchecked and enabled. If the
+            // user clicks the option, they get a prompt explaining the requirement and then the
+            // checkbox is disabled.
+                        
+            m_tunnelWholeDeviceToggle.setChecked(false);
+
+            final Context context = this;
+            m_tunnelWholeDeviceToggle.setOnTouchListener(
+                new View.OnTouchListener()
+                {
+                    @Override
+                    public boolean onTouch(View v, MotionEvent event)
+                    {
+                        Toast.makeText(context, context.getString(R.string.whole_device_requires_root_prompt), Toast.LENGTH_SHORT).show();
+                        m_tunnelWholeDeviceToggle.setEnabled(false);
+                        
+                        // Now that prompt has been shown once, don't enable checkbox in other StatusActivity instances for
+                        // the lifetime of this app.
+                        PsiphonData.getPsiphonData().setTunnelWholeDeviceDisabled(true);
+                        return true;
+                    }
+                }
+            );
+        }
+        else
+        {
+            boolean tunnelWholeDevicePreference = PreferenceManager.getDefaultSharedPreferences(this).getBoolean(TUNNEL_WHOLE_DEVICE_PREFERENCE, isRooted);        
+            m_tunnelWholeDeviceToggle.setChecked(tunnelWholeDevicePreference);
+            // Use PsiphonData to communicate the setting to the TunnelService so it doesn't need to
+            // repeat the isRooted check. The preference is retained even if the device becomes "unrooted"
+            // and that's why setTunnelWholeDevice != tunnelWholeDevicePreference.
+            PsiphonData.getPsiphonData().setTunnelWholeDevice(isRooted && tunnelWholeDevicePreference);
+        }
         
         // Note that this must come after the above lines, or else the activity
         // will not be sufficiently initialized for isDebugMode to succeed. (Voodoo.)

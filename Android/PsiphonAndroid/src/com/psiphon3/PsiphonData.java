@@ -65,6 +65,7 @@ public class PsiphonData
     private int m_dnsProxyPort;
     private int m_transparentProxyPort;
     private boolean m_tunnelWholeDevice;
+    private boolean m_tunnelWholeDeviceDisabled;
 
     public Object serverEntryFileLock = new Object(); // Used as an intrinsic lock
         
@@ -76,6 +77,7 @@ public class PsiphonData
     	m_nextFetchRemoteServerList = null;
     	m_statusActivityForeground = false;
     	m_tunnelWholeDevice = false;
+    	m_tunnelWholeDeviceDisabled = false;
     }
 
     public synchronized void addStatusMessage(String message, int messageClass)
@@ -207,6 +209,16 @@ public class PsiphonData
     public synchronized boolean getTunnelWholeDevice()
     {
         return m_tunnelWholeDevice;
+    }
+
+    public synchronized void setTunnelWholeDeviceDisabled(boolean disabled)
+    {
+        m_tunnelWholeDeviceDisabled = disabled;
+    }
+
+    public synchronized boolean getTunnelWholeDeviceDisabled()
+    {
+        return m_tunnelWholeDeviceDisabled;
     }
 
     public class StatusMessage
