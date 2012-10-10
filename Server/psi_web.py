@@ -102,7 +102,7 @@ def split_len(seq, length):
 
 class ServerInstance(object):
 
-    def __init__(self, ip_address, server_secret):
+    def __init__(self, ip_address, server_secret, capabilities):
         self.session_redis = redis.StrictRedis(
             host=psi_config.SESSION_DB_HOST,
             port=psi_config.SESSION_DB_PORT,
@@ -113,6 +113,7 @@ class ServerInstance(object):
             db=psi_config.DISCOVERY_DB_INDEX)
         self.server_ip_address = ip_address
         self.server_secret = server_secret
+        self.capabilities = capabilities
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
@@ -319,7 +320,8 @@ class ServerInstance(object):
                 output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
                 output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
 
-        if inputs_lookup['relay_protocol'] == 'VPN':
+        if inputs_lookup['relay_protocol'] == 'VPN' and (
+                self.capabilities.has_key('VPN') and self.capabilities['VPN']):
             psk = psi_psk.set_psk(self.server_ip_address)
             config['l2tp_ipsec_psk'] = psk
             output.append('PSK: %s' % (psk,))
@@ -566,7 +568,8 @@ def get_servers():
                          server.web_server_port,
                          server.web_server_secret,
                          server.web_server_certificate,
-                         server.web_server_private_key))
+                         server.web_server_private_key,
+                         server.capabilities))
         except ValueError as e:
             if str(e) != 'You must specify a valid interface name.':
                 raise
@@ -575,7 +578,7 @@ def get_servers():
 
 class WebServerThread(threading.Thread):
 
-    def __init__(self, ip_address, port, secret, certificate, private_key, server_threads):
+    def __init__(self, ip_address, port, secret, certificate, private_key, capabilities, server_threads):
         #super(WebServerThread, self).__init__(self)
         threading.Thread.__init__(self)
         self.ip_address = ip_address
@@ -583,6 +586,7 @@ class WebServerThread(threading.Thread):
         self.secret = secret
         self.certificate = certificate
         self.private_key = private_key
+        self.capabilities = capabilities
         self.server = None
         self.certificate_temp_file = None
         self.private_key_temp_file = None
@@ -614,7 +618,7 @@ class WebServerThread(threading.Thread):
         # While loop is for recovery from 'unknown ca' issue.
         while True:
             try:
-                server_instance = ServerInstance(self.ip_address, self.secret)
+                server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities)
                 self.server = wsgiserver.CherryPyWSGIServer(
                                 (self.ip_address, int(self.port)),
                                 wsgiserver.WSGIPathInfoDispatcher(
