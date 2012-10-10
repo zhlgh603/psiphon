@@ -418,7 +418,7 @@ class ServerInstance(object):
         request = Request(environ)
         additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits)),
-                             ('connected', lambda x: x in ['0', '1'])]
+                             ('connected', is_valid_boolean_str)]
         inputs = self._get_inputs(request, 'status', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
