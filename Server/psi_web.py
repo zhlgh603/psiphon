@@ -119,7 +119,9 @@ class ServerInstance(object):
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('client_version', lambda x: consists_of(x, string.digits) or x == EMPTY_VALUE),
-            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()'))]
+            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()')),
+            ('relay_protocol', is_valid_relay_protocol),
+            ('tunnel_whole_device', is_valid_boolean_str)]
 
     def _is_request_tunnelled(self, client_ip_address):
         return client_ip_address in ['localhost', '127.0.0.1', self.server_ip_address]
@@ -184,7 +186,7 @@ class ServerInstance(object):
                 # - Older clients specify client_id for propagation_channel_id
                 # - Older clients don't specify client_platform
                 # - Older clients don't specify last session date
-                # - Older clients don't specify tunnel_whole_device
+                # - Older clients (and Windows clients) don't specify tunnel_whole_device
                 if input_name == 'relay_protocol':
                     value = 'VPN'
                 elif input_name == 'session_id' and request.params.has_key('vpn_client_ip_address'):
@@ -223,9 +225,6 @@ class ServerInstance(object):
 
     def handshake(self, environ, start_response):
         request = Request(environ)
-        # We assume VPN for backwards compatibility, but if a different relay_protocol
-        # is specified, then we won't need a PSK.
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol)]
         inputs = self._get_inputs(request, 'handshake', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -320,6 +319,8 @@ class ServerInstance(object):
                 output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
                 output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
 
+        # We assume VPN for backwards compatibility, but if a different relay_protocol
+        # is specified, then we won't need a PSK.
         if inputs_lookup['relay_protocol'] == 'VPN' and (
                 self.capabilities.has_key('VPN') and self.capabilities['VPN']):
             psk = psi_psk.set_psk(self.server_ip_address)
@@ -372,13 +373,11 @@ class ServerInstance(object):
         # Peek at input to determine required parameters
         # We assume VPN for backwards compatibility
         # Note: session ID is a VPN client IP address for backwards compatibility
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('session_id', lambda x: is_valid_ip_address(x) or
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits)),
                              ('last_connected', lambda x: is_valid_iso8601_date(x) or
                                                           x == 'None' or
-                                                          x == 'Unknown'),
-                             ('tunnel_whole_device', is_valid_boolean_str)]
+                                                          x == 'Unknown')]
         inputs = self._get_inputs(request, 'connected', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -405,8 +404,7 @@ class ServerInstance(object):
 
     def failed(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('error_code', lambda x: consists_of(x, string.digits))]
+        additional_inputs = [('error_code', lambda x: consists_of(x, string.digits))]
         inputs = self._get_inputs(request, 'failed', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -418,8 +416,7 @@ class ServerInstance(object):
 
     def status(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('session_id', lambda x: is_valid_ip_address(x) or
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits)),
                              ('connected', lambda x: x in ['0', '1'])]
         inputs = self._get_inputs(request, 'status', additional_inputs)
@@ -475,8 +472,7 @@ class ServerInstance(object):
 
         # Note: 'operation' and 'info' are arbitrary strings. See note above.
 
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('operation', lambda x: True),
+        additional_inputs = [('operation', lambda x: True),
                              ('info', lambda x: True),
                              ('milliseconds', lambda x: consists_of(x, string.digits)),
                              ('size', lambda x: consists_of(x, string.digits))]
@@ -492,8 +488,7 @@ class ServerInstance(object):
     def feedback(self, environ, start_response):
         request = Request(environ)
 
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('session_id', lambda x: is_valid_ip_address(x) or
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits) or
                                                       x == EMPTY_VALUE)]
         inputs = self._get_inputs(request, 'feedback', additional_inputs)
