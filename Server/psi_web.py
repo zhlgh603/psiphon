@@ -225,7 +225,7 @@ class ServerInstance(object):
 
     def handshake(self, environ, start_response):
         request = Request(environ)
-        inputs = self._get_inputs(request, 'handshake', additional_inputs)
+        inputs = self._get_inputs(request, 'handshake')
         if not inputs:
             start_response('404 Not Found', [])
             return []
