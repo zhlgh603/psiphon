@@ -37,6 +37,7 @@ ServerList::~ServerList()
     CloseHandle(m_mutex);
 }
 
+// This function may throw
 void ServerList::AddEntriesToList(
                     const vector<string>& newServerEntryList,
                     const ServerEntry* serverEntry)
@@ -147,17 +148,29 @@ void ServerList::MoveEntriesToFront(const ServerEntries& entries)
     WriteListToSystem(persistentServerEntryList);
 }
 
-void ServerList::MarkCurrentServerFailed()
+void ServerList::MarkServerFailed(const string& serverAddress)
 {
     AutoMUTEX lock(m_mutex);
 
     ServerEntries serverEntryList = GetList();
     if (serverEntryList.size() > 1)
     {
-        // Move the first server to the end of the list
-        serverEntryList.push_back(serverEntryList[0]);
-        serverEntryList.erase(serverEntryList.begin());
-        WriteListToSystem(serverEntryList);
+        for (ServerEntries::iterator entry = serverEntryList.begin();
+             entry != serverEntryList.end();
+             ++entry)
+        {
+            if (serverAddress == entry->serverAddress)
+            {
+                ServerEntry failedServer;
+                failedServer.Copy(*entry);
+
+                // Move the failed server to the end of the list
+                serverEntryList.erase(entry);
+                serverEntryList.push_back(failedServer);
+                WriteListToSystem(serverEntryList);
+                return;
+            }
+        }
     }
 }
 
@@ -177,6 +190,7 @@ ServerEntry ServerList::GetNextServer()
     return serverEntryList[0];
 }
 
+// This function should not throw
 ServerEntries ServerList::GetList()
 {
     AutoMUTEX lock(m_mutex);
@@ -211,8 +225,8 @@ ServerEntries ServerList::GetList()
     }
     catch (std::exception &ex)
     {
-        string message = string("Corrupt Embedded Server List: ") + ex.what();
-        throw std::exception(message.c_str());
+        my_print(false, string("Not using corrupt Embedded Server List: ") + ex.what());
+        embeddedServerEntryList.clear();
     }
 
     for (ServerEntries::iterator embeddedServerEntry = embeddedServerEntryList.begin();
@@ -336,7 +350,8 @@ ServerEntry::ServerEntry(
     const string& webServerSecret, const string& webServerCertificate, 
     int sshPort, const string& sshUsername, const string& sshPassword, 
     const string& sshHostKey, int sshObfuscatedPort, 
-    const string& sshObfuscatedKey)
+    const string& sshObfuscatedKey,
+    const vector<string>& capabilities)
 {
     this->serverAddress = serverAddress;
     this->webServerPort = webServerPort;
@@ -348,6 +363,7 @@ ServerEntry::ServerEntry(
     this->sshHostKey = sshHostKey;
     this->sshObfuscatedPort = sshObfuscatedPort;
     this->sshObfuscatedKey = sshObfuscatedKey;
+    this->capabilities = capabilities;
 }
 
 void ServerEntry::Copy(const ServerEntry& src)
@@ -380,6 +396,13 @@ string ServerEntry::ToString() const
     entry["sshHostKey"] = sshHostKey;
     entry["sshObfuscatedPort"] = sshObfuscatedPort;
     entry["sshObfuscatedKey"] = sshObfuscatedKey;
+
+    Json::Value capabilities(Json::arrayValue);
+    for (vector<string>::const_iterator i = this->capabilities.begin(); i != this->capabilities.end(); i++)
+    {
+        capabilities.append(*i);
+    }
+    entry["capabilities"] = capabilities;
 
     Json::FastWriter jsonWriter;
     ss << jsonWriter.write(entry);
@@ -444,6 +467,15 @@ void ServerEntry::FromString(const string& str)
         throw std::exception("Server Entries are corrupt: can't parse JSON");
     }
 
+
+    // At the time of introduction of the server capabilities feature
+    // these are the default capabilities possessed by all servers.
+    Json::Value defaultCapabilities(Json::arrayValue);
+    defaultCapabilities.append("OSSH");
+    defaultCapabilities.append("SSH");
+    defaultCapabilities.append("VPN");
+    defaultCapabilities.append("handshake");
+
     try
     {
         sshPort = json_entry.get("sshPort", 0).asInt();
@@ -452,10 +484,54 @@ void ServerEntry::FromString(const string& str)
         sshHostKey = json_entry.get("sshHostKey", "").asString();
         sshObfuscatedPort = json_entry.get("sshObfuscatedPort", 0).asInt();
         sshObfuscatedKey = json_entry.get("sshObfuscatedKey", "").asString();
+
+        Json::Value capabilities;
+        capabilities = json_entry.get("capabilities", defaultCapabilities);
+
+        this->capabilities.clear();
+        for (Json::ArrayIndex i = 0; i < capabilities.size(); i++)
+        {
+            string item = capabilities.get(i, "").asString();
+            if (!item.empty())
+            {
+                this->capabilities.push_back(item);
+            }
+        }
     }
     catch (exception& e)
     {
         my_print(false, _T("%s: Extended JSON parse exception: %S"), __TFUNCTION__, e.what());
         throw std::exception("Server Entries are corrupt: parse JSON exception");
     }
+}
+
+bool ServerEntry::HasCapability(const string& capability) const
+{
+    for (size_t i = 0; i < this->capabilities.size(); i++)
+    {
+        if (this->capabilities[i] == capability)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+int ServerEntry::GetPreferredReachablityTestPort() const
+{
+    if (HasCapability("OSSH"))
+    {
+        return sshObfuscatedPort;
+    }
+    else if (HasCapability("SSH"))
+    {
+        return sshPort;
+    }
+    else if (HasCapability("handshake"))
+    {
+        return webServerPort;
+    }
+
+    return -1;
 }
