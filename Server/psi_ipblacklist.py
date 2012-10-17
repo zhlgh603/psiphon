@@ -22,11 +22,10 @@ import re
 import subprocess
 import urllib
 import urllib2
-import psi_config
 
 EXECUTABLE = 00744
-BASE_PATH = psi_config.HOST_SOURCE_ROOT
-BLACKLIST__DIR = 'malware_blacklist'
+BASE_PATH = '/usr/local/share/PsiphonV'
+BLACKLIST_DIR = 'malware_blacklist'
 IPSET_DIR = os.path.abspath(os.path.join(BASE_PATH, BLACKLIST_DIR, 'ipset'))
 LIST_DIR = os.path.abspath(os.path.join(BASE_PATH, BLACKLIST_DIR, 'lists'))
 
@@ -49,6 +48,7 @@ def update_list(tracker):
     print tracker['url']
     # get the file and save it to the outfile location
     try:
+        subprocess.call(['mkdir', '-p', LIST_DIR])
         urllib.urlretrieve(tracker['url'], os.path.join(LIST_DIR, tracker['rawlist']))
     except:
         print 'Could not find location'
@@ -76,6 +76,7 @@ def create_ipset_commands(tracker):
 
 def write_ipset_script(tracker):
     script = os.path.join(IPSET_DIR, tracker['ipset_file'])
+    subprocess.call(['mkdir', '-p', IPSET_DIR])
     with open(script, 'w') as f:
         for rule in tracker['ipset_rules']:
             f.write('%s\n' % rule)
