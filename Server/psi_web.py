@@ -387,6 +387,8 @@ class ServerInstance(object):
             start_response('200 OK', response_headers)
             return [contents]
         except IOError as e:
+            # When region route file is missing (including None, A1, ...) then
+            # the response is empty.
             start_response('200 OK', [])
             return []
     
@@ -406,13 +408,15 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
         self._log_event('connected', inputs)
+        inputs_lookup = dict(inputs)
+
         # For older clients upon successful connection, we return
         # routing information for the user's country for split tunneling.
-        # When region route file is missing (including None, A1, ...) then
-        # the response is empty.
-        inputs_lookup = dict(inputs)
-        #TODO: set N to new version number
-        if(inputs_lookup['client_version'] < N):
+        # Latest Android version is 15 'HTC sense fix'
+        # Latest Windows version is 44 'Cliens side capabilities'
+        if (    (inputs_lookup['client_platform'].lower().find('android') != -1 
+                and inputs_lookup['client_version'] <= 15 ) or
+                inputs_lookup['client_version'] <= 44 ): 
             return self._send_routes(inputs_lookup, start_response)
         else:
             now = datetime.utcnow()
