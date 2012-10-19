@@ -369,7 +369,7 @@ class ServerInstance(object):
             return []
         self._log_event('routes', inputs)
         inputs_lookup = dict(inputs)
-        self._send_routes(inputs_lookup, start_response)
+        return self._send_routes(inputs_lookup, start_response)
 
     def _send_routes(self, inputs_lookup, start_response):
         #do not send routes to Android clients 
