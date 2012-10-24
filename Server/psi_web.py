@@ -412,10 +412,10 @@ class ServerInstance(object):
 
         # For older clients upon successful connection, we return
         # routing information for the user's country for split tunneling.
-        # Latest Android version is 15 'HTC sense fix'
+        # Latest Android version is 16 'Servers list reordering'
         # Latest Windows version is 44 'Cliens side capabilities'
         if (    (inputs_lookup['client_platform'].lower().find('android') != -1 
-                and inputs_lookup['client_version'] <= 15 ) or
+                and inputs_lookup['client_version'] <= 16 ) or
                 inputs_lookup['client_version'] <= 44 ): 
             return self._send_routes(inputs_lookup, start_response)
         else:
