@@ -410,18 +410,19 @@ class ServerInstance(object):
         self._log_event('connected', inputs)
         inputs_lookup = dict(inputs)
 
-        # For older clients upon successful connection, we return
+        # For older Windows clients upon successful connection, we return
         # routing information for the user's country for split tunneling.
-        # Latest Android version is 16 'Servers list reordering'
+	# There is no need to do Android check since older clients ignore
+	# this response.
+	#
         # Latest Windows version is 44 'Cliens side capabilities'
-        if (    (inputs_lookup['client_platform'].lower().find('android') != -1 
-                and inputs_lookup['client_version'] <= 16 ) or
-                inputs_lookup['client_version'] <= 44 ): 
+        if (inputs_lookup['client_platform'].lower().find('android') == -1 
+                and int(inputs_lookup['client_version']) <= 44): 
             return self._send_routes(inputs_lookup, start_response)
         else:
             now = datetime.utcnow()
             connected_timestamp = {
-                    'connected_timestamp' : datetime(now.year, now.month, now.day, now.hour).isoformat()}
+                    'connected_timestamp' : now.strftime('%Y-%m-%dT%H:00:00.000Z')}
             response_headers = [('Content-type', 'text/plain')]
             start_response('200 OK', response_headers)
             return [json.dumps(connected_timestamp)]
