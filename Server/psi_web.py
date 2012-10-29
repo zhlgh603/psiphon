@@ -370,7 +370,10 @@ class ServerInstance(object):
         return [contents]
 
     def routes(self, environ, start_response):
-        inputs = self._get_inputs(Request(environ), 'routes')
+        request = Request(environ)
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
+                                                      consists_of(x, string.hexdigits))]
+        inputs = self._get_inputs(request, 'routes', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
             return []
@@ -379,7 +382,7 @@ class ServerInstance(object):
         return self._send_routes(inputs_lookup, start_response)
 
     def _send_routes(self, inputs_lookup, start_response):
-        #do not send routes to Android clients 
+        # Do not send routes to Android clients 
         if inputs_lookup['client_platform'].lower().find('android') != -1:
             start_response('200 OK', [])
             return []
@@ -418,12 +421,12 @@ class ServerInstance(object):
 
         # For older Windows clients upon successful connection, we return
         # routing information for the user's country for split tunneling.
-	# There is no need to do Android check since older clients ignore
-	# this response.
-	#
-        # Latest Windows version is 44 'Cliens side capabilities'
-        if (inputs_lookup['client_platform'].lower().find('android') == -1 
-                and int(inputs_lookup['client_version']) <= 44): 
+        # There is no need to do Android check since older clients ignore
+        # this response.
+        #
+        # Latest Windows version is 44
+        if (inputs_lookup['client_platform'].lower().find('windows') != -1
+                and int(inputs_lookup['client_version']) <= 44):
             return self._send_routes(inputs_lookup, start_response)
         else:
             now = datetime.utcnow()
