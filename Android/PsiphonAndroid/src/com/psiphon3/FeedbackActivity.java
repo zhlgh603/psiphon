@@ -33,6 +33,7 @@ import java.net.URLDecoder;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Locale;
@@ -41,6 +42,7 @@ import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
 
 import com.psiphon3.PsiphonData.StatusEntry;
 import com.psiphon3.ServerInterface.PsiphonServerInterfaceException;
@@ -168,28 +170,47 @@ public class FeedbackActivity extends Activity
                 boolean attachOkay = false;
                 try
                 {
-                    KeyGenerator keygen = KeyGenerator.getInstance("AES");
-                    keygen.init(128);
-
-                    SecretKey encryptionKey = keygen.generateKey();
-                    
-                    // Note that we're using GCM, so an additional MAC isn't necessary.
-                    Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-                    aesCipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
-                    
+                	int KEY_LENGTH = 128;
+                	
+                    //
                     // Encrypt the cleartext content
+                    //
+                    
+                    KeyGenerator encryptionKeygen = KeyGenerator.getInstance("AES");
+                    encryptionKeygen.init(KEY_LENGTH);
+                    SecretKey encryptionKey = encryptionKeygen.generateKey();
+                    
+                    SecureRandom rng = new SecureRandom();
+                    iv = new byte[16];
+                    rng.nextBytes(iv);
+                    IvParameterSpec ivParamSpec = new IvParameterSpec(iv);
+                    
+                    Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                    aesCipher.init(Cipher.ENCRYPT_MODE, encryptionKey, ivParamSpec);
+                    
                     contentCiphertext = aesCipher.doFinal(content.toString().getBytes("UTF-8"));
                     
-                    // Get the IV
+                    // Get the IV. (I don't know if it can be different from the
+                    // one generated above, but retrieving it here seems safest.)
                     iv = aesCipher.getIV();
                     
-                    // Created a MAC (encrypt-then-MAC).
-                    SecretKey macKey = keygen.generateKey();
+                    //
+                    // Create a MAC (encrypt-then-MAC).
+                    //
+                    
+                    KeyGenerator macKeygen = KeyGenerator.getInstance("AES");
+                    macKeygen.init(KEY_LENGTH);
+                    SecretKey macKey = macKeygen.generateKey();
                     Mac mac = Mac.getInstance("HmacSHA256");
                     mac.init(macKey);
+                    // Include the IV in the MAC'd data, as per http://tools.ietf.org/html/draft-mcgrew-aead-aes-cbc-hmac-sha2-01
+                    mac.update(iv);
                     contentMac = mac.doFinal(contentCiphertext);
                     
-                    // Ready the public key that we'll ues to share keys
+                    //
+                    // Ready the public key that we'll use to share keys
+                    //
+                    
                     byte[] publicKeyBytes = Base64.decode(EmbeddedValues.FEEDBACK_ENCRYPTION_PUBLIC_KEY);
                     X509EncodedKeySpec spec = new X509EncodedKeySpec(publicKeyBytes);
                     KeyFactory keyFactory = KeyFactory.getInstance("RSA");
@@ -197,10 +218,11 @@ public class FeedbackActivity extends Activity
                     Cipher rsaCipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding");
                     rsaCipher.init(Cipher.WRAP_MODE, publicKey);
                     
-                    // Wrap the encryption key.
+                    //
+                    // Wrap the symmetric keys
+                    // 
+                    
                     wrappedEncryptionKey = rsaCipher.wrap(encryptionKey);
-
-                    // Wrap the MAC key.
                     wrappedMacKey = rsaCipher.wrap(macKey);
                     
                     attachOkay = true;
