@@ -46,6 +46,7 @@ import sys
 import traceback
 import platform
 import redis
+from datetime import datetime
 
 # ===== PSINET database ===================================================
 
@@ -368,6 +369,39 @@ class ServerInstance(object):
         start_response('200 OK', response_headers)
         return [contents]
 
+    def routes(self, environ, start_response):
+        request = Request(environ)
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
+                                                      consists_of(x, string.hexdigits))]
+        inputs = self._get_inputs(request, 'routes', additional_inputs)
+        if not inputs:
+            start_response('404 Not Found', [])
+            return []
+        self._log_event('routes', inputs)
+        inputs_lookup = dict(inputs)
+        return self._send_routes(inputs_lookup, start_response)
+
+    def _send_routes(self, inputs_lookup, start_response):
+        # Do not send routes to Android clients 
+        if inputs_lookup['client_platform'].lower().find('android') != -1:
+            start_response('200 OK', [])
+            return []
+        try:
+            path = os.path.join(
+                        psi_config.ROUTES_PATH,
+                        psi_config.ROUTE_FILE_NAME_TEMPLATE % (inputs_lookup['client_region'],))
+            with open(path, 'rb') as file:
+                contents = file.read()
+            response_headers = [('Content-Type', 'application/octet-stream'),
+                                ('Content-Length', '%d' % (len(contents),))]
+            start_response('200 OK', response_headers)
+            return [contents]
+        except IOError as e:
+            # When region route file is missing (including None, A1, ...) then
+            # the response is empty.
+            start_response('200 OK', [])
+            return []
+    
     def connected(self, environ, start_response):
         request = Request(environ)
         # Peek at input to determine required parameters
@@ -383,24 +417,24 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
         self._log_event('connected', inputs)
-        # In addition to stats logging for successful connection, we return
-        # routing information for the user's country for split tunneling.
-        # When region route file is missing (including None, A1, ...) then
-        # the response is empty.
         inputs_lookup = dict(inputs)
-        try:
-            path = os.path.join(
-                        psi_config.ROUTES_PATH,
-                        psi_config.ROUTE_FILE_NAME_TEMPLATE % (inputs_lookup['client_region'],))
-            with open(path, 'rb') as file:
-                contents = file.read()
-            response_headers = [('Content-Type', 'application/octet-stream'),
-                                ('Content-Length', '%d' % (len(contents),))]
+
+        # For older Windows clients upon successful connection, we return
+        # routing information for the user's country for split tunneling.
+        # There is no need to do Android check since older clients ignore
+        # this response.
+        #
+        # Latest Windows version is 44
+        if (inputs_lookup['client_platform'].lower().find('windows') != -1
+                and int(inputs_lookup['client_version']) <= 44):
+            return self._send_routes(inputs_lookup, start_response)
+        else:
+            now = datetime.utcnow()
+            connected_timestamp = {
+                    'connected_timestamp' : now.strftime('%Y-%m-%dT%H:00:00.000Z')}
+            response_headers = [('Content-type', 'text/plain')]
             start_response('200 OK', response_headers)
-            return [contents]
-        except IOError as e:
-            start_response('200 OK', [])
-            return []
+            return [json.dumps(connected_timestamp)]
 
     def failed(self, environ, start_response):
         request = Request(environ)
@@ -620,6 +654,7 @@ class WebServerThread(threading.Thread):
                                     {'/handshake': server_instance.handshake,
                                      '/download': server_instance.download,
                                      '/connected': server_instance.connected,
+                                     '/routes': server_instance.routes,
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
                                      '/speed': server_instance.speed,
