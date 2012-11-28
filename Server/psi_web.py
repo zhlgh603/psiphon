@@ -310,12 +310,12 @@ class ServerInstance(object):
             output.append('Server: %s' % (encoded_server_entry,))
 
         if config['ssh_host_key']:
-            output.append('SSHPort: %s' % (config['ssh_port'],))
             output.append('SSHUsername: %s' % (config['ssh_username'],))
             output.append('SSHPassword: %s' % (config['ssh_password'],))
             output.append('SSHHostKey: %s' % (config['ssh_host_key'],))
             output.append('SSHSessionID: %s' % (config['ssh_session_id'],))
-            # Obfuscated SSH fields are optional
+            if config.has_key('ssh_port'):
+                output.append('SSHPort: %s' % (config['ssh_port'],))
             if config.has_key('ssh_obfuscated_port'):
                 output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
                 output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
