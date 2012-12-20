@@ -85,7 +85,6 @@ void CALLBACK WinHttpStatusCallback(
     }
 
     HTTPSRequest* httpRequest = (HTTPSRequest*)dwContext;
-    CERT_CONTEXT *pCert = {0};
     DWORD dwStatusCode;
     DWORD dwLen;
     LPVOID pBuffer = NULL;
@@ -100,37 +99,41 @@ void CALLBACK WinHttpStatusCallback(
         httpRequest->SetClosedEvent();
         break;
     case WINHTTP_CALLBACK_STATUS_SENDING_REQUEST:
-
         // NOTE: from experimentation, this is really the earliest we can inject our custom server cert validation.
         // As far as we know, this is before any data is sent over the SSL connection, so it's soon enough.
         // E.g., we tried to verify the cert earlier but:
         // WinHttpQueryOption(WINHTTP_OPTION_SERVER_CERT_CONTEXT) gives ERROR_WINHTTP_INCORRECT_HANDLE_STATE
         // during WINHTTP_CALLBACK_STATUS_CONNECTED_TO_SERVER...
-
-        // Validate server certificate (before requesting)
-
-        dwLen = sizeof(pCert);
-        if (!WinHttpQueryOption(
-                    hRequest,
-                    WINHTTP_OPTION_SERVER_CERT_CONTEXT,
-                    &pCert,
-                    &dwLen)
-            || NULL == pCert)
+        if (httpRequest->m_expectedServerCertificate.length() > 0)
         {
-            my_print(httpRequest->m_silentMode, _T("WinHttpQueryOption failed (%d)"), GetLastError());
-            WinHttpCloseHandle(hRequest);
-            return;
-        }
+            // Validate server certificate (before requesting)
 
-        if (!httpRequest->ValidateServerCert((PCCERT_CONTEXT)pCert))
-        {
+            CERT_CONTEXT* pCert = NULL;
+            dwLen = sizeof(pCert);
+            if (!WinHttpQueryOption(
+                        hRequest,
+                        WINHTTP_OPTION_SERVER_CERT_CONTEXT,
+                        &pCert,
+                        &dwLen)
+                || NULL == pCert)
+            {
+                my_print(httpRequest->m_silentMode, _T("WinHttpQueryOption failed (%d)"), GetLastError());
+                WinHttpCloseHandle(hRequest);
+                return;
+            }
+
+            bool valid = httpRequest->ValidateServerCert((PCCERT_CONTEXT)pCert);
             CertFreeCertificateContext(pCert);
-            my_print(httpRequest->m_silentMode, _T("ValidateServerCert failed"));
-            // Close request handle immediately to prevent sending of data
-            WinHttpCloseHandle(hRequest);
-            return;
+
+            if (!valid)
+            {
+                my_print(httpRequest->m_silentMode, _T("ValidateServerCert failed"));
+                // Close request handle immediately to prevent sending of data
+                WinHttpCloseHandle(hRequest);
+                return;
+            }
+            break;
         }
-        break;
     case WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE:
 
         // Start downloding response
@@ -251,14 +254,21 @@ bool HTTPSRequest::MakeRequest(
         bool useLocalProxy/*=true*/,
         LPCWSTR additionalHeaders/*=NULL*/,
         LPVOID additionalData/*=NULL*/,
-        DWORD additionalDataLength/*=0*/)
+        DWORD additionalDataLength/*=0*/,
+        LPCWSTR httpVerb/*=NULL*/)
 {
     // Throws if signaled
     stopInfo.stopSignal->CheckSignal(stopInfo.stopReasons, true);
 
-    DWORD dwFlags = SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
+    DWORD dwFlags = 0;
+    
+    if (webServerCertificate.length() > 0)
+    {
+        // We're doing our own validation, so don't choke on cert errors.
+        dwFlags |= SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
                     SECURITY_FLAG_IGNORE_CERT_DATE_INVALID |
                     SECURITY_FLAG_IGNORE_UNKNOWN_CA;
+    }
 
     tstring proxy;
     if (useLocalProxy)
@@ -300,10 +310,15 @@ bool HTTPSRequest::MakeRequest(
         return false;
     }
 
+    if (!httpVerb)
+    {
+        httpVerb = additionalData ? _T("POST") : _T("GET");
+    }
+
     AutoHINTERNET hRequest =
             WinHttpOpenRequest(
                     hConnect,
-                    additionalData ? _T("POST") : _T("GET"),
+                    httpVerb,
                     requestPath,
                     NULL,
                     WINHTTP_NO_REFERER,
@@ -422,7 +437,9 @@ bool HTTPSRequest::ValidateServerCert(PCCERT_CONTEXT pCert)
 
     if (m_expectedServerCertificate.length() == 0)
     {
-        return true;
+        // We shouldn't be here if there's no cert to check against.
+        assert(0);
+        return false;
     }
 
     BYTE* pbBinary = NULL; //base64 decoded pem

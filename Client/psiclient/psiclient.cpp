@@ -37,6 +37,7 @@
 #include "htmldlg.h"
 #include "server_list_reordering.h"
 #include "stopsignal.h"
+#include "osrng.h"
 
 
 //==== Globals ================================================================
@@ -996,13 +997,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         else if (lParam == (LPARAM)g_hFeedbackButton && wmEvent == BN_CLICKED)
         {
             my_print(true, _T("%s: Button pressed, Feedback called"), __TFUNCTION__);
+
+            CryptoPP::AutoSeededRandomPool rng;
+            const size_t randBytesLen = 8;
+            byte randBytes[randBytesLen];
+            rng.GenerateBlock(randBytes, randBytesLen);
+            
+            tstring args = _T("{\"diagnosticInfoID\": \"") + NarrowToTString(Hexlify(randBytes, randBytesLen)) + _T("\"}");
             
             tstring feedbackResult;
             if (ShowHTMLDlg(
                     hWnd, 
                     _T("FEEDBACK_HTML_RESOURCE"), 
                     GetLocaleName().c_str(),
-                    NULL,
+                    args.c_str(),
                     feedbackResult) == 1)
             {
                 my_print(false, _T("Sending feedback..."));
