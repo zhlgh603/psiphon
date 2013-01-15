@@ -9,6 +9,9 @@ Client/psiclient.opensdf
 Client/psiclient.sdf
 Client/psiclient.suo
 Client/psiclient/psiclient.vcxproj.user
+Client/psiclient2012.sdf
+Client/psiclient2012.v11.suo
+Client/psiclient/psiclient2012.vcxproj.user
 
 Automation/Builds
 
@@ -17,6 +20,8 @@ Android/PsiphonAndroid/gen
 Android/PsiphonAndroid/obj
 Android/zirco-browser/bin
 Android/zirco-browser/gen
+Android/PsiphonAndroidLibrary/bin
+Android/PsiphonAndroidLibrary/gen
 
 node_modules
 
