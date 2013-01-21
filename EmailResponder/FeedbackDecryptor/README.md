@@ -6,9 +6,9 @@
 
 ```shell
 # Prereqs
-sudo apt-get install -y python-pip python-dev libssl-dev swig
-sudo pip install rfc6266 pynliner cssutils BeautifulSoup mako
-sudo pip install M2Crypto
+sudo apt-get install -y python-pip python-dev libssl-dev swig mongodb
+sudo pip install --upgrade rfc6266 pynliner cssutils BeautifulSoup mako pymongo boto google-api-python-client
+sudo pip install --upgrade M2Crypto
 ```
 
 #### M2Crypto issues
