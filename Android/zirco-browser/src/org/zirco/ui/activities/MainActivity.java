@@ -233,6 +233,7 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
 	private String mPsiphonServiceClassName;
     private String mPsiphonStatusActivityClassName;
     private String mPsiphonFeedbackActivityClassName;
+    private boolean mPsiphonNoChrome = false;
 	
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -261,9 +262,12 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
         //	requestWindowFeature(Window.FEATURE_NO_TITLE); 
         //}
 
-        // XXXXX
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        // XXXXX
+        // PSIPHON: disable chrome if configured
+        mPsiphonNoChrome = intent.getBooleanExtra("customizedNoChrome", false);
+        if (mPsiphonNoChrome)
+        {
+            requestWindowFeature(Window.FEATURE_NO_TITLE);
+        }
         
         setProgressBarVisibility(true);
         
@@ -1389,8 +1393,8 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
     	boolean showPreviousTabView = mViewFlipper.getDisplayedChild() > 0;
 		boolean showNextTabView = mViewFlipper.getDisplayedChild() < mViewFlipper.getChildCount() - 1;
     	
-        // XXXXX
-        if (true)
+		// PSIPHON: disable chrome if configured
+        if (mPsiphonNoChrome)
         {
             mTopBar.setVisibility(View.GONE);
             mBottomBar.setVisibility(View.GONE);
@@ -1400,7 +1404,6 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
             mBubbleLeftView.setVisibility(View.GONE);
             return;
         }
-        // XXXXX
 		
     	if (visible) {
     		
@@ -1696,13 +1699,11 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
 			}
 			return true;
 		case KeyEvent.KEYCODE_SEARCH:
-		    // XXXXX
-		    if (true)
+		    // PSIPHON: disable chrome if configured
+		    if (mPsiphonNoChrome)
 		    {
 		        return true;
 		    }
-		    // XXXXX
-		    
 			if (!mFindDialogVisible) {
 				showFindDialog();
 			}
@@ -1942,12 +1943,11 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
     public boolean onCreateOptionsMenu(Menu menu) {
         super.onCreateOptionsMenu(menu);
         
-        // XXXXX
-        if (true)
+        // PSIPHON: disable chrome if configured
+        if (mPsiphonNoChrome)
         {
             return true;
         }
-        // XXXXX
 
         MenuItem item;
     	

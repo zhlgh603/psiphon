@@ -153,6 +153,7 @@ public class Events implements com.psiphon3.psiphonlibrary.Events
             intent.putExtra("serviceClassName", TunnelService.class.getName());        
             intent.putExtra("statusActivityClassName", StatusActivity.class.getName());
             intent.putExtra("feedbackActivityClassName", FeedbackActivity.class.getName());
+            intent.putExtra("customizedNoChrome", true);
             
             context.startActivity(intent);
         }
