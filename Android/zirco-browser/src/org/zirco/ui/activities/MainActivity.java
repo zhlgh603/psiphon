@@ -1696,6 +1696,13 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
 			}
 			return true;
 		case KeyEvent.KEYCODE_SEARCH:
+		    // XXXXX
+		    if (true)
+		    {
+		        return true;
+		    }
+		    // XXXXX
+		    
 			if (!mFindDialogVisible) {
 				showFindDialog();
 			}
@@ -1931,11 +1938,18 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
         this.startActivity(intent);
 	}
 	
-	@Override
+    @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-    	super.onCreateOptionsMenu(menu);
-    	
-    	MenuItem item;
+        super.onCreateOptionsMenu(menu);
+        
+        // XXXXX
+        if (true)
+        {
+            return true;
+        }
+        // XXXXX
+
+        MenuItem item;
     	
         // PSIPHON
         // feedback menu item
