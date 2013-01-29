@@ -261,6 +261,10 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
         //	requestWindowFeature(Window.FEATURE_NO_TITLE); 
         //}
 
+        // XXXXX
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        // XXXXX
+        
         setProgressBarVisibility(true);
         
         setContentView(R.layout.zirco_main);                        
@@ -1385,6 +1389,19 @@ public class MainActivity extends Activity implements IToolbarsContainer, OnTouc
     	boolean showPreviousTabView = mViewFlipper.getDisplayedChild() > 0;
 		boolean showNextTabView = mViewFlipper.getDisplayedChild() < mViewFlipper.getChildCount() - 1;
     	
+        // XXXXX
+        if (true)
+        {
+            mTopBar.setVisibility(View.GONE);
+            mBottomBar.setVisibility(View.GONE);
+            mPreviousTabView.setVisibility(View.GONE);
+            mNextTabView.setVisibility(View.GONE);
+            mBubbleRightView.setVisibility(View.GONE);
+            mBubbleLeftView.setVisibility(View.GONE);
+            return;
+        }
+        // XXXXX
+		
     	if (visible) {
     		
     		if (!mUrlBarVisible) {    
