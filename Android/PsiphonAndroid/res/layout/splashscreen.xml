@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/splash_screen"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:background="#900000"
+    android:orientation="vertical"
+    android:padding="8dp" >
+
+    <ImageView android:src="@drawable/splash"
+               android:layout_width="wrap_content"
+               android:layout_height="wrap_content"
+               android:layout_marginRight="8dp"
+               />
+
+    <TextView
+        android:id="@+id/splash_screen_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:text="Starting..."
+        android:textColor="#FFF" />
+
+</LinearLayout>
