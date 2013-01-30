@@ -212,10 +212,13 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
     protected void onResume()
     {
         super.onResume();
+
+        if (!isServiceRunning())
+        {
+        	showSplashScreen();
+        }
         
         PsiphonData.getPsiphonData().setStatusActivityForeground(true);
-        
-        showSplashScreen();
         
         final Context context = this;
 
