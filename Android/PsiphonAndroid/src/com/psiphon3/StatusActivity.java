@@ -42,6 +42,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.URLUtil;
 import android.widget.CheckBox;
 import android.widget.ImageView;
@@ -80,8 +81,14 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
     // 20 second toast
     private void showSplashScreen()
     {
-        final Toast splashScreen = Toast.makeText(this, "Fancy Splash Screen here", Toast.LENGTH_SHORT);
-        splashScreen.setGravity(Gravity.CENTER, 0, 0);
+        LayoutInflater inflater = (LayoutInflater)getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+        View layout = inflater.inflate(R.layout.splashscreen, (ViewGroup)findViewById(R.id.splash_screen));
+        TextView text = (TextView)layout.findViewById(R.id.splash_screen_text);
+        text.setText("Starting...");
+        final Toast splashScreen = new Toast(this);
+        splashScreen.setGravity(Gravity.FILL, 0, 0);
+        splashScreen.setDuration(Toast.LENGTH_SHORT);
+        splashScreen.setView(layout);
 
         Thread t = new Thread()
         {
