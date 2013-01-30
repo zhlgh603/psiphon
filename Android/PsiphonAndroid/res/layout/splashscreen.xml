@@ -7,11 +7,12 @@
     android:orientation="vertical"
     android:padding="8dp" >
 
-    <ImageView android:src="@drawable/splash"
-               android:layout_width="wrap_content"
-               android:layout_height="wrap_content"
-               android:layout_marginRight="8dp"
-               />
+    <ImageView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginRight="8dp"
+        android:src="@drawable/splash" />
 
     <TextView
         android:id="@+id/splash_screen_text"
