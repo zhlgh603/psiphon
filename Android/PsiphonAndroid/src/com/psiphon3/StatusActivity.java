@@ -81,6 +81,8 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
     // 20 second toast
     private void showSplashScreen()
     {
+        m_splashScreenCancelled = false;
+
         LayoutInflater inflater = (LayoutInflater)getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         View layout = inflater.inflate(R.layout.splashscreen, (ViewGroup)findViewById(R.id.splash_screen));
         TextView text = (TextView)layout.findViewById(R.id.splash_screen_text);
@@ -107,7 +109,6 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
                 catch (Exception e)
                 {
                 }
-                m_splashScreenCancelled = false;
             }
         };
         t.start();
