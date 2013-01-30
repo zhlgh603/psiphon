@@ -38,6 +38,7 @@ import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -47,6 +48,7 @@ import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.TableLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.psiphon3.UpgradeManager.UpgradeInstaller;
 import com.psiphon3.psiphonlibrary.EmbeddedValues;
@@ -72,6 +74,42 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
     private CheckBox m_tunnelWholeDeviceToggle;
     private boolean m_tunnelWholeDevicePromptShown = false;
     private LocalBroadcastManager m_localBroadcastManager;
+    
+    private boolean m_splashScreenCancelled = false;
+    
+    // 20 second toast
+    private void showSplashScreen()
+    {
+        final Toast splashScreen = Toast.makeText(this, "Fancy Splash Screen here", Toast.LENGTH_SHORT);
+        splashScreen.setGravity(Gravity.CENTER, 0, 0);
+
+        Thread t = new Thread()
+        {
+            public void run()
+            {
+                int count = 0;
+                try
+                {
+                    while (!m_splashScreenCancelled && count < 10)
+                    {
+                    	splashScreen.show();
+                        sleep(1850);
+                        count++;
+                    }
+                }
+                catch (Exception e)
+                {
+                }
+                m_splashScreenCancelled = false;
+            }
+        };
+        t.start();
+    }
+    
+    private void dismissSplashScreen()
+    {
+    	m_splashScreenCancelled = true;
+    }
     
     @Override
     public void onCreate(Bundle savedInstanceState)
@@ -168,6 +206,8 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
         super.onResume();
         
         PsiphonData.getPsiphonData().setStatusActivityForeground(true);
+        
+        showSplashScreen();
         
         final Context context = this;
 
@@ -267,6 +307,8 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
     {
         super.onPause();
         
+        dismissSplashScreen();
+        
         unbindTunnelService();
         
         PsiphonData.getPsiphonData().setStatusActivityForeground(false);
@@ -298,6 +340,8 @@ public class StatusActivity extends Activity implements MyLog.ILogInfoProvider
 
         if (0 == intent.getAction().compareTo(HANDSHAKE_SUCCESS))
         {
+            dismissSplashScreen();
+        	
             Events.displayBrowser(this);
             
             // We only want to respond to the HANDSHAKE_SUCCESS action once,
