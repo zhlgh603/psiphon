@@ -25,6 +25,7 @@ HOST_IP_DOWN_DIR = '/etc/ppp/ip-down.d'
 HOST_INIT_DIR = '/etc/init.d'
 HOST_SERVER_STOPPED_LOCK_FILE = '/var/lock/psiphonv.stopped'
 HOST_OSSH_SRC_DIR = '/usr/local/src/openssh-5.9p1'
+HOST_BADVPN_SRC_DIR = '/usr/local/src/badvpn'
 
 
 #==== Web Server ==============================================================
