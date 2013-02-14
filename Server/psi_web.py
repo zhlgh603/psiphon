@@ -46,6 +46,7 @@ import sys
 import traceback
 import platform
 import redis
+from datetime import datetime
 
 # ===== PSINET database ===================================================
 
@@ -90,6 +91,9 @@ is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,
 def is_valid_iso8601_date(str):
     return is_valid_iso8601_date_regex.match(str) != None
 
+def is_valid_boolean_str(str):
+    return str in ['0', '1']
+
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
@@ -99,7 +103,7 @@ def split_len(seq, length):
 
 class ServerInstance(object):
 
-    def __init__(self, ip_address, server_secret):
+    def __init__(self, ip_address, server_secret, capabilities):
         self.session_redis = redis.StrictRedis(
             host=psi_config.SESSION_DB_HOST,
             port=psi_config.SESSION_DB_PORT,
@@ -110,12 +114,15 @@ class ServerInstance(object):
             db=psi_config.DISCOVERY_DB_INDEX)
         self.server_ip_address = ip_address
         self.server_secret = server_secret
+        self.capabilities = capabilities
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('client_version', lambda x: consists_of(x, string.digits) or x == EMPTY_VALUE),
-            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()'))]
+            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()')),
+            ('relay_protocol', is_valid_relay_protocol),
+            ('tunnel_whole_device', is_valid_boolean_str)]
 
     def _is_request_tunnelled(self, client_ip_address):
         return client_ip_address in ['localhost', '127.0.0.1', self.server_ip_address]
@@ -180,6 +187,7 @@ class ServerInstance(object):
                 # - Older clients specify client_id for propagation_channel_id
                 # - Older clients don't specify client_platform
                 # - Older clients don't specify last session date
+                # - Older clients (and Windows clients) don't specify tunnel_whole_device
                 if input_name == 'relay_protocol':
                     value = 'VPN'
                 elif input_name == 'session_id' and request.params.has_key('vpn_client_ip_address'):
@@ -190,6 +198,8 @@ class ServerInstance(object):
                     value = 'Windows'
                 elif input_name == 'last_connected':
                     value = 'Unknown'
+                elif input_name == 'tunnel_whole_device':
+                    value = '0'
                 else:
                     syslog.syslog(
                         syslog.LOG_ERR,
@@ -216,10 +226,7 @@ class ServerInstance(object):
 
     def handshake(self, environ, start_response):
         request = Request(environ)
-        # We assume VPN for backwards compatibility, but if a different relay_protocol
-        # is specified, then we won't need a PSK.
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol)]
-        inputs = self._get_inputs(request, 'handshake', additional_inputs)
+        inputs = self._get_inputs(request, 'handshake')
         if not inputs:
             start_response('404 Not Found', [])
             return []
@@ -303,17 +310,20 @@ class ServerInstance(object):
             output.append('Server: %s' % (encoded_server_entry,))
 
         if config['ssh_host_key']:
-            output.append('SSHPort: %s' % (config['ssh_port'],))
             output.append('SSHUsername: %s' % (config['ssh_username'],))
             output.append('SSHPassword: %s' % (config['ssh_password'],))
             output.append('SSHHostKey: %s' % (config['ssh_host_key'],))
             output.append('SSHSessionID: %s' % (config['ssh_session_id'],))
-            # Obfuscated SSH fields are optional
+            if config.has_key('ssh_port'):
+                output.append('SSHPort: %s' % (config['ssh_port'],))
             if config.has_key('ssh_obfuscated_port'):
                 output.append('SSHObfuscatedPort: %s' % (config['ssh_obfuscated_port'],))
                 output.append('SSHObfuscatedKey: %s' % (config['ssh_obfuscated_key'],))
 
-        if inputs_lookup['relay_protocol'] == 'VPN':
+        # We assume VPN for backwards compatibility, but if a different relay_protocol
+        # is specified, then we won't need a PSK.
+        if inputs_lookup['relay_protocol'] == 'VPN' and (
+                self.capabilities.has_key('VPN') and self.capabilities['VPN']):
             psk = psi_psk.set_psk(self.server_ip_address)
             config['l2tp_ipsec_psk'] = psk
             output.append('PSK: %s' % (psk,))
@@ -359,27 +369,23 @@ class ServerInstance(object):
         start_response('200 OK', response_headers)
         return [contents]
 
-    def connected(self, environ, start_response):
+    def routes(self, environ, start_response):
         request = Request(environ)
-        # Peek at input to determine required parameters
-        # We assume VPN for backwards compatibility
-        # Note: session ID is a VPN client IP address for backwards compatibility
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('session_id', lambda x: is_valid_ip_address(x) or
-                                                      consists_of(x, string.hexdigits)),
-                             ('last_connected', lambda x: is_valid_iso8601_date(x) or
-                                                          x == 'None' or
-                                                          x == 'Unknown')]
-        inputs = self._get_inputs(request, 'connected', additional_inputs)
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
+                                                      consists_of(x, string.hexdigits))]
+        inputs = self._get_inputs(request, 'routes', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
             return []
-        self._log_event('connected', inputs)
-        # In addition to stats logging for successful connection, we return
-        # routing information for the user's country for split tunneling.
-        # When region route file is missing (including None, A1, ...) then
-        # the response is empty.
+        self._log_event('routes', inputs)
         inputs_lookup = dict(inputs)
+        return self._send_routes(inputs_lookup, start_response)
+
+    def _send_routes(self, inputs_lookup, start_response):
+        # Do not send routes to Android clients 
+        if inputs_lookup['client_platform'].lower().find('android') != -1:
+            start_response('200 OK', [])
+            return []
         try:
             path = os.path.join(
                         psi_config.ROUTES_PATH,
@@ -391,13 +397,48 @@ class ServerInstance(object):
             start_response('200 OK', response_headers)
             return [contents]
         except IOError as e:
+            # When region route file is missing (including None, A1, ...) then
+            # the response is empty.
             start_response('200 OK', [])
             return []
+    
+    def connected(self, environ, start_response):
+        request = Request(environ)
+        # Peek at input to determine required parameters
+        # We assume VPN for backwards compatibility
+        # Note: session ID is a VPN client IP address for backwards compatibility
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
+                                                      consists_of(x, string.hexdigits)),
+                             ('last_connected', lambda x: is_valid_iso8601_date(x) or
+                                                          x == 'None' or
+                                                          x == 'Unknown')]
+        inputs = self._get_inputs(request, 'connected', additional_inputs)
+        if not inputs:
+            start_response('404 Not Found', [])
+            return []
+        self._log_event('connected', inputs)
+        inputs_lookup = dict(inputs)
+
+        # For older Windows clients upon successful connection, we return
+        # routing information for the user's country for split tunneling.
+        # There is no need to do Android check since older clients ignore
+        # this response.
+        #
+        # Latest Windows version is 44
+        if (inputs_lookup['client_platform'].lower().find('windows') != -1
+                and int(inputs_lookup['client_version']) <= 44):
+            return self._send_routes(inputs_lookup, start_response)
+        else:
+            now = datetime.utcnow()
+            connected_timestamp = {
+                    'connected_timestamp' : now.strftime('%Y-%m-%dT%H:00:00.000Z')}
+            response_headers = [('Content-type', 'text/plain')]
+            start_response('200 OK', response_headers)
+            return [json.dumps(connected_timestamp)]
 
     def failed(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('error_code', lambda x: consists_of(x, string.digits))]
+        additional_inputs = [('error_code', lambda x: consists_of(x, string.digits))]
         inputs = self._get_inputs(request, 'failed', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -409,10 +450,9 @@ class ServerInstance(object):
 
     def status(self, environ, start_response):
         request = Request(environ)
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('session_id', lambda x: is_valid_ip_address(x) or
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits)),
-                             ('connected', lambda x: x in ['0', '1'])]
+                             ('connected', is_valid_boolean_str)]
         inputs = self._get_inputs(request, 'status', additional_inputs)
         if not inputs:
             start_response('404 Not Found', [])
@@ -466,8 +506,7 @@ class ServerInstance(object):
 
         # Note: 'operation' and 'info' are arbitrary strings. See note above.
 
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('operation', lambda x: True),
+        additional_inputs = [('operation', lambda x: True),
                              ('info', lambda x: True),
                              ('milliseconds', lambda x: consists_of(x, string.digits)),
                              ('size', lambda x: consists_of(x, string.digits))]
@@ -483,8 +522,7 @@ class ServerInstance(object):
     def feedback(self, environ, start_response):
         request = Request(environ)
 
-        additional_inputs = [('relay_protocol', is_valid_relay_protocol),
-                             ('session_id', lambda x: is_valid_ip_address(x) or
+        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
                                                       consists_of(x, string.hexdigits) or
                                                       x == EMPTY_VALUE)]
         inputs = self._get_inputs(request, 'feedback', additional_inputs)
@@ -559,7 +597,8 @@ def get_servers():
                          server.web_server_port,
                          server.web_server_secret,
                          server.web_server_certificate,
-                         server.web_server_private_key))
+                         server.web_server_private_key,
+                         server.capabilities))
         except ValueError as e:
             if str(e) != 'You must specify a valid interface name.':
                 raise
@@ -568,7 +607,7 @@ def get_servers():
 
 class WebServerThread(threading.Thread):
 
-    def __init__(self, ip_address, port, secret, certificate, private_key, server_threads):
+    def __init__(self, ip_address, port, secret, certificate, private_key, capabilities, server_threads):
         #super(WebServerThread, self).__init__(self)
         threading.Thread.__init__(self)
         self.ip_address = ip_address
@@ -576,6 +615,7 @@ class WebServerThread(threading.Thread):
         self.secret = secret
         self.certificate = certificate
         self.private_key = private_key
+        self.capabilities = capabilities
         self.server = None
         self.certificate_temp_file = None
         self.private_key_temp_file = None
@@ -607,13 +647,14 @@ class WebServerThread(threading.Thread):
         # While loop is for recovery from 'unknown ca' issue.
         while True:
             try:
-                server_instance = ServerInstance(self.ip_address, self.secret)
+                server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities)
                 self.server = wsgiserver.CherryPyWSGIServer(
                                 (self.ip_address, int(self.port)),
                                 wsgiserver.WSGIPathInfoDispatcher(
                                     {'/handshake': server_instance.handshake,
                                      '/download': server_instance.download,
                                      '/connected': server_instance.connected,
+                                     '/routes': server_instance.routes,
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
                                      '/speed': server_instance.speed,
