@@ -346,13 +346,13 @@ bool ReadRegistryDwordValue(const string& name, DWORD& value)
 }
 
 
-bool WriteRegistryStringValue(const string& name, const string& value)
+bool WriteRegistryStringValue(const string& name, const string& value, RegistryFailureReason& reason)
 {
     HKEY key = 0;
     LONG returnCode = 0;
+    reason = REGISTRY_FAILURE_NO_REASON;
 
-    bool success =
-        (ERROR_SUCCESS == (returnCode = RegCreateKeyEx(
+    if (ERROR_SUCCESS != (returnCode = RegCreateKeyEx(
                             HKEY_CURRENT_USER,
                             LOCAL_SETTINGS_REGISTRY_KEY,
                             0,
@@ -361,23 +361,29 @@ bool WriteRegistryStringValue(const string& name, const string& value)
                             KEY_WRITE,
                             0,
                             &key,
-                            0)) &&
-
-         ERROR_SUCCESS == (returnCode = RegSetValueExA(
+                            0)))
+    {
+        my_print(NOT_SENSITIVE, true, _T("%s: RegCreateKeyEx failed for %S with code %ld"), __TFUNCTION__, name.c_str(), returnCode);
+    }
+    else if (ERROR_SUCCESS != (returnCode = RegSetValueExA(
                             key,
                             name.c_str(),
                             0,
                             REG_SZ,
                             (LPBYTE)value.c_str(),
-                            value.length() + 1))); // Write the null terminator
-    RegCloseKey(key);
-
-    if (!success)
+                            value.length() + 1))) // Write the null terminator
     {
-        my_print(NOT_SENSITIVE, true, _T("%s failed for %S with code %ld"), __TFUNCTION__, name.c_str(), returnCode);
+        my_print(NOT_SENSITIVE, true, _T("%s: RegSetValueExA failed for %S with code %ld"), __TFUNCTION__, name.c_str(), returnCode);
+        
+        if (ERROR_NO_SYSTEM_RESOURCES == returnCode)
+        {
+            reason = REGISTRY_FAILURE_WRITE_TOO_LONG;
+        }
     }
 
-    return success;
+    RegCloseKey(key);
+
+    return ERROR_SUCCESS == returnCode;
 }
 
 
