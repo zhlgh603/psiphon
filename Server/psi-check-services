@@ -11,6 +11,10 @@ if [ ! -f /var/lock/psiphonv.stopped ]; then
     fi
 fi
 
+if ! pgrep badvpn-udpgw > /dev/null; then
+    /etc/init.d/badvpn-udpgw restart
+fi
+
 if ! pgrep xinetd > /dev/null; then
     /etc/init.d/xinetd restart
 fi
