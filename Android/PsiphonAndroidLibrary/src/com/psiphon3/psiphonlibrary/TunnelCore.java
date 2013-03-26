@@ -74,6 +74,7 @@ public class TunnelCore implements Utils.MyLog.ILogger, IStopSignalPending
     private boolean m_useGenericLogMessages = false;
     private List<Pair<String,String>> m_extraAuthParams = new ArrayList<Pair<String,String>>();    
 
+
     enum Signal
     {
         STOP_TUNNEL,
@@ -492,7 +493,7 @@ public class TunnelCore implements Utils.MyLog.ILogger, IStopSignalPending
             }
             else
             {
-                int port = Utils.findAvailablePort(PsiphonConstants.SOCKS_PORT, 10);
+                int port = Utils.findAvailablePort(PsiphonData.getPsiphonData().getDefaultSocksPort(), 10);
                 if (port == 0)
                 {
                     MyLog.e(R.string.socks_ports_failed, MyLog.Sensitivity.NOT_SENSITIVE);
