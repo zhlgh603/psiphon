@@ -772,6 +772,55 @@ class GeoIPServerThread(threading.Thread):
                 syslog.syslog(syslog.LOG_ERR, line)
             raise
 
+
+# ===== Tunnel Check Service =====
+
+class TunnelCheckServerThread(threading.Thread):
+
+    def __init__(self, ip_address):
+        #super(WebServerThread, self).__init__(self)
+        threading.Thread.__init__(self)
+        self.server_ip_address = ip_address
+        self.server = None
+
+    def check_tunnel(self, environ, start_response):
+        # Just return 200 OK; no logging or action for this request
+        start_response('200 OK', [])
+        return []
+    
+    def stop_server(self):
+        # Retry loop in case self.server.stop throws an exception
+        for i in range(5):
+            try:
+                if self.server:
+                    # blocks until server stops
+                    self.server.stop()
+                    self.server = None
+                break
+            except Exception as e:
+                # Log errors
+                for line in traceback.format_exc().split('\n'):
+                    syslog.syslog(syslog.LOG_ERR, line)
+                time.sleep(i)
+
+    def run(self):
+        try:
+            server_instance = ()
+            self.server = wsgiserver.CherryPyWSGIServer(
+                            (self.server_ip_address, int(psi_config.TUNNEL_CHECK_SERVICE_PORT)),
+                            wsgiserver.WSGIPathInfoDispatcher(
+                                {'/check_tunnel': self.check_tunnel}))
+
+            # Blocks until server stopped
+            syslog.syslog(syslog.LOG_INFO, 'started Tunnel Check service on %s:%d' % (self.server_ip_address, psi_config.TUNNEL_CHECK_SERVICE_PORT))
+            self.server.start()
+        except Exception as e:
+            # Log other errors and abort
+            for line in traceback.format_exc().split('\n'):
+                syslog.syslog(syslog.LOG_ERR, line)
+            raise
+
+            
 # ===== Main Process =====
 
 def main():
@@ -799,6 +848,12 @@ def main():
     geoip_thread.start()
     threads.append(geoip_thread)
     print 'GeoIP server running...'
+
+    for server_info in servers:
+        tunnel_check_thread = TunnelCheckServerThread(server_info[0])
+        tunnel_check_thread.start()
+        threads.append(tunnel_check_thread)
+    print 'Tunnel Check server running...'
 
     try:
         while True:
