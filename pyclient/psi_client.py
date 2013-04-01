@@ -19,8 +19,9 @@
 
 
 from psi_api import Psiphon3Server
-from psi_ssh_connection import SSHConnection
+from psi_ssh_connection import SSHConnection, OSSHConnection
 import json
+import os
 
 
 # TODO: add support to server for indicating platform
@@ -69,10 +70,12 @@ class Data(object):
             return False
 
 
-def connect_to_server(data):
+def connect_to_server(data, relay):
+
+    assert relay in ['SSH', 'OSSH']
 
     server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION)
-    handshake_response = server.handshake('SSH')
+    handshake_response = server.handshake(relay)
     # handshake might update the server list with newly discovered servers
     data.save()
 
@@ -82,14 +85,20 @@ def connect_to_server(data):
     for home_page in home_pages:
         print home_page
 
-    ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
-                                   handshake_response['SSHUsername'], handshake_response['SSHPassword'],
-                                   handshake_response['SSHHostKey'], str(LOCAL_SOCKS_PORT))
+    if relay == 'OSSH':
+        ssh_connection = OSSHConnection(server.ip_address, handshake_response['SSHObfuscatedPort'],
+                                        handshake_response['SSHUsername'], handshake_response['SSHPassword'],
+                                        handshake_response['SSHObfuscatedKey'], handshake_response['SSHHostKey'],
+                                        str(LOCAL_SOCKS_PORT))
+    else:
+        ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
+                                       handshake_response['SSHUsername'], handshake_response['SSHPassword'],
+                                       handshake_response['SSHHostKey'], str(LOCAL_SOCKS_PORT))
     ssh_connection.connect()
     ssh_connection.test_connection()
-    server.connected('SSH')
+    server.connected(relay)
     ssh_connection.wait_for_disconnect()
-    server.disconnected('SSH')
+    server.disconnected(relay)
 
 
 def connect():
@@ -99,7 +108,10 @@ def connect():
         data = Data.load()
 
         try:
-            connect_to_server(data)
+            if os.path.isfile('./ssh'):
+                connect_to_server(data, 'OSSH')
+            else:
+                connect_to_server(data, 'SSH')
             break
         except Exception as error:
             print error
