@@ -75,3 +75,24 @@ class SSHConnection(object):
         print 'Connection closed'
 
 
+class OSSHConnection(SSHConnection):
+
+    def __init__(self, ip_address, port, username, password, obfuscate_keyword, host_key, listen_port):
+        self.obfuscate_keyword = obfuscate_keyword
+        SSHConnection.__init__(self, ip_address, port, username, password, host_key, listen_port)
+
+    def connect(self):
+        self.ssh = pexpect.spawn('./ssh -D %s -N -p %s -z -Z %s %s@%s' %
+                                 (self.listen_port, self.port, self.obfuscate_keyword,
+                                  self.username, self.ip_address))
+        # Print ssh output:
+        #self.ssh.logfile_read = sys.stdout
+        prompt = self.ssh.expect([self._ssh_fingerprint(), 'Password:'])
+        if prompt == 0:
+            self.ssh.sendline('yes')
+            self.ssh.expect('Password:')
+            self.ssh.sendline(self.password)
+        else:
+            self.ssh.sendline(self.password)
+
+
