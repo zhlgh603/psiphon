@@ -661,14 +661,14 @@ def install_firewall_rules(host, servers):
     -A OUTPUT -d %s -p tcp -m tcp --dport %s -j ACCEPT'''
             % (str(s.internal_ip_address), str(psi_config.TUNNEL_CHECK_SERVICE_PORT)) for s in servers
                 if s.ip_address != s.internal_ip_address]) + ''.join(
+    ['''
+    -A OUTPUT -s %s -p tcp -m tcp --sport %s -j ACCEPT'''
+            % (str(s.internal_ip_address), str(psi_config.TUNNEL_CHECK_SERVICE_PORT)) for s in servers
+                if s.ip_address != s.internal_ip_address]) + ''.join(
     # web servers
     ['''
     -A OUTPUT -s %s -p tcp -m tcp --sport %s -j ACCEPT'''
             % (str(s.internal_ip_address), str(s.web_server_port)) for s in servers
-                if s.web_server_port]) + ''.join(
-    ['''
-    -A OUTPUT -s %s -p tcp -m tcp --sport %s -j ACCEPT'''
-            % (str(s.internal_ip_address), str(psi_config.TUNNEL_CHECK_SERVICE_PORT)) for s in servers
                 if s.web_server_port]) + ''.join(
     # SSH
     ['''
@@ -688,8 +688,10 @@ def install_firewall_rules(host, servers):
     -A OUTPUT -s {0} -p udp --sport 4500 -j ACCEPT
     -A OUTPUT -s {0} -o ipsec+ -p udp -m udp --dport l2tp -j ACCEPT'''.format(
             str(s.internal_ip_address)) for s in servers
-                if s.capabilities['VPN']]) + '''
-    -A OUTPUT -s %s -p tcp -m tcp --tcp-flags ALL ACK,RST -j ACCEPT''' % (str(s.internal_ip_address), ) + '''
+                if s.capabilities['VPN']]) + ''.join(
+    ['''
+    -A OUTPUT -s %s -p tcp -m tcp --tcp-flags ALL ACK,RST -j ACCEPT'''
+            % (str(s.internal_ip_address), ) for s in servers]) + '''
     -A OUTPUT -j REJECT
 COMMIT
 
@@ -704,6 +706,10 @@ COMMIT
     ['''
     -A OUTPUT -p tcp -m tcp -d %s --dport %s -j DNAT --to-destination %s'''
             % (str(s.ip_address), str(s.web_server_port), str(s.internal_ip_address)) for s in servers
+                if s.ip_address != s.internal_ip_address]) + ''.join(
+    ['''
+    -A OUTPUT -p tcp -m tcp -d %s --dport %s -j DNAT --to-destination %s'''
+            % (str(s.ip_address), str(psi_config.TUNNEL_CHECK_SERVICE_PORT), str(s.internal_ip_address)) for s in servers
                 if s.ip_address != s.internal_ip_address]) + '''
 COMMIT
 '''
