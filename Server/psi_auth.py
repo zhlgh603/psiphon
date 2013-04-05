@@ -31,6 +31,17 @@ import urllib
 import urllib2
 import psi_config
 
+plugins = []
+try:
+    sys.path.insert(0, os.path.abspath('../Plugins'))
+    import psi_server_plugins
+    for (path, plugin) in psi_server_plugins.PSI_AUTH_PLUGINS:
+        sys.path.insert(0, path)
+        plugins.append(__import__(plugin))
+except ImportError as error:
+    print error
+    
+    
 def handle_auth(pam_user, pam_rhost):
 
     # Read parameters tunneled through password field
@@ -77,10 +88,8 @@ def handle_auth(pam_user, pam_rhost):
 
     # Call 'auth' plugins
 
-    for (path, plugin) in psi_config.PSI_AUTH_PLUGINS:
-        sys.path.insert(0, path)
-        module = __import__(plugin)
-        if hasattr(module, 'auth') and not module.auth(auth_params):
+    for plugin in plugins:
+        if hasattr(plugin, 'auth') and not plugin.auth(auth_params):
             return False
 
     # Store session_id/region mapping for stats
@@ -140,10 +149,8 @@ def handle_close_session(pam_user, pam_rhost):
 
     # Call 'close_session' plugins
 
-    for (path, plugin) in psi_config.PSI_AUTH_PLUGINS:
-        sys.path.insert(0, path)
-        module = __import__(plugin)
-        if hasattr(module, 'close_session') and not module.close_session():
+    for plugin in plugins:
+        if hasattr(plugin, 'close_session') and not plugin.close_session():
             return False
 
     return True
