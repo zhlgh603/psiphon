@@ -33,7 +33,7 @@ import psi_config
 
 plugins = []
 try:
-    sys.path.insert(0, os.path.abspath('../Plugins'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'Plugins'))
     import psi_server_plugins
     for (path, plugin) in psi_server_plugins.PSI_AUTH_PLUGINS:
         sys.path.insert(0, path)
