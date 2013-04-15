@@ -62,11 +62,10 @@ def handle_auth(pam_user, pam_rhost):
         # Older backwards compatibility case: if the password length is
         # not correct, skip the session ID logic.
 
-        # Two hex characters per byte, plus pam_exec adds a null character
+        # Two hex characters per byte
         expected_authtok_length = (
             2*(psi_config.SESSION_ID_BYTE_LENGTH +
-               psi_config.SSH_PASSWORD_BYTE_LENGTH)
-            + 1)
+               psi_config.SSH_PASSWORD_BYTE_LENGTH))
             
         if len(authtok) == expected_authtok_length:
             session_id = authtok[0:psi_config.SESSION_ID_BYTE_LENGTH*2]
