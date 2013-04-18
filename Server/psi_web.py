@@ -783,12 +783,11 @@ def main():
     # (presently web server-per-entry since each has its own certificate;
     #  we could, in principle, run one web server that presents a different
     #  cert per IP address)
-    threads_per_server = 30
+    threads_per_server = 60
     if '32bit' in platform.architecture():
         # Only 381 threads can run on 32-bit Linux
         # Assuming 361 to allow for some extra overhead, plus the additional overhead
         # of 1 main thread and 2 threads per web server
-        # Also, we don't want more than 30 per server
         threads_per_server = min(threads_per_server, 360 / len(servers) - 2)
     for server_info in servers:
         thread = WebServerThread(*server_info, server_threads=threads_per_server)
