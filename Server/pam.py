@@ -314,3 +314,4 @@ if __name__ == "__main__":
             change_password(user, o.service)
         except PamException, e:
             print repr(e)
+
