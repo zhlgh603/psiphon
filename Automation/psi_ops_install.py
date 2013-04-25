@@ -395,7 +395,7 @@ def generate_self_signed_certificate():
 
 def install_host(host, servers, existing_server_ids, plugins):
 
-    install_firewall_rules(host, servers)
+    install_firewall_rules(host, servers, plugins)
     
     install_psi_limit_load(host, servers)
     
@@ -586,7 +586,7 @@ def install_host(host, servers, existing_server_ids, plugins):
     # NOTE: call psi_ops_deploy.deploy_host() to complete the install process
 
     
-def install_firewall_rules(host, servers):
+def install_firewall_rules(host, servers, plugins):
 
     iptables_rules_path = '/etc/iptables.rules'
     iptables_rules_contents = '''
@@ -703,6 +703,10 @@ COMMIT
                 if s.ip_address != s.internal_ip_address]) + '''
 COMMIT
 '''
+
+    for plugin in plugins:
+        if hasattr(plugin, 'iptables_rules_contents'):
+            iptables_rules_contents = plugin.iptables_rules_contents(host, servers)
 
     # NOTE that we restart fail2ban after applying firewall rules because iptables-restore
     # flushes iptables which will remove any chains and rules that fail2ban creates on starting up
