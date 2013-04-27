@@ -23,10 +23,15 @@ from psi_ssh_connection import SSHConnection, OSSHConnection
 import json
 import os
 
+import optparse
+
 
 # TODO: add support to server for indicating platform
 CLIENT_VERSION = 1
 LOCAL_SOCKS_PORT = 1080
+LOCAL_HOST_IP = '127.0.0.1'
+GLOBAL_HOST_IP = '0.0.0.0'
+
 
 
 class Data(object):
@@ -70,7 +75,7 @@ class Data(object):
             return False
 
 
-def connect_to_server(data, relay):
+def connect_to_server(data, relay, tun_type='local'):
 
     assert relay in ['SSH', 'OSSH']
 
@@ -85,15 +90,21 @@ def connect_to_server(data, relay):
     for home_page in home_pages:
         print home_page
 
+    if tun_type == 'global':
+        listen_address=GLOBAL_HOST_IP
+    else:
+    
+        listen_address=LOCAL_HOST_IP
+
     if relay == 'OSSH':
         ssh_connection = OSSHConnection(server.ip_address, handshake_response['SSHObfuscatedPort'],
                                         handshake_response['SSHUsername'], handshake_response['SSHPassword'],
                                         handshake_response['SSHObfuscatedKey'], handshake_response['SSHHostKey'],
-                                        str(LOCAL_SOCKS_PORT))
+                                        str(LOCAL_SOCKS_PORT), str(listen_address))
     else:
         ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
                                        handshake_response['SSHUsername'], handshake_response['SSHPassword'],
-                                       handshake_response['SSHHostKey'], str(LOCAL_SOCKS_PORT))
+                                       handshake_response['SSHHostKey'], str(LOCAL_SOCKS_PORT), str(listen_address))
     ssh_connection.connect()
     ssh_connection.test_connection()
     server.connected(relay)
@@ -101,7 +112,7 @@ def connect_to_server(data, relay):
     server.disconnected(relay)
 
 
-def connect():
+def connect(tunnel_type):
 
     while True:
 
@@ -109,9 +120,9 @@ def connect():
 
         try:
             if os.path.isfile('./ssh'):
-                connect_to_server(data, 'OSSH')
+                connect_to_server(data, 'OSSH', tunnel_type)
             else:
-                connect_to_server(data, 'SSH')
+                connect_to_server(data, 'SSH', tunnel_type)
             break
         except Exception as error:
             print error
@@ -122,7 +133,20 @@ def connect():
 
 
 if __name__ == "__main__":
-
-    connect()
+    parser = optparse.OptionParser('usage: %prog [options]')
+    parser.add_option("--local", "-l", dest="local_tunnel", 
+                        action="store_true", help="tunnel local connections")
+    parser.add_option("--global", "-g", dest="global_tunnel",     
+                        action="store_true", help="global tunnel")
+    (options, _) = parser.parse_args()
+    
+    if options.local_tunnel:
+        connect('local')
+    elif options.global_tunnel:
+        connect('global')
+    else:
+        connect('local')
+        
+    # connect()
 
 
