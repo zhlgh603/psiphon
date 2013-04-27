@@ -26,13 +26,14 @@ import sys
 
 class SSHConnection(object):
 
-    def __init__(self, ip_address, port, username, password, host_key, listen_port):
+    def __init__(self, ip_address, port, username, password, host_key, listen_port, listen_address):
         self.ip_address = ip_address
         self.port = port
         self.username = username
         self.password = password
         self.host_key = host_key
         self.listen_port = listen_port
+        self.listen_address = listen_address
         self.ssh = None
 
     def __del__(self):
@@ -48,8 +49,8 @@ class SSHConnection(object):
         return ':'.join(a + b for a, b in zip(md5_hash[::2], md5_hash[1::2]))
 
     def connect(self):
-        self.ssh = pexpect.spawn('ssh -D %s -N -p %s %s@%s' %
-                                 (self.listen_port, self.port, self.username, self.ip_address))
+        self.ssh = pexpect.spawn('ssh -D %s:%s -N -p %s %s@%s' %
+                                 (self.listen_address, self.listen_port, self.port, self.username, self.ip_address))
         # Print ssh output:
         #self.ssh.logfile_read = sys.stdout
         prompt = self.ssh.expect([self._ssh_fingerprint(), 'Password:'])
@@ -62,7 +63,7 @@ class SSHConnection(object):
 
     def test_connection(self):
         # TODO: test the connection
-        print '\nYour SOCKS proxy is now running at 127.0.0.1:%s' % (self.listen_port,)
+        print '\nYour SOCKS proxy is now running at %s:%s' % (self.listen_address, self.listen_port)
 
     def wait_for_disconnect(self):
         try:
@@ -77,13 +78,13 @@ class SSHConnection(object):
 
 class OSSHConnection(SSHConnection):
 
-    def __init__(self, ip_address, port, username, password, obfuscate_keyword, host_key, listen_port):
+    def __init__(self, ip_address, port, username, password, obfuscate_keyword, host_key, listen_port, listen_address):
         self.obfuscate_keyword = obfuscate_keyword
-        SSHConnection.__init__(self, ip_address, port, username, password, host_key, listen_port)
+        SSHConnection.__init__(self, ip_address, port, username, password, host_key, listen_port, listen_address)
 
     def connect(self):
-        self.ssh = pexpect.spawn('./ssh -D %s -N -p %s -z -Z %s %s@%s' %
-                                 (self.listen_port, self.port, self.obfuscate_keyword,
+        self.ssh = pexpect.spawn('./ssh -D %s:%s -N -p %s -z -Z %s %s@%s' %
+                                 (self.listen_address, self.listen_port, self.port, self.obfuscate_keyword,
                                   self.username, self.ip_address))
         # Print ssh output:
         #self.ssh.logfile_read = sys.stdout
