@@ -1,3 +1,5 @@
+syntax: glob
+
 .pydevproject
 
 Client/Release
@@ -15,6 +17,9 @@ Client/psiclient2012.v11.suo
 Client/psiclient/psiclient2012.vcxproj.user
 Client/psiclient/psiclient2012.sdf
 
+Client/psiclient/3rdParty/potty-61/WINDOWS/*.o
+Client/psiclient/3rdParty/potty-61/WINDOWS/*.map
+
 Automation/Builds
 
 Android/PsiphonAndroid/bin
@@ -31,8 +36,6 @@ Android/PsiphonAndroidLibrary/src/com/psiphon3/psiphonlibrary/EmbeddedValues.jav
 Client/psiclient/embeddedvalues.h
 
 node_modules
-
-syntax: glob
 
 # Numerous always-ignore extensions
 *.diff
