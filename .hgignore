@@ -19,6 +19,12 @@ Client/psiclient/psiclient2012.sdf
 
 Client/psiclient/3rdParty/potty-61/WINDOWS/*.o
 Client/psiclient/3rdParty/potty-61/WINDOWS/*.map
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/Release
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/ipch
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.sdf
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.opensdf
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.suo
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.vcxproj.user
 
 Automation/Builds
 
