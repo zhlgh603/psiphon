@@ -282,17 +282,22 @@ class ServerInstance(object):
                                        ('unknown', unknown)])
 
         inputs_lookup = dict(inputs)
+        client_region = inputs_lookup['client_region']
 
         config = psinet.handshake(
                     self.server_ip_address,
                     client_ip_address,
-                    inputs_lookup['client_region'],
+                    client_region,
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_platform'],
                     inputs_lookup['client_version'],
                     event_logger=discovery_logger)
 
+        config['preemptive_reconnect_lifetime_milliseconds'] = \
+            psi_config.PREEMPTIVE_RECONNECT_LIFETIME_MILLISECONDS if \
+            client_region in psi_config.PREEMPTIVE_RECONNECT_REGIONS else 0
+        
         output = []
 
         # Legacy handshake output is a series of Name:Value lines returned to
