@@ -1561,8 +1561,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                     # However, we do not want to prevent an upgrade in the case where a user has
                     # downloaded from multiple propagation channels, and might therefore be connecting
                     # to a server from one propagation channel using a build from a different one.
-                    # TEMPORARILY disabling this.  The latest version is already published to every server.
-                    #psi_ops_deploy.deploy_build_to_hosts(self.__hosts.itervalues(), build_filename)
+                    psi_ops_deploy.deploy_build_to_hosts(self.__hosts.itervalues(), build_filename)
 
                     # Publish to propagation mechanisms
 
@@ -2374,6 +2373,15 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         assert(self.is_locked)
         print 'saving...'
         super(PsiphonNetwork, self).save()
+    
+    def check_provider(provider):
+        if provider == 'linode':
+            pass
+            if self.__linode_account.api_key:
+                psi_linode.check_systems_state(self.__linode_account)
+                
+        elif provider == 'elastichosts':
+            pass
 
 
 def unit_test():
@@ -2454,6 +2462,13 @@ def replace_propagation_channel_servers(propagation_channel_name):
         psinet.show_status()
         psinet.release()
 
+def check_providers():
+    psinet = PsiphonNetwork.load(lock=False)
+    psinet.check_provider('linode')
+    # linode_account = psinet._PsiphonNetwork__linode_account
+    # print linode_account
+    # linode_api = linode.api.Api(key=linode_account.api_key)
+    
 
 if __name__ == "__main__":
     parser = optparse.OptionParser('usage: %prog [options]')
@@ -2466,6 +2481,8 @@ if __name__ == "__main__":
                       help="prune all propagation channels")
     parser.add_option("-n", "--new-servers", dest="channel", action="store", type="string",
                       help="create new servers for this propagation channel")
+    parser.add_option("--check-providers", dest="check_providers", action="store_true",
+                      help="check server health")
     (options, _) = parser.parse_args()
     if options.channel:
         replace_propagation_channel_servers(options.channel)
@@ -2475,5 +2492,7 @@ if __name__ == "__main__":
         test(options.test)
     elif options.readonly:
         view()
+    elif options.check_providers:
+        check_providers()
     else:
         edit()

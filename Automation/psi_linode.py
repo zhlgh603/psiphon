@@ -209,6 +209,42 @@ def get_datacenter_names(linode_account):
         linode_datacenter_names[str(linode_info['LINODEID'])] = datacenter_names[linode_info['DATACENTERID']]
     return linode_datacenter_names
 
+def get_ip_details(linode_api, linodes):
+    for linode in linodes:
+        linode['IP_DETAILS'] = linode_api.linode_ip_list(LinodeID=linode['LINODEID'])
+    return linodes
+    
+def check_system_job_results(linode_api, linodes):
+    for linode in linodes:
+        if linode['LINODEID' == linode_api.base_id:
+            pass
+        else:
+            # check job results
+            if 'JOB_LIST' in linode:
+                if linode['JOB_LIST'][0]['ACTION'] == 'linode.boot':
+                    if linode['JOB_LIST'][0]['HOST_SUCCESS'] != 1:
+                        print 'Linode %s boot unsuccessful' % linode['LABEL']
+
+def check_systems_state(linode_account):
+    linode_api = linode.api.Api(key=linode_account.api_key)
+    linodes = linode_api.linode_list()
+    linodes = get_ip_details(linode_api, linodes)
+    
+    # TODO: handle base image linode
+    for linode in linodes:
+        if linode['LINODEID'] == linode_api.base_id:
+            pass
+        else:
+            if linode['STATUS'] == 2:
+                # Linode is off, try to turn it on
+                print 'Device %s state is %s, powering on' % (linode['LABEL'], linode['STATUS'])
+                linode_start(linode_api, linode['LINODEID'], '')
+                # collect job result
+                linode['JOB_LIST'] = linode_api.linode_job_list(LinodeID=linode['LINODEID'])
+    # sleep for 5 minutes and check state
+    time.sleep(360)
+    check_system_job_results(linode_api, linodes)
+    
 
 if __name__ == "__main__":
     print launch_new_server()
