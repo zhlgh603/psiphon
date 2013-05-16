@@ -2374,13 +2374,12 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         print 'saving...'
         super(PsiphonNetwork, self).save()
     
-    def check_provider(provider):
-        if provider == 'linode':
-            pass
+    def check_provider(self, providers=['linode', 'elastichosts']):
+        if 'linode' in providers:
             if self.__linode_account.api_key:
                 psi_linode.check_systems_state(self.__linode_account)
                 
-        elif provider == 'elastichosts':
+        if 'elastichosts' in providers:
             pass
 
 
@@ -2464,10 +2463,7 @@ def replace_propagation_channel_servers(propagation_channel_name):
 
 def check_providers():
     psinet = PsiphonNetwork.load(lock=False)
-    psinet.check_provider('linode')
-    # linode_account = psinet._PsiphonNetwork__linode_account
-    # print linode_account
-    # linode_api = linode.api.Api(key=linode_account.api_key)
+    psinet.check_provider(['linode'])
     
 
 if __name__ == "__main__":
