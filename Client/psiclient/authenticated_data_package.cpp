@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, Psiphon Inc.
+ * Copyright (c) 2013, Psiphon Inc.
  * All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,24 +19,60 @@
 
 #include "stdafx.h"
 #include "psiclient.h"
-#include "server_entry_auth.h"
+#include "authenticated_data_package.h"
 #include "cryptlib.h"
 #include "cryptlib.h"
 #include "rsa.h"
 #include "base64.h"
 #include "embeddedvalues.h"
+#include "gzip.h"
 
 
-bool verifySignedServerList(const char* signedServerList, string& authenticServerList)
+// signedDataPackage may be binary, so we also need the length.
+bool verifySignedDataPackage(
+    const char* signaturePublicKey,
+    const char* signedDataPackage, 
+    const size_t signedDataPackageLen,
+    bool compressed, 
+    string& authenticDataPackage)
 {
-    // Read the values out of the JSON-formatted signedServerList
+    char* jsonData = NULL;
+    size_t jsonSize = 0;
+    bool jsonDataAllocated = false;
+
+    // The package may be compressed.
+    if (compressed)
+    {
+        CryptoPP::Gunzip unzipper;
+        size_t n = unzipper.Put((const byte*)signedDataPackage, signedDataPackageLen);
+        unzipper.MessageEnd();
+
+        jsonSize = (size_t)unzipper.MaxRetrievable();
+
+        // The null terminator is probably in the compressed data, but to be safe...
+        jsonData = new char[jsonSize+1];
+
+        unzipper.Get((byte*)jsonData, jsonSize);
+        jsonData[jsonSize] = '\0';
+
+        jsonDataAllocated = true;
+    }
+    else
+    {
+        jsonData = (char*)signedDataPackage;
+        jsonSize = signedDataPackageLen;
+        jsonDataAllocated = false;
+    }
+
+    // Read the values out of the JSON-formatted jsonData
     // See psi_ops_server_entry_auth.py for details
 
     Json::Value json_entry;
     Json::Reader reader;
-    bool parsingSuccessful = reader.parse(signedServerList, json_entry);
+    bool parsingSuccessful = reader.parse(jsonData, jsonData+jsonSize, json_entry);
     if (!parsingSuccessful)
     {
+        if (jsonDataAllocated) delete[] jsonData;
         string fail = reader.getFormattedErrorMessages();
         my_print(NOT_SENSITIVE, false, _T("%s: JSON parse failed: %S"), __TFUNCTION__, fail.c_str());
         return false;
@@ -54,16 +90,19 @@ bool verifySignedServerList(const char* signedServerList, string& authenticServe
     }
     catch (exception& e)
     {
+        if (jsonDataAllocated) delete[] jsonData;
         my_print(NOT_SENSITIVE, false, _T("%s: JSON parse exception: %S"), __TFUNCTION__, e.what());
         return false;
     }
+
+    if (jsonDataAllocated) delete[] jsonData;
 
     // Match the presented public key digest against the embedded public key
 
     string expectedPublicKeyDigest;
     CryptoPP::SHA256 hash;
     CryptoPP::StringSource(
-        REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY,
+        signaturePublicKey,
         true,
         new CryptoPP::HashFilter(hash,
             new CryptoPP::Base64Encoder(new CryptoPP::StringSink(expectedPublicKeyDigest), false)));
@@ -77,7 +116,7 @@ bool verifySignedServerList(const char* signedServerList, string& authenticServe
 
     CryptoPP::RSASS<CryptoPP::PKCS1v15, CryptoPP::SHA256>::Verifier verifier(
         CryptoPP::StringSource(
-            REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY,
+            signaturePublicKey,
             true,
             new CryptoPP::Base64Decoder()));
 
@@ -101,7 +140,7 @@ bool verifySignedServerList(const char* signedServerList, string& authenticServe
 
     if (result)
     {
-        authenticServerList = data;
+        authenticDataPackage = data;
     }
 
     return result;
