@@ -82,5 +82,5 @@ DISCOVERY_EXPIRE_SECONDS = 60 * 5 # Discard discovery records older than 5 minut
 #==== Preemptive Reconnect ====================================================
 
 PREEMPTIVE_RECONNECT_LIFETIME_MILLISECONDS = 60000
-PREEMPTIVE_RECONNECT_REGIONS = ['CA', 'IR', 'None']
+PREEMPTIVE_RECONNECT_REGIONS = []
 
