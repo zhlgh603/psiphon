@@ -73,3 +73,6 @@ intermediate
 publish
 .idea
 
+Automation/zenoss_credentials.py
+pyclient/psi_client.dat
+Server/psi_health_check.py
