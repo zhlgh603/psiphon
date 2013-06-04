@@ -57,6 +57,7 @@ try:
 except ImportError:
     pass
 
+
 #==== Session Database ========================================================
 
 import string
@@ -69,9 +70,17 @@ SESSION_EXPIRE_SECONDS = 2592000 # Discard session_ids older than one month
 SESSION_ID_BYTE_LENGTH = 16
 SESSION_ID_CHARACTERS = string.hexdigits
 
+
 #==== Discovery Database ======================================================
 
 DISCOVERY_DB_HOST = SESSION_DB_HOST
 DISCOVERY_DB_PORT = SESSION_DB_PORT
 DISCOVERY_DB_INDEX = 1
 DISCOVERY_EXPIRE_SECONDS = 60 * 5 # Discard discovery records older than 5 minutes
+
+
+#==== Preemptive Reconnect ====================================================
+
+PREEMPTIVE_RECONNECT_LIFETIME_MILLISECONDS = 60000
+PREEMPTIVE_RECONNECT_REGIONS = []
+

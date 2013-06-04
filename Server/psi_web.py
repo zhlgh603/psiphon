@@ -282,17 +282,22 @@ class ServerInstance(object):
                                        ('unknown', unknown)])
 
         inputs_lookup = dict(inputs)
+        client_region = inputs_lookup['client_region']
 
         config = psinet.handshake(
                     self.server_ip_address,
                     client_ip_address,
-                    inputs_lookup['client_region'],
+                    client_region,
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
                     inputs_lookup['client_platform'],
                     inputs_lookup['client_version'],
                     event_logger=discovery_logger)
 
+        config['preemptive_reconnect_lifetime_milliseconds'] = \
+            psi_config.PREEMPTIVE_RECONNECT_LIFETIME_MILLISECONDS if \
+            client_region in psi_config.PREEMPTIVE_RECONNECT_REGIONS else 0
+        
         output = []
 
         # Legacy handshake output is a series of Name:Value lines returned to
@@ -783,12 +788,11 @@ def main():
     # (presently web server-per-entry since each has its own certificate;
     #  we could, in principle, run one web server that presents a different
     #  cert per IP address)
-    threads_per_server = 30
+    threads_per_server = 60
     if '32bit' in platform.architecture():
         # Only 381 threads can run on 32-bit Linux
         # Assuming 361 to allow for some extra overhead, plus the additional overhead
         # of 1 main thread and 2 threads per web server
-        # Also, we don't want more than 30 per server
         threads_per_server = min(threads_per_server, 360 / len(servers) - 2)
     for server_info in servers:
         thread = WebServerThread(*server_info, server_threads=threads_per_server)
