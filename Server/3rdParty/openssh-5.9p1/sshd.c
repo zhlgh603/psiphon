@@ -431,8 +431,6 @@ sshd_exchange_identification(int sock_in, int sock_out)
 		minor = PROTOCOL_MINOR_1;
 	}
 
-error("use_obfuscation_prefix: %d", use_obfuscation_prefix);
-
 	if (use_obfuscation_prefix) {
 		if (roaming_atomicio(vwrite, sock_out, prefix, prefix_length)
 		    != prefix_length) {
