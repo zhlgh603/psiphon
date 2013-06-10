@@ -432,7 +432,7 @@ sshd_exchange_identification(int sock_in, int sock_out)
 	}
 
 	if (use_obfuscation_prefix) {
-		if (roaming_atomicio(vwrite, sock_out, prefix, prefix_length)
+		if (roaming_atomicio(vwrite, sock_out, (char*)prefix, prefix_length)
 		    != prefix_length) {
 			logit("Could not write prefix string to %s", get_remote_ipaddr());
 			cleanup_exit(255);
