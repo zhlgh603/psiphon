@@ -254,7 +254,7 @@ Buffer loginmsg;
 int use_obfuscation = 0;
 
 // PSIPHON: HTTP-PREFIX
-int use_obfuscation_prefix = 0;
+extern int use_obfuscation_prefix;
 
 /* Unprivileged user */
 struct passwd *privsep_pw = NULL;

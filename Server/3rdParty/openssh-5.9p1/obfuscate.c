@@ -10,7 +10,7 @@
 #include <string.h>
 
 // PSIPHON: HTTP-PREFIX
-extern int use_obfuscation_prefix;
+int use_obfuscation_prefix = 0;
 
 static RC4_KEY rc4_input;
 static RC4_KEY rc4_output;
@@ -43,16 +43,16 @@ int skip_prefix(int sock_in, u_char* previously_read_bytes, u_int previously_rea
 	// which indicates to obfuscate_receive_seed how many bytes it needs to read
 	// to complete the seed message.
 
-	int method;
+	int i;
 	int has_method = 0;
 	u_int previously_read_offset;
 	const char* prefix_terminator = "\r\n\r\n";
 	int prefix_terminator_offset = 0;
 	u_char next_byte;
 
-	const char*[] methods = {
+	const char* methods[] = {
 		"OPTIONS", "GET", "HEAD", "POST", "PUT", "DELETE", "TRACE", "CONNECT"
-	}
+	};
 
 	// longest method is 7 bytes
 	if (previously_read_len < 7) {
@@ -60,11 +60,12 @@ int skip_prefix(int sock_in, u_char* previously_read_bytes, u_int previously_rea
 	}
 
 	// backwards compatibility special case
-	if (0 == memcmp(previously_read_bytes, "GET / HTTP/1.0\r\n")) {
+	if (previously_read_len >= 16 &&
+		0 == memcmp(previously_read_bytes, "GET / HTTP/1.0\r\n", 16)) {
 		return 0;
 	}
 
-	for (method = 0; method < sizeof(methods)/sizeof(const char*); method++) {
+	for (i = 0; i < sizeof(methods)/sizeof(const char*); i++) {
 		u_int method_len = strlen(methods[i]);
 		if (0 == memcmp(previously_read_bytes, methods[i], method_len)) {
 			has_method = 1;
@@ -128,7 +129,7 @@ obfuscate_receive_seed(int sock_in)
 		fatal("obfuscate_receive_seed: read failed");
 
 	// PSIPHON: HTTP-PREFIX
-	offset = skip_prefix(sock_in, &seed, sizeof(struct seed_msg));
+	offset = skip_prefix(sock_in, (u_char*)&seed, sizeof(struct seed_msg));
 	if (offset > 0)
 	{
 		memmove(&seed, &seed + offset, len - offset);
@@ -207,7 +208,7 @@ obfuscate_send_seed(int sock_out)
 		message_length - OBFUSCATE_SEED_LENGTH);
 	debug2("obfuscate_send_seed: Sending seed message with %d bytes of padding", padding_length);
 
-	atomicio(vwrite, sock_out, prefix, prefix_length);
+	atomicio(vwrite, sock_out, (char*)prefix, prefix_length);
 	atomicio(vwrite, sock_out, seed, message_length);
 
 	xfree(seed);
