@@ -111,11 +111,11 @@ int skip_prefix(int sock_in, u_char* previously_read_bytes, u_int previously_rea
 /*
  * Server calls this
  */
-void 
+void
 obfuscate_receive_seed(int sock_in)
 {
 	struct seed_msg seed;
-	
+
 	u_char padding_drain[OBFUSCATE_MAX_PADDING];
 	u_int len;
 	u_int32_t padding_length;
@@ -133,8 +133,8 @@ obfuscate_receive_seed(int sock_in)
 	if (offset > 0)
 	{
 		remaining = len - offset;
-		memmove(&seed, &seed + offset, remaining);
-		len = remaining + atomicio(read, sock_in, &seed + remaining, sizeof(struct seed_msg) - remaining);
+		memmove(&seed, ((unsigned char*)&seed) + offset, remaining);
+		len = remaining + atomicio(read, sock_in, ((unsigned char*)&seed) + remaining, sizeof(struct seed_msg) - remaining);
 
 		debug2("obfuscate_receive_seed: read %d byte seed message from client", len);
 		if(len != sizeof(struct seed_msg))
@@ -157,7 +157,7 @@ obfuscate_receive_seed(int sock_in)
 	} else {
 		seed.magic = test_magic;
 	}
-	
+
 	obfuscate_input((u_char *)&seed.padding_length, 4);
 	padding_length = ntohl(seed.padding_length);
 	if(padding_length > OBFUSCATE_MAX_PADDING) {
@@ -181,12 +181,12 @@ obfuscate_send_seed(int sock_out)
 	const char* prefix = "POST / HTTP/1.1\r\n\r\n";
 	u_int prefix_length = strlen(prefix);
 
-	struct seed_msg *seed; 
+	struct seed_msg *seed;
 	int i;
 	u_int32_t rnd = 0;
 	u_int message_length;
 	u_int padding_length;
-	
+
 	padding_length = arc4random() % OBFUSCATE_MAX_PADDING;
 	message_length = padding_length + sizeof(struct seed_msg);
 	seed = xmalloc(message_length);
