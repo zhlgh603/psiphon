@@ -81,6 +81,9 @@ int skip_prefix(int sock_in, u_char* previously_read_bytes, u_int previously_rea
 	// Skip all bytes up to and including the prefix terminator, <CR><LF><CR><LF>
 	// Check in previously read buffer first, then read more bytes
 
+	// Behavior when client sends an infinite prefix is the same as when
+	// the client sends an invalie obfuscation message (read_forever)
+
 	for (;;) {
 
 		if (previously_read_offset < previously_read_len) {
