@@ -120,7 +120,7 @@ obfuscate_receive_seed(int sock_in)
 	u_int len;
 	u_int32_t padding_length;
 	u_int32_t test_magic;
-	u_int offset;
+	u_int offset, remaining;
 
 	len = atomicio(read, sock_in, &seed, sizeof(struct seed_msg));
 
@@ -132,12 +132,13 @@ obfuscate_receive_seed(int sock_in)
 	offset = skip_prefix(sock_in, (u_char*)&seed, sizeof(struct seed_msg));
 	if (offset > 0)
 	{
-		memmove(&seed, &seed + offset, len - offset);
-		len = (len - offset) + atomicio(read, sock_in, &seed, sizeof(struct seed_msg) - offset);
+		remaining = len - offset;
+		memmove(&seed, &seed + offset, remaining);
+		len = remaining + atomicio(read, sock_in, &seed + remaining, sizeof(struct seed_msg) - remaining);
 
 		debug2("obfuscate_receive_seed: read %d byte seed message from client", len);
 		if(len != sizeof(struct seed_msg))
-			fatal("obfuscate_receive_seed: read failed");
+			fatal("obfuscate_receive_seed: reread failed");
 	}
 
 	initialize(seed.seed_buffer, 1, 1); // try fixed key pair first
