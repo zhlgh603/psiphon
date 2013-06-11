@@ -501,7 +501,7 @@ ssh_exchange_identification(int timeout_ms)
 
 			// PSIPHON: HTTP-PREFIX
 			// Skip all bytes up to and including the prefix terminator, <CR><LF><CR><LF>
-			if (prefix_terminator_offset != -1) {
+			if (options.obfuscate_handshake && prefix_terminator_offset != -1) {
 				if (buf[i] == prefix_terminator[prefix_terminator_offset]) {
 					prefix_terminator_offset++;
 					if (prefix_terminator_offset == strlen(prefix_terminator)) {
