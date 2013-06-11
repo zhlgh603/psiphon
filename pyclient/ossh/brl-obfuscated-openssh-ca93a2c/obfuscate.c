@@ -9,6 +9,9 @@
 #include "obfuscate.h"
 #include <string.h>
 
+// PSIPHON: HTTP-PREFIX
+int use_obfuscation_prefix = 0;
+
 static RC4_KEY rc4_input;
 static RC4_KEY rc4_output;
 
@@ -33,18 +36,94 @@ static void set_keys(const u_char *, const u_char *);
 static void initialize(const u_char *, int, int);
 static void read_forever(int);
 
+// PSIPHON: HTTP-PREFIX
+int skip_prefix(int sock_in, u_char* previously_read_bytes, u_int previously_read_len)
+{
+	// Note: return value is offset into previously_read_bytes after prefix ends,
+	// which indicates to obfuscate_receive_seed how many bytes it needs to read
+	// to complete the seed message.
+
+	int i;
+	int has_method = 0;
+	u_int previously_read_offset;
+	const char* prefix_terminator = "\r\n\r\n";
+	int prefix_terminator_offset = 0;
+	u_char next_byte;
+
+	const char* methods[] = {
+		"OPTIONS", "GET", "HEAD", "POST", "PUT", "DELETE", "TRACE", "CONNECT"
+	};
+
+	// longest method is 7 bytes
+	if (previously_read_len < 7) {
+		return 0;
+	}
+
+	// backwards compatibility special case
+	if (previously_read_len >= 16 &&
+		0 == memcmp(previously_read_bytes, "GET / HTTP/1.0\r\n", 16)) {
+		return 0;
+	}
+
+	for (i = 0; i < sizeof(methods)/sizeof(const char*); i++) {
+		u_int method_len = strlen(methods[i]);
+		if (0 == memcmp(previously_read_bytes, methods[i], method_len)) {
+			has_method = 1;
+			previously_read_offset = method_len;
+			break;
+		}
+	}
+
+	if (!has_method) {
+		return 0;
+	}
+
+	// Skip all bytes up to and including the prefix terminator, <CR><LF><CR><LF>
+	// Check in previously read buffer first, then read more bytes
+
+	// Behavior when client sends an infinite prefix is the same as when
+	// the client sends an invalie obfuscation message (read_forever)
+
+	for (;;) {
+
+		if (previously_read_offset < previously_read_len) {
+			next_byte = previously_read_bytes[previously_read_offset++];
+		} else {
+			if (1 != atomicio(read, sock_in, &next_byte, 1)) {
+				fatal("skip_prefix: read failed");
+			}
+		}
+
+		if (next_byte == prefix_terminator[prefix_terminator_offset]) {
+			prefix_terminator_offset++;
+			if (prefix_terminator_offset == strlen(prefix_terminator)) {
+				break;
+			}
+		} else {
+			prefix_terminator_offset = 0;
+		}
+	}
+
+	// server should prefix its response, as client will now expect it
+	use_obfuscation_prefix = 1;
+
+	return previously_read_offset;
+}
+
 
 /*
  * Server calls this
  */
-void 
+void
 obfuscate_receive_seed(int sock_in)
 {
 	struct seed_msg seed;
-	
+
 	u_char padding_drain[OBFUSCATE_MAX_PADDING];
 	u_int len;
 	u_int32_t padding_length;
+	u_int32_t test_magic;
+	u_int offset, remaining;
 
 	len = atomicio(read, sock_in, &seed, sizeof(struct seed_msg));
 
@@ -52,26 +131,37 @@ obfuscate_receive_seed(int sock_in)
 	if(len != sizeof(struct seed_msg))
 		fatal("obfuscate_receive_seed: read failed");
 
+	// PSIPHON: HTTP-PREFIX
+	offset = skip_prefix(sock_in, (u_char*)&seed, sizeof(struct seed_msg));
+	if (offset > 0)
+	{
+		remaining = len - offset;
+		memmove(&seed, ((unsigned char*)&seed) + offset, remaining);
+		len = remaining + atomicio(read, sock_in, ((unsigned char*)&seed) + remaining, sizeof(struct seed_msg) - remaining);
+
+		debug2("obfuscate_receive_seed: read %d byte seed message from client", len);
+		if(len != sizeof(struct seed_msg))
+			fatal("obfuscate_receive_seed: reread failed");
+	}
+
 	initialize(seed.seed_buffer, 1, 1); // try fixed key pair first
 
-        //create a copy of seed.magic because obfuscate_input(..) destroys it
-        u_int32_t test_magic = seed.magic;
+	// create a copy of seed.magic because obfuscate_input(..) destroys it
+	test_magic = seed.magic;
 	obfuscate_input((u_char *)&test_magic, 4);
 	if(OBFUSCATE_MAGIC_VALUE != ntohl(test_magic)) {
-            debug2("trying ossh backwards compatibility mode");
-            initialize(seed.seed_buffer, 1, 0); // try backwards compatible key pair
-            obfuscate_input((u_char *)&seed.magic, 4);
-            if(OBFUSCATE_MAGIC_VALUE != ntohl(seed.magic)) {
-                logit("Magic value check failed (%u) on obfuscated handshake.", ntohl(seed.magic));
-                read_forever(sock_in);
-            }
+		debug2("trying ossh backwards compatibility mode");
+		initialize(seed.seed_buffer, 1, 0); // try backwards compatible key pair
+		obfuscate_input((u_char *)&seed.magic, 4);
+		if(OBFUSCATE_MAGIC_VALUE != ntohl(seed.magic)) {
+			logit("Magic value check failed (%u) on obfuscated handshake.", ntohl(seed.magic));
+			read_forever(sock_in);
+		}
+	} else {
+		seed.magic = test_magic;
 	}
-        else
-        {
-             seed.magic = test_magic;
-        }
-	
-        obfuscate_input((u_char *)&seed.padding_length, 4);
+
+	obfuscate_input((u_char *)&seed.padding_length, 4);
 	padding_length = ntohl(seed.padding_length);
 	if(padding_length > OBFUSCATE_MAX_PADDING) {
 		logit("Illegal padding length %d for obfuscated handshake", ntohl(seed.padding_length));
@@ -90,12 +180,16 @@ obfuscate_receive_seed(int sock_in)
 void
 obfuscate_send_seed(int sock_out)
 {
-	struct seed_msg *seed; 
+	// PSIPHON: HTTP-PREFIX
+	const char* prefix = "POST / HTTP/1.1\r\n\r\n";
+	u_int prefix_length = strlen(prefix);
+
+	struct seed_msg *seed;
 	int i;
 	u_int32_t rnd = 0;
 	u_int message_length;
 	u_int padding_length;
-	
+
 	padding_length = arc4random() % OBFUSCATE_MAX_PADDING;
 	message_length = padding_length + sizeof(struct seed_msg);
 	seed = xmalloc(message_length);
@@ -117,9 +211,11 @@ obfuscate_send_seed(int sock_out)
 	obfuscate_output(((u_char *)seed) + OBFUSCATE_SEED_LENGTH,
 		message_length - OBFUSCATE_SEED_LENGTH);
 	debug2("obfuscate_send_seed: Sending seed message with %d bytes of padding", padding_length);
-	atomicio(vwrite, sock_out, seed, message_length);
-	xfree(seed);
 
+	atomicio(vwrite, sock_out, (char*)prefix, prefix_length);
+	atomicio(vwrite, sock_out, seed, message_length);
+
+	xfree(seed);
 }
 
 void
@@ -189,14 +285,14 @@ generate_key(const u_char *seed, const u_char *iv, u_int iv_len, u_char *key_dat
 	memcpy(p, iv, iv_len);
 
 	EVP_DigestInit(&ctx, EVP_sha1());
-        if(ossh_key_fix)
-        {
-            EVP_DigestUpdate(&ctx, buffer, buffer_length);
-        }
-        else
-        {
-            EVP_DigestUpdate(&ctx, buffer, OBFUSCATE_SEED_LENGTH + iv_len);
-        }
+	if(ossh_key_fix)
+	{
+		EVP_DigestUpdate(&ctx, buffer, buffer_length);
+	}
+	else
+	{
+		EVP_DigestUpdate(&ctx, buffer, OBFUSCATE_SEED_LENGTH + iv_len);
+	}
 	EVP_DigestFinal(&ctx, md_output, &md_len);
 
 	xfree(buffer);
