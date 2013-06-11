@@ -1,5 +1,5 @@
-.hgignore
-.project
+syntax: glob
+
 .pydevproject
 
 Client/Release
@@ -11,10 +11,39 @@ Client/psiclient.opensdf
 Client/psiclient.sdf
 Client/psiclient.suo
 Client/psiclient/psiclient.vcxproj.user
+Client/psiclient2012.sdf
+Client/psiclient2012.opensdf
+Client/psiclient2012.v11.suo
+Client/psiclient/psiclient2012.vcxproj.user
+Client/psiclient/psiclient2012.sdf
+
+Client/psiclient/3rdParty/potty-61/WINDOWS/*.o
+Client/psiclient/3rdParty/potty-61/WINDOWS/*.map
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/Release
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/Debug
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/ipch
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.sdf
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.opensdf
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.suo
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.vcxproj.user
+Client/psiclient/3rdParty/potty-61/WINDOWS/MSVC/plonk/plonk.v11.suo
 
 Automation/Builds
 
-syntax: glob
+Android/PsiphonAndroid/bin
+Android/PsiphonAndroid/gen
+Android/PsiphonAndroid/obj
+Android/zirco-browser/bin
+Android/zirco-browser/gen
+Android/PsiphonAndroidLibrary/bin
+Android/PsiphonAndroidLibrary/gen
+Android/PsiphonProxiedWebApp/bin
+Android/PsiphonProxiedWebApp/gen
+
+Android/PsiphonAndroidLibrary/src/com/psiphon3/psiphonlibrary/EmbeddedValues.java
+Client/psiclient/embeddedvalues.h
+
+node_modules
 
 # Numerous always-ignore extensions
 *.diff
@@ -44,3 +73,6 @@ intermediate
 publish
 .idea
 
+Automation/zenoss_credentials.py
+pyclient/psi_client.dat
+Server/psi_health_check.py
