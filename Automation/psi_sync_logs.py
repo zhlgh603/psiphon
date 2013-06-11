@@ -26,6 +26,7 @@ import json
 import pexpect
 import base64
 import hashlib
+import posixpath
 
 import psi_ssh
 
@@ -38,7 +39,6 @@ PSI_OPS_DB_FILENAME = os.path.join(os.path.abspath('.'), 'psi_ops_stats.dat')
 
 # Use this function on platforms with no rsync; it's much less efficient
 def pull_log_files(host):
-
     start_time = time.time()
 
     print 'pull log files from host %s...' % (host.id,)
@@ -51,9 +51,13 @@ def pull_log_files(host):
     dirlist = ssh.list_dir(HOST_LOG_DIR)
     for filename in dirlist:
         if re.match(HOST_LOG_FILENAME_PATTERN, filename):
+            try:
+                os.makedirs(os.path.join(LOCAL_LOG_ROOT, host.id))
+            except OSError:
+                pass
             ssh.get_file(
                 posixpath.join(HOST_LOG_DIR, filename),
-                os.path.join(LOCAL_LOG_ROOT, host.id, target_filename))
+                os.path.join(LOCAL_LOG_ROOT, host.id, filename))
     ssh.close()
 
     print 'completed host %s' % (host.id,)
@@ -121,6 +125,12 @@ if __name__ == "__main__":
                   host['stats_ssh_username'],
                   host['stats_ssh_password'])
              for host in psinet['_PsiphonNetwork__hosts'].itervalues()]
+
+    # Remove the known_hosts file entry for each host.  Since servers are destroyed
+    # and recreated often, it is possible to have an old entry in the known_hosts file
+    # that matches a current host's ip address and port
+    for host in hosts:
+        os.system('ssh-keygen -R [%s]:%s' % (host.ip_address, host.ssh_port))
 
     pool = multiprocessing.Pool(200)
     results = pool.map(sync_log_files, hosts)
