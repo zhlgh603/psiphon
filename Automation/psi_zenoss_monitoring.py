@@ -54,8 +54,9 @@ ROUTERS = { 'MessagingRouter': 'messaging',
             'ZenPackRouter': 'zenpack',
             'JobsRouter': 'jobs' }
 
-
-GEOIP_DAT_PATH = "/usr/share/GeoIP/GeoIPCity.dat"
+#TODO: Check GeoIP location
+GEOIP_DAT_PATH = "/usr/local/share/GeoIP/GeoIPCity.dat"
+#GEOIP_DAT_PATH = "/usr/share/GeoIP/GeoIPCity.dat"
 
 class ZenossAPI():
     def __init__(self, debug=False):
