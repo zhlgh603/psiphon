@@ -449,7 +449,7 @@ def process_stats(host, servers, db_cur, psinet, error_file=None):
         table_name = event_type
         if event_type.find('.') != -1:
             table_name = event_type.split('.')[0]
-        command = 'insert into %s (%s) select %s where not exists (select 1 from %s where %s)' % (
+        command = "insert into %s (%s) select %s where not exists and timestamp > now() - interval '1 week' (select 1 from %s where %s)" % (
                         table_name,
                         ', '.join(event_columns[event_type]),
                         ', '.join(['%s']*len(event_columns[event_type])),
@@ -459,7 +459,7 @@ def process_stats(host, servers, db_cur, psinet, error_file=None):
 
         # Add special case statement to use when last_connected is NULL
         if 'last_connected' in event_columns[event_type]:
-            command = 'insert into %s (%s) select %s where not exists (select 1 from %s where %s)' % (
+            command = "insert into %s (%s) select %s where not exists and timestamp > now() - interval '1 week' (select 1 from %s where %s)" % (
                             table_name,
                             ', '.join(event_columns[event_type]),
                             ', '.join(['%s']*len(event_columns[event_type])),
@@ -717,7 +717,8 @@ if __name__ == "__main__":
             process_stats(host, servers, db_cur, psinet)
             db_cur.close()
             db_conn.commit()
-        reconstruct_sessions(db_conn)
+        #TODO: re-enable this
+        #reconstruct_sessions(db_conn)
         db_conn.commit()
     except Exception as e:
         for line in traceback.format_exc().split('\n'):
