@@ -449,7 +449,7 @@ def process_stats(host, servers, db_cur, psinet, error_file=None):
         table_name = event_type
         if event_type.find('.') != -1:
             table_name = event_type.split('.')[0]
-        command = "insert into %s (%s) select %s where not exists(select 1 from %s where %s) and timestamp > now() - interval '1 week'" % (
+        command = "insert into %s (%s) select %s where not exists (select 1 from %s where %s and timestamp > now() - interval '1 week')" % (
                         table_name,
                         ', '.join(event_columns[event_type]),
                         ', '.join(['%s']*len(event_columns[event_type])),
@@ -459,7 +459,7 @@ def process_stats(host, servers, db_cur, psinet, error_file=None):
 
         # Add special case statement to use when last_connected is NULL
         if 'last_connected' in event_columns[event_type]:
-            command = "insert into %s (%s) select %s where not exists (select 1 from %s where %s) and timestamp > now() - interval '1 week'" % (
+            command = "insert into %s (%s) select %s where not exists (select 1 from %s where %s and timestamp > now() - interval '1 week')" % (
                             table_name,
                             ', '.join(event_columns[event_type]),
                             ', '.join(['%s']*len(event_columns[event_type])),
@@ -600,7 +600,7 @@ def process_stats(host, servers, db_cur, psinet, error_file=None):
                     # validated by hash table lookups
 
                     command = event_sql[event_type]
-
+                    
                     db_cur.execute(command, field_values + field_values)
                     lines_processed += 1
 
