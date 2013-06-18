@@ -253,6 +253,9 @@ Buffer loginmsg;
 /* Enable handshake obfuscation */
 int use_obfuscation = 0;
 
+// PSIPHON: HTTP-PREFIX
+extern int use_obfuscation_prefix;
+
 /* Unprivileged user */
 struct passwd *privsep_pw = NULL;
 
@@ -402,6 +405,10 @@ key_regeneration_alarm(int sig)
 static void
 sshd_exchange_identification(int sock_in, int sock_out)
 {
+	// PSIPHON: HTTP-PREFIX
+	const char* prefix = "HTTP/1.1 200 OK\r\n\r\n";
+	u_int prefix_length = strlen(prefix);
+
 	u_int i;
 	int mismatch;
 	int remote_major, remote_minor;
@@ -423,6 +430,15 @@ sshd_exchange_identification(int sock_in, int sock_out)
 		major = PROTOCOL_MAJOR_1;
 		minor = PROTOCOL_MINOR_1;
 	}
+
+	if (use_obfuscation_prefix) {
+		if (roaming_atomicio(vwrite, sock_out, (char*)prefix, prefix_length)
+		    != prefix_length) {
+			logit("Could not write prefix string to %s", get_remote_ipaddr());
+			cleanup_exit(255);
+		}
+	}
+
 	snprintf(buf, sizeof buf, "SSH-%d.%d-%.100s%s", major, minor,
 	    SSH_VERSION, newline);
 	server_version_string = xstrdup(buf);
