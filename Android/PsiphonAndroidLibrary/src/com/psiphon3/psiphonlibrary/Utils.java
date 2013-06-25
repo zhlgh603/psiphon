@@ -646,8 +646,9 @@ public class Utils
         return networkInfo == null ? "" : networkInfo.getTypeName();
     }
 
-    public static String getIPv4Address()
+    public static List<String> getIPv4Addresses()
     {
+        List<String> addresses = new ArrayList<String>();
         List<NetworkInterface> netInterfaces;
         try
         {
@@ -655,24 +656,21 @@ public class Utils
         }
         catch (SocketException e)
         {
-            return "";
+            return addresses;
         }
 
         for (NetworkInterface netInterface : netInterfaces)
         {
             for (InetAddress inetAddress : Collections.list(netInterface.getInetAddresses()))
             {
-                if (!inetAddress.isLoopbackAddress())
+                String ipAddress = inetAddress.getHostAddress();
+                if (InetAddressUtils.isIPv4Address(ipAddress))
                 {
-                    String ipAddress = inetAddress.getHostAddress();
-                    if (InetAddressUtils.isIPv4Address(ipAddress))
-                    {
-                        return ipAddress;
-                    }
+                    addresses.add(ipAddress);
                 }
             }
         }
-        return "";
+        return addresses;
     }
     
     private static final String CANDIDATE_10_SLASH_8 = "10.0.0.1";
