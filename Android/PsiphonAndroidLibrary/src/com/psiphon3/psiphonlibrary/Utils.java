@@ -661,6 +661,11 @@ public class Utils
 
         for (NetworkInterface netInterface : netInterfaces)
         {
+            if (netInterface.getName().startsWith("tun"))
+            {
+                // skip the VPN Service tun device
+                continue;
+            }
             for (InetAddress inetAddress : Collections.list(netInterface.getInetAddresses()))
             {
                 String ipAddress = inetAddress.getHostAddress();

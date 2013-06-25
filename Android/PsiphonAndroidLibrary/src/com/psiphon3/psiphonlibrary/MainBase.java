@@ -432,6 +432,7 @@ public abstract class MainBase
             m_tabHost.setOnTouchListener(onTouchListener);
             m_statusTabToggleButton = (ImageButton)findViewById(R.id.statusTabToggleButton);
             m_statusTabToggleButton.setOnTouchListener(onTouchListener);
+            findViewById(R.id.advancedTab).setOnTouchListener(onTouchListener);
             findViewById(R.id.statisticsView).setOnTouchListener(onTouchListener);
             ListView statusListView = (ListView)findViewById(R.id.statusList);
             statusListView.setOnTouchListener(onTouchListener);
