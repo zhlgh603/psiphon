@@ -56,6 +56,36 @@
 
                 </LinearLayout>
                 
+                <LinearLayout 
+                    android:id="@+id/advancedTab"
+                    android:layout_width="fill_parent"
+                    android:layout_height="fill_parent"
+                    android:orientation="vertical" 
+                    android:scrollbarAlwaysDrawVerticalTrack="false" 
+                    android:weightSum="1.0">
+
+                    <CheckBox
+                        android:id="@+id/shareProxiesToggle"
+                        android:onClick="onShareProxiesToggle"
+                        android:layout_height="wrap_content"
+                        android:layout_width="wrap_content"
+                        android:text="@string/share_proxies_toggle"
+                        android:textAppearance="?android:attr/textAppearanceSmall"/>
+                    
+                    <TextView
+                        android:id="@+id/socksportline"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="" />
+
+                    <TextView
+                        android:id="@+id/httpproxyportline"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="" />
+                    
+                </LinearLayout>
+                
                 <ScrollView android:id="@+id/statisticsView"
                     android:layout_width="fill_parent"
                     android:layout_height="fill_parent"
