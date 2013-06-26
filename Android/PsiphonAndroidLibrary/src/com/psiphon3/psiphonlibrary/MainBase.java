@@ -117,6 +117,7 @@ public abstract class MainBase
         public static final String TUNNEL_STARTING = "com.psiphon3.PsiphonAndroidActivity.TUNNEL_STARTING";
         public static final String TUNNEL_STOPPING = "com.psiphon3.PsiphonAndroidActivity.TUNNEL_STOPPING";
         public static final String STATUS_ENTRY_AVAILABLE = "com.psiphon3.PsiphonAndroidActivity.STATUS_ENTRY_AVAILABLE";
+        public static final String SHARE_PROXIES_PREFERENCE = "shareProxiesPreference";
         
         protected static final int REQUEST_CODE_PREPARE_VPN = 100;
 
@@ -141,6 +142,9 @@ public abstract class MainBase
         private DataTransferGraph m_slowReceivedGraph;
         private DataTransferGraph m_fastSentGraph;
         private DataTransferGraph m_fastReceivedGraph;
+        /*private CheckBox m_shareProxiesToggle;
+        private TextView m_statusTabSocksPortLine;
+        private TextView m_statusTabHttpProxyPortLine;*/
 
         // Avoid calling m_statusTabToggleButton.setImageResource() every 250 ms
         // when it is set to the connected image
@@ -434,6 +438,9 @@ public abstract class MainBase
             m_compressionRatioReceivedView = (TextView)findViewById(R.id.compressionRatioReceived);
             m_compressionSavingsSentView = (TextView)findViewById(R.id.compressionSavingsSent);
             m_compressionSavingsReceivedView = (TextView)findViewById(R.id.compressionSavingsReceived);
+            /*m_shareProxiesToggle = (CheckBox)findViewById(R.id.shareProxiesToggle);
+            m_statusTabSocksPortLine = (TextView)findViewById(R.id.socksportline);
+            m_statusTabHttpProxyPortLine = (TextView)findViewById(R.id.httpproxyportline);*/
 
             m_slowSentGraph = new DataTransferGraph(this, R.id.slowSentGraph);
             m_slowReceivedGraph = new DataTransferGraph(this, R.id.slowReceivedGraph);
@@ -467,6 +474,11 @@ public abstract class MainBase
             initToggleResources();
             
             PsiphonData.getPsiphonData().setDisplayDataTransferStats(true);
+            
+            boolean shareProxiesPreference =
+                    PreferenceManager.getDefaultSharedPreferences(this).getBoolean(SHARE_PROXIES_PREFERENCE, false);
+            PsiphonData.getPsiphonData().setShareProxies(shareProxiesPreference);
+            /*m_shareProxiesToggle.setChecked(shareProxiesPreference);*/
 
             // Note that this must come after the above lines, or else the activity
             // will not be sufficiently initialized for isDebugMode to succeed. (Voodoo.)
@@ -611,6 +623,55 @@ public abstract class MainBase
             }
         }
         
+        /*public void onShareProxiesToggle(View v)
+        {
+            new AlertDialog.Builder(this)
+            .setOnKeyListener(
+                    new DialogInterface.OnKeyListener() {
+                        public boolean onKey(DialogInterface dialog, int keyCode, KeyEvent event) {
+                            // Don't dismiss when hardware search button is clicked (Android 2.3 and earlier)
+                            return keyCode == KeyEvent.KEYCODE_SEARCH;
+                        }})
+            .setTitle(R.string.share_proxies_prompt_title)
+            .setMessage(R.string.share_proxies_prompt_message)
+            .setPositiveButton(R.string.share_proxies_prompt_positive,
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int whichButton) {
+                            applyShareProxies();
+                        }})
+            .setNegativeButton(R.string.share_proxies_prompt_negative,
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int whichButton) {
+                            m_shareProxiesToggle.setChecked(!m_shareProxiesToggle.isChecked());
+                        }})
+            .setOnCancelListener(
+                    new DialogInterface.OnCancelListener() {
+                        @Override
+                        public void onCancel(DialogInterface dialog) {
+                            m_shareProxiesToggle.setChecked(!m_shareProxiesToggle.isChecked());
+                        }})
+            .show();
+        }
+        
+        private void applyShareProxies()
+        {
+            boolean shareProxies = m_shareProxiesToggle.isChecked();
+            
+            PsiphonData.getPsiphonData().setShareProxies(shareProxies);
+            
+            Editor editor = PreferenceManager.getDefaultSharedPreferences(this).edit();
+            editor.putBoolean(SHARE_PROXIES_PREFERENCE, shareProxies);
+            editor.commit();
+            
+            stopTunnel(this);
+            
+            AlarmManager alm = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);
+            alm.set(AlarmManager.RTC, System.currentTimeMillis() + 1000,
+                    PendingIntent.getActivity(this, 0, new Intent(this, this.getClass()), 0));
+
+            android.os.Process.killProcess(android.os.Process.myPid());
+        }*/
+        
         private class DataTransferGraph
         {
             private Activity m_activity;
@@ -715,6 +776,7 @@ public abstract class MainBase
                 });
         }
         
+        /*private boolean proxyInfoDisplayed = false;*/
         private void updateStatusCallback()
         {
             this.runOnUiThread(
@@ -726,6 +788,27 @@ public abstract class MainBase
                         if (dataTransferStats.isConnected())
                         {
                             setStatusImageButtonResource(R.drawable.status_icon_connected);
+                            /*if (!proxyInfoDisplayed)
+                            {
+                                m_statusTabSocksPortLine.setText(
+                                        getContext().getString(R.string.socks_proxy_address,
+                                                (PsiphonData.getPsiphonData().getShareProxies() ? Utils.getIPv4Address() : "127.0.0.1") +
+                                                ":" + PsiphonData.getPsiphonData().getSocksPort()));
+                                m_statusTabHttpProxyPortLine.setText(
+                                        getContext().getString(R.string.http_proxy_address,
+                                                (PsiphonData.getPsiphonData().getShareProxies() ? Utils.getIPv4Address() : "127.0.0.1") +
+                                                ":" + PsiphonData.getPsiphonData().getHttpProxyPort()));
+                                proxyInfoDisplayed = true;
+                            }*/
+                        }
+                        else
+                        {
+                            /*if (proxyInfoDisplayed)
+                            {
+                                m_statusTabSocksPortLine.setText("");
+                                m_statusTabHttpProxyPortLine.setText("");
+                                proxyInfoDisplayed = false;
+                            }*/
                         }
                     }
                 });
