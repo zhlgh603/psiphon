@@ -494,8 +494,6 @@ public interface UpgradeManager
                 return false;
             }
             
-            MyLog.v(R.string.UpgradeManager_UpgradeDownloaded, MyLog.Sensitivity.NOT_SENSITIVE);
-            
             // Commit results in a CompleteUpgradeFile.
             // NOTE: if we fail at this point, there will be at least one more HTTP
             // request which may return status code 416 since we already have the complete
@@ -512,6 +510,8 @@ public interface UpgradeManager
                 file.delete();
                 return false;
             }
+            
+            MyLog.v(R.string.UpgradeManager_UpgradeDownloaded, MyLog.Sensitivity.NOT_SENSITIVE);
             
             return true;
         }

@@ -282,18 +282,14 @@ void PsiphonOnDnsResponse(const uint8_t *data, int data_len)
 }
 
 
-void PsiphonOnConnection(const char *addressStr, int port)
+void PsiphonOnConnection(int ipv4address, int port)
 {
     if (!g_env)
     {
         return;
     }
 
-    jstring address = (*g_env)->NewStringUTF(g_env, addressStr);
-
-    (*g_env)->CallStaticVoidMethod(g_env, g_tun2SocksCls, g_onConnectionMethod, address, port);
-    
-    (*g_env)->DeleteLocalRef(g_env, address);
+    (*g_env)->CallStaticVoidMethod(g_env, g_tun2SocksCls, g_onConnectionMethod, ipv4address, port);
 }
 
 
@@ -312,7 +308,7 @@ JNIEXPORT jint JNICALL Java_com_psiphon3_psiphonlibrary_Tun2Socks_runTun2Socks(
     g_tun2SocksCls = (*g_env)->FindClass(g_env, "com/psiphon3/psiphonlibrary/Tun2Socks");
     g_logMethod = (*g_env)->GetStaticMethodID(g_env, g_tun2SocksCls, "logTun2Socks", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     g_onDnsResponseMethod = (*g_env)->GetStaticMethodID(g_env, g_tun2SocksCls, "onDnsResponse", "([B)V");
-    g_onConnectionMethod = (*g_env)->GetStaticMethodID(g_env, g_tun2SocksCls, "onConnection", "(Ljava/lang/String;I)V");
+    g_onConnectionMethod = (*g_env)->GetStaticMethodID(g_env, g_tun2SocksCls, "onConnection", "(II)V");
 
     const char* vpnIpAddressStr = (*env)->GetStringUTFChars(env, vpnIpAddress, 0);
     const char* vpnNetMaskStr = (*env)->GetStringUTFChars(env, vpnNetMask, 0);
@@ -1282,9 +1278,7 @@ err_t listener_accept_func (void *arg, struct tcp_pcb *newpcb, err_t err)
 
     // PSIPHON
     {
-        char address[BADDR_MAX_PRINT_LEN];
-        BAddr_Print(&addr, address);
-        PsiphonOnConnection(address, newpcb->local_port);
+        PsiphonOnConnection(newpcb->local_ip.addr, newpcb->local_port);
     }
     
     // init dead vars
