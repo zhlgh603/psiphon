@@ -258,7 +258,7 @@ void PsiphonLog(const char *levelStr, const char *channelStr, const char *msgStr
     jstring channel = (*g_env)->NewStringUTF(g_env, channelStr);
     jstring msg = (*g_env)->NewStringUTF(g_env, msgStr);
 
-    (*g_env)->CallStaticVoidMethod(g_env, g_tun2SocksCls, g_logTun2SocksMethod, level, channel, msg);
+    (*g_env)->CallStaticVoidMethod(g_env, g_tun2SocksCls, g_logMethod, level, channel, msg);
     
     (*g_env)->DeleteLocalRef(g_env, level);
     (*g_env)->DeleteLocalRef(g_env, channel);
@@ -343,7 +343,7 @@ JNIEXPORT jint JNICALL Java_com_psiphon3_psiphonlibrary_Tun2Socks_runTun2Socks(
     
     g_env = 0;
     g_tun2SocksCls = 0;
-    g_logTun2SocksMethod = 0;
+    g_logMethod = 0;
     g_onDnsResponseMethod = 0;
     g_onConnectionMethod = 0;
 
@@ -1283,7 +1283,7 @@ err_t listener_accept_func (void *arg, struct tcp_pcb *newpcb, err_t err)
     // PSIPHON
     {
         char address[BADDR_MAX_PRINT_LEN];
-        BAddr_Print(newpcb->local_ip.addr, address);
+        BAddr_Print(&addr, address);
         PsiphonOnConnection(address, newpcb->local_port);
     }
     
