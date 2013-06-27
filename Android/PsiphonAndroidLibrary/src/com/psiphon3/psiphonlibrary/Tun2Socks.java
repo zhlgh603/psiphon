@@ -19,8 +19,20 @@
 
 package com.psiphon3.psiphonlibrary;
 
+import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.xbill.DNS.ARecord;
+import org.xbill.DNS.Message;
+import org.xbill.DNS.Name;
+import org.xbill.DNS.RRset;
+import org.xbill.DNS.Rcode;
+import org.xbill.DNS.Record;
+import org.xbill.DNS.Section;
+import org.xbill.DNS.Type;
 
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
 
@@ -46,6 +58,7 @@ public class Tun2Socks
     private static String mVpnNetMask;
     private static String mSocksServerAddress;
     private static String mUdpgwServerAddress;
+    private static Map<String, String> mIpAddressToDomain;
     
     // Note: this class isn't a singleton, but you can't run more
     // than one instance due to the use of global state (the lwip
@@ -72,6 +85,7 @@ public class Tun2Socks
         mVpnNetMask = vpnNetMask;
         mSocksServerAddress = socksServerAddress;
         mUdpgwServerAddress = udpgwServerAddress;
+        mIpAddressToDomain = new HashMap<String, String>();
 
         mThread = new Thread(new Runnable()
         {
@@ -113,6 +127,7 @@ public class Tun2Socks
                 Thread.currentThread().interrupt();
             }
             mThread = null;
+            mIpAddressToDomain = null;
         }
     }
         
@@ -130,6 +145,50 @@ public class Tun2Socks
         {
             MyLog.g(logMsg, null);
         }
+    }
+
+    public static void onDnsResponse(byte[] responseData)
+    {
+        Message response;
+        try
+        {
+            response = new org.xbill.DNS.Message(responseData);
+        }
+        catch (IOException e)
+        {
+            return;
+        }
+        
+        if (response.getHeader().getRcode() != Rcode.NOERROR)
+        {
+            return;
+        }
+        
+        Record[] records = response.getSectionArray(Section.ANSWER);
+        for (int i = 0; i < records.length; i++)
+        {
+            Record record = records[i];
+            if (record.getType() != Type.A)
+            {
+                // TODO: CNAME, etc.
+                continue;
+            }
+            ARecord aRecord = (ARecord)record;
+            String domainName = aRecord.getAddress().toString();
+            String ipAddress = aRecord.getName().toString();
+            mIpAddressToDomain.put(ipAddress, domainName);
+
+            // TODO: put this info in its own UI, not the log
+            MyLog.i(R.string.tun2socks_on_dns_response, MyLog.Sensitivity.SENSITIVE_LOG, domainName + ": " + ipAddress);
+        }
+    }
+
+    public static void onConnection(String address, int port)
+    {
+        String domain = mIpAddressToDomain.get(address);
+
+        // TODO: put this info in its own UI, not the log
+        MyLog.i(R.string.tun2socks_on_connection, MyLog.Sensitivity.SENSITIVE_LOG, (domain != null ? domain : address) + ":" + port);
     }
 
     private native static int runTun2Socks(

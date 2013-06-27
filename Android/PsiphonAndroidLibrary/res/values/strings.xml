@@ -122,4 +122,6 @@
     <string name="share_proxies_prompt_message">The app needs to restart to apply this setting.</string>
     <string name="share_proxies_prompt_positive">Restart now</string>
     <string name="share_proxies_prompt_negative">Cancel</string>
+    <string name="tun2socks_on_connection">Connection to: %s</string>
+    <string name="tun2socks_on_dns_response">DNS response: %s</string>
 </resources>
