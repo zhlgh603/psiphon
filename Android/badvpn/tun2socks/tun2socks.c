@@ -241,6 +241,11 @@ static void udpgw_client_handler_received (void *unused, BAddr local_addr, BAddr
 #ifdef PSIPHON
 
 JNIEnv* g_env = 0;
+jclass g_tun2SocksCls = 0;
+jmethodID g_logMethod = 0;
+jmethodID g_onDnsResponseMethod = 0;
+jmethodID g_onConnectionMethod = 0;
+
 
 void PsiphonLog(const char *levelStr, const char *channelStr, const char *msgStr)
 {
@@ -248,22 +253,49 @@ void PsiphonLog(const char *levelStr, const char *channelStr, const char *msgStr
     {
         return;
     }
-    // Note: we could cache the class and method references if log is called frequently
 
     jstring level = (*g_env)->NewStringUTF(g_env, levelStr);
     jstring channel = (*g_env)->NewStringUTF(g_env, channelStr);
     jstring msg = (*g_env)->NewStringUTF(g_env, msgStr);
 
-    jclass cls = (*g_env)->FindClass(g_env, "com/psiphon3/psiphonlibrary/Tun2Socks");
-    jmethodID logMethod = (*g_env)->GetStaticMethodID(g_env, cls, "logTun2Socks", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
-    (*g_env)->CallStaticVoidMethod(g_env, cls, logMethod, level, channel, msg);
-
-    (*g_env)->DeleteLocalRef(g_env, cls);
+    (*g_env)->CallStaticVoidMethod(g_env, g_tun2SocksCls, g_logTun2SocksMethod, level, channel, msg);
     
     (*g_env)->DeleteLocalRef(g_env, level);
     (*g_env)->DeleteLocalRef(g_env, channel);
     (*g_env)->DeleteLocalRef(g_env, msg);
 }
+
+
+void PsiphonOnDnsResponse(const uint8_t *data, int data_len)
+{
+    if (!g_env)
+    {
+        return;
+    }
+
+    jbyteArray responseData = (*g_env)->NewByteArray(g_env, data_len);
+    (*g_env)->SetByteArrayRegion(g_env, responseData, 0, data_len, data);
+
+    (*g_env)->CallStaticVoidMethod(g_env, g_tun2SocksCls, g_onDnsResponseMethod, responseData);
+    
+    (*g_env)->DeleteLocalRef(g_env, responseData);
+}
+
+
+void PsiphonOnConnection(const char *addressStr, int port)
+{
+    if (!g_env)
+    {
+        return;
+    }
+
+    jstring address = (*g_env)->NewStringUTF(g_env, addressStr);
+
+    (*g_env)->CallStaticVoidMethod(g_env, g_tun2SocksCls, g_onConnectionMethod, address, port);
+    
+    (*g_env)->DeleteLocalRef(g_env, address);
+}
+
 
 JNIEXPORT jint JNICALL Java_com_psiphon3_psiphonlibrary_Tun2Socks_runTun2Socks(
     JNIEnv* env,
@@ -276,6 +308,11 @@ JNIEXPORT jint JNICALL Java_com_psiphon3_psiphonlibrary_Tun2Socks_runTun2Socks(
     jstring udpgwServerAddress)
 {
     g_env = env;
+
+    g_tun2SocksCls = (*g_env)->FindClass(g_env, "com/psiphon3/psiphonlibrary/Tun2Socks");
+    g_logMethod = (*g_env)->GetStaticMethodID(g_env, g_tun2SocksCls, "logTun2Socks", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+    g_onDnsResponseMethod = (*g_env)->GetStaticMethodID(g_env, g_tun2SocksCls, "onDnsResponse", "([B)V");
+    g_onConnectionMethod = (*g_env)->GetStaticMethodID(g_env, g_tun2SocksCls, "onConnection", "(Ljava/lang/String;I)V");
 
     const char* vpnIpAddressStr = (*env)->GetStringUTFChars(env, vpnIpAddress, 0);
     const char* vpnNetMaskStr = (*env)->GetStringUTFChars(env, vpnNetMask, 0);
@@ -302,7 +339,13 @@ JNIEXPORT jint JNICALL Java_com_psiphon3_psiphonlibrary_Tun2Socks_runTun2Socks(
     (*env)->ReleaseStringUTFChars(env, socksServerAddress, socksServerAddressStr);
     (*env)->ReleaseStringUTFChars(env, udpgwServerAddress, udpgwServerAddressStr);
 
+    (*g_env)->DeleteLocalRef(g_env, g_tun2SocksCls);
+    
     g_env = 0;
+    g_tun2SocksCls = 0;
+    g_logTun2SocksMethod = 0;
+    g_onDnsResponseMethod = 0;
+    g_onConnectionMethod = 0;
 
     // TODO: return success/error
 
@@ -1236,6 +1279,13 @@ err_t listener_accept_func (void *arg, struct tcp_pcb *newpcb, err_t err)
         free(client);
         return ERR_MEM;
     }
+
+    // PSIPHON
+    {
+        char address[BADDR_MAX_PRINT_LEN];
+        BAddr_Print(newpcb->local_ip.addr, address);
+        PsiphonOnConnection(address, newpcb->local_port);
+    }
     
     // init dead vars
     DEAD_INIT(client->dead);
@@ -1747,6 +1797,12 @@ void udpgw_client_handler_received (void *unused, BAddr local_addr, BAddr remote
     
     BLog(BLOG_INFO, "UDP: from udpgw %d bytes", data_len);
     
+    // PSIPHON
+    if (remote_addr.ipv4.port == 53)
+    {
+        PsiphonOnDnsResponse(data, data_len);
+    }
+
     // build IP header
     struct ipv4_header iph;
     iph.version4_ihl4 = IPV4_MAKE_VERSION_IHL(sizeof(iph));
