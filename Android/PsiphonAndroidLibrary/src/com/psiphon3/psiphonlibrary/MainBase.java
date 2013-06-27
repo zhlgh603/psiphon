@@ -136,8 +136,9 @@ public abstract class MainBase
         private TextView m_statusTabLogLine;
         private TextView m_statusTabVersionLine;
         private LocalBroadcastManager m_localBroadcastManager;
-        private Timer m_updateHeaderTimer;
+        private Timer m_updateStatisticsTimer;
         private Timer m_updateStatusTimer;
+        private Timer m_updateProxiesTimer;
         private TextView m_elapsedConnectionTimeView;
         private TextView m_totalSentView;
         private TextView m_totalReceivedView;
@@ -510,14 +511,14 @@ public abstract class MainBase
             super.onResume();
             
             // From: http://steve.odyfamily.com/?p=12
-            m_updateHeaderTimer = new Timer();
-            m_updateHeaderTimer.schedule(
+            m_updateStatisticsTimer = new Timer();
+            m_updateStatisticsTimer.schedule(
                 new TimerTask()
                 {          
                     @Override
                     public void run()
                     {
-                        updateHeaderCallback();
+                        updateStatisticsCallback();
                     }
                 },
                 0,
@@ -536,6 +537,21 @@ public abstract class MainBase
                 0,
                 250);
             
+            // Force refreshing proxy info
+            m_proxyInfoDisplayed = false;
+            m_updateProxiesTimer = new Timer();
+            m_updateProxiesTimer.schedule(
+                new TimerTask()
+                {          
+                    @Override
+                    public void run()
+                    {
+                        updateProxiesCallback();
+                    }
+                },
+                0,
+                1000);
+
             PsiphonData.getPsiphonData().setStatusActivityForeground(true);
         }
         
@@ -544,8 +560,9 @@ public abstract class MainBase
         {
             super.onPause();
             
-            m_updateHeaderTimer.cancel();
+            m_updateStatisticsTimer.cancel();
             m_updateStatusTimer.cancel();
+            m_updateProxiesTimer.cancel();
             
             unbindTunnelService();
             
@@ -742,7 +759,7 @@ public abstract class MainBase
             }
         }
 
-        private void updateHeaderCallback()
+        private void updateStatisticsCallback()
         {
             this.runOnUiThread(
                 new Runnable()
@@ -789,16 +806,6 @@ public abstract class MainBase
                 });
         }
         
-        private boolean proxyInfoDisplayed = false;
-        private String concatenatePortToAddresses(List<String> addresses, int port)
-        {
-            String concatenation = "";
-            for (String address : addresses)
-            {
-                concatenation += address + ":" + port + "\n";
-            }
-            return concatenation;
-        }
         private void updateStatusCallback()
         {
             this.runOnUiThread(
@@ -810,7 +817,33 @@ public abstract class MainBase
                         if (dataTransferStats.isConnected())
                         {
                             setStatusImageButtonResource(R.drawable.status_icon_connected);
-                            if (!proxyInfoDisplayed)
+                        }
+                    }
+                });
+        }
+
+        private boolean m_proxyInfoDisplayed = false;
+        private String concatenatePortToAddresses(List<String> addresses, int port)
+        {
+            String concatenation = "";
+            for (String address : addresses)
+            {
+                concatenation += address + ":" + port + "\n";
+            }
+            return concatenation;
+        }
+        private void updateProxiesCallback()
+        {
+            this.runOnUiThread(
+                new Runnable()
+                {
+                    public void run()
+                    {
+                        DataTransferStats dataTransferStats = PsiphonData.getPsiphonData().getDataTransferStats();
+                        if (dataTransferStats.isConnected())
+                        {
+                            // Avoid the following logic if it would be redundant
+                            if (!m_proxyInfoDisplayed)
                             {
                                 List<String> boundAddresses = new ArrayList<String>();
                                 if (PsiphonData.getPsiphonData().getShareProxies())
@@ -827,22 +860,20 @@ public abstract class MainBase
                                 m_statusTabHttpProxyPortLine.setText(
                                     getContext().getString(R.string.http_proxy_address) + "\n" +
                                             concatenatePortToAddresses(boundAddresses, PsiphonData.getPsiphonData().getHttpProxyPort()));
-                                proxyInfoDisplayed = true;
+                                m_proxyInfoDisplayed = true;
                             }
                         }
                         else
                         {
-                            if (proxyInfoDisplayed)
-                            {
-                                m_statusTabSocksPortLine.setText("");
-                                m_statusTabHttpProxyPortLine.setText("");
-                                proxyInfoDisplayed = false;
-                            }
+                            // Unconditionally clear the fields since this is not computationally expensive
+                            m_statusTabSocksPortLine.setText("");
+                            m_statusTabHttpProxyPortLine.setText("");
+                            m_proxyInfoDisplayed = false;
                         }
                     }
                 });
         }
-
+        
         protected void startTunnel(Context context)
         {
             boolean waitingForPrompt = false;
