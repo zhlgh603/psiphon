@@ -1798,7 +1798,7 @@ void udpgw_client_handler_received (void *unused, BAddr local_addr, BAddr remote
     BLog(BLOG_INFO, "UDP: from udpgw %d bytes", data_len);
     
     // PSIPHON
-    if (remote_addr.ipv4.port == 53)
+    if (local_addr.ipv4.port == 53)
     {
         PsiphonOnDnsResponse(data, data_len);
     }
