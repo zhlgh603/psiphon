@@ -21,7 +21,9 @@ package com.psiphon3.psiphonlibrary;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -174,17 +176,33 @@ public class Tun2Socks
                 continue;
             }
             ARecord aRecord = (ARecord)record;
-            String domainName = aRecord.getAddress().toString();
-            String ipAddress = aRecord.getName().toString();
+            String domainName = aRecord.getName().toString();
+            String ipAddress = aRecord.getAddress().getHostAddress();
+            
             mIpAddressToDomain.put(ipAddress, domainName);
 
             // TODO: put this info in its own UI, not the log
-            MyLog.i(R.string.tun2socks_on_dns_response, MyLog.Sensitivity.SENSITIVE_LOG, domainName + ": " + ipAddress);
+            //MyLog.i(R.string.tun2socks_on_dns_response, MyLog.Sensitivity.SENSITIVE_LOG, domainName + ": " + ipAddress);
         }
     }
 
-    public static void onConnection(String address, int port)
+    public static void onConnection(int ipv4Address, int port)
     {
+        byte[] data = new byte[4];
+        data[0] = (byte)(ipv4Address & 0xFF);
+        data[1] = (byte)(ipv4Address >> 8 & 0xFF);
+        data[2] = (byte)(ipv4Address >> 16 & 0xFF);
+        data[3] = (byte)(ipv4Address >> 24 & 0xFF);
+        String address;
+        try
+        {
+            
+            address = InetAddress.getByAddress(data).getHostAddress();
+        }
+        catch (UnknownHostException e)
+        {
+            return;
+        }
         String domain = mIpAddressToDomain.get(address);
 
         // TODO: put this info in its own UI, not the log
