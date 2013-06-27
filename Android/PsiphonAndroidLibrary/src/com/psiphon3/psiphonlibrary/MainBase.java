@@ -53,6 +53,7 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.net.VpnService;
 import android.os.Build;
@@ -380,6 +381,15 @@ public abstract class MainBase
             return animation;
         }
 
+        private int m_tabIconMaxHeight = 0;
+        private void setMaxTabIconHeight(int iconHeight)
+        {
+            if (iconHeight > m_tabIconMaxHeight)
+            {
+                m_tabIconMaxHeight = iconHeight;
+            }
+        }
+        
         @Override
         protected void onCreate(Bundle savedInstanceState)
         {
@@ -389,35 +399,47 @@ public abstract class MainBase
 
             // Set up tabs
             m_tabHost.setup();
+            Drawable tabIcon = null;
             
             TabSpec statusTab = m_tabHost.newTabSpec("status");
             statusTab.setContent(R.id.statusTab);
+            tabIcon = getResources().getDrawable(R.drawable.tab_icon_connection_status); 
             statusTab.setIndicator("", //getText(R.string.status_tab_name),
-                    getResources().getDrawable(R.drawable.tab_icon_connection_status));
+                    tabIcon);
+            setMaxTabIconHeight(tabIcon.getMinimumHeight());
 
             TabSpec advancedTab = m_tabHost.newTabSpec("advanced");
             advancedTab.setContent(R.id.advancedTab);
+            tabIcon = getResources().getDrawable(R.drawable.tab_icon_share_proxies);
             advancedTab.setIndicator("", //getText(R.string.advanced_tab_name),
-                    getResources().getDrawable(R.drawable.tab_icon_share_proxies));
+                    tabIcon);
+            setMaxTabIconHeight(tabIcon.getMinimumHeight());
 
             TabSpec statisticsTab = m_tabHost.newTabSpec("statistics");
             statisticsTab.setContent(R.id.statisticsView);
+            tabIcon = getResources().getDrawable(R.drawable.tab_icon_statistics);
             statisticsTab.setIndicator("", //getText(R.string.statistics_tab_name),
-                    getResources().getDrawable(R.drawable.tab_icon_statistics));
+                    tabIcon);
+            setMaxTabIconHeight(tabIcon.getMinimumHeight());
             
             TabSpec logsTab = m_tabHost.newTabSpec("logs");
             logsTab.setContent(R.id.logsTab);
+            tabIcon = getResources().getDrawable(R.drawable.tab_icon_logs);
             logsTab.setIndicator("", //getText(R.string.logs_tab_name),
-                    getResources().getDrawable(R.drawable.tab_icon_logs));
+                    tabIcon);
+            setMaxTabIconHeight(tabIcon.getMinimumHeight());
 
             m_tabHost.addTab(statusTab);
             m_tabHost.addTab(advancedTab);
             m_tabHost.addTab(statisticsTab);
             m_tabHost.addTab(logsTab);
 
-            for (int i = 0; i < m_tabHost.getTabWidget().getChildCount(); ++i)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB)
             {
-                m_tabHost.getTabWidget().getChildAt(i).getLayoutParams().height = 55;
+                for (int i = 0; i < m_tabHost.getTabWidget().getChildCount(); ++i)
+                {
+                    m_tabHost.getTabWidget().getChildAt(i).getLayoutParams().height = m_tabIconMaxHeight;
+                }
             }
             
             m_gestureDetector = new GestureDetector(this, new LateralGestureDetector());
