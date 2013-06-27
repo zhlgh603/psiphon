@@ -392,24 +392,33 @@ public abstract class MainBase
             
             TabSpec statusTab = m_tabHost.newTabSpec("status");
             statusTab.setContent(R.id.statusTab);
-            statusTab.setIndicator(getText(R.string.status_tab_name));
+            statusTab.setIndicator("", //getText(R.string.status_tab_name),
+                    getResources().getDrawable(R.drawable.tab_icon_connection_status));
 
             TabSpec advancedTab = m_tabHost.newTabSpec("advanced");
             advancedTab.setContent(R.id.advancedTab);
-            advancedTab.setIndicator(getText(R.string.advanced_tab_name));
+            advancedTab.setIndicator("", //getText(R.string.advanced_tab_name),
+                    getResources().getDrawable(R.drawable.tab_icon_share_proxies));
 
             TabSpec statisticsTab = m_tabHost.newTabSpec("statistics");
             statisticsTab.setContent(R.id.statisticsView);
-            statisticsTab.setIndicator(getText(R.string.statistics_tab_name));
+            statisticsTab.setIndicator("", //getText(R.string.statistics_tab_name),
+                    getResources().getDrawable(R.drawable.tab_icon_statistics));
             
             TabSpec logsTab = m_tabHost.newTabSpec("logs");
             logsTab.setContent(R.id.logsTab);
-            logsTab.setIndicator(getText(R.string.logs_tab_name));
+            logsTab.setIndicator("", //getText(R.string.logs_tab_name),
+                    getResources().getDrawable(R.drawable.tab_icon_logs));
 
             m_tabHost.addTab(statusTab);
             m_tabHost.addTab(advancedTab);
             m_tabHost.addTab(statisticsTab);
             m_tabHost.addTab(logsTab);
+
+            for (int i = 0; i < m_tabHost.getTabWidget().getChildCount(); ++i)
+            {
+                m_tabHost.getTabWidget().getChildAt(i).getLayoutParams().height = 55;
+            }
             
             m_gestureDetector = new GestureDetector(this, new LateralGestureDetector());
             OnTouchListener onTouchListener = new OnTouchListener()
