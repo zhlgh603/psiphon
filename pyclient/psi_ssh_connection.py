@@ -65,6 +65,22 @@ class SSHConnection(object):
         # TODO: test the connection
         print '\nYour SOCKS proxy is now running at %s:%s' % (self.listen_address, self.listen_port)
 
+    def disconnect_on_success(self, test_site=False):
+        try:
+            response = 200 # setting default as ok
+            if test_site:
+                import psi_website_checker
+                response = psi_website_checker.check_default_sites()
+                print 'Site Response %s' % (response)   
+            if response != 200:
+                print 'FAILED!'
+            self.ssh.terminate()
+        except ImportError as error:
+            print 'Failed importing module: %s' % str(error)
+            raise error
+        except Exception as error:
+            print 'Failed: %s' % str(error)
+
     def wait_for_disconnect(self):
         try:
             print 'Press Ctrl-C to terminate.'
