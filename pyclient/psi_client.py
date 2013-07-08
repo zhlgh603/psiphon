@@ -28,10 +28,9 @@ import optparse
 
 # TODO: add support to server for indicating platform
 CLIENT_VERSION = 1
-LOCAL_SOCKS_PORT = 1080
+SOCKS_PORT = 1080
 LOCAL_HOST_IP = '127.0.0.1'
 GLOBAL_HOST_IP = '0.0.0.0'
-
 
 
 class Data(object):
@@ -75,7 +74,7 @@ class Data(object):
             return False
 
 
-def connect_to_server(data, relay, tun_type='local'):
+def connect_to_server(data, relay, tun_type='local', test=False):
 
     assert relay in ['SSH', 'OSSH']
 
@@ -100,15 +99,19 @@ def connect_to_server(data, relay, tun_type='local'):
         ssh_connection = OSSHConnection(server.ip_address, handshake_response['SSHObfuscatedPort'],
                                         handshake_response['SSHUsername'], handshake_response['SSHPassword'],
                                         handshake_response['SSHObfuscatedKey'], handshake_response['SSHHostKey'],
-                                        str(LOCAL_SOCKS_PORT), str(listen_address))
+                                        str(SOCKS_PORT), str(listen_address))
     else:
         ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
                                        handshake_response['SSHUsername'], handshake_response['SSHPassword'],
-                                       handshake_response['SSHHostKey'], str(LOCAL_SOCKS_PORT), str(listen_address))
+                                       handshake_response['SSHHostKey'], str(SOCKS_PORT), str(listen_address))
     ssh_connection.connect()
     ssh_connection.test_connection()
     server.connected(relay)
-    ssh_connection.wait_for_disconnect()
+    if test:
+        print 'Testing connection to ip %s' % server.ip_address
+        ssh_connection.disconnect_on_success(test_site=test)
+    else:
+        ssh_connection.wait_for_disconnect()
     server.disconnected(relay)
 
 
@@ -131,6 +134,26 @@ def connect(tunnel_type):
             data.save()
             print 'Trying next server...'
 
+def test_all_servers(tunnel_type='local'):
+    data = Data.load()
+    for _ in data.servers():
+        try:
+            if os.path.isfile('./ssh'):
+                connect_to_server(data, 'OSSH', tunnel_type, test=True)
+            else:
+                connect_to_server(data, 'SSH', tunnel_type, test=True)
+            print 'moving server to bottom'
+            if not data.move_first_server_entry_to_bottom():
+                print "could not reorder servers"
+                break
+            data.save()
+        except Exception as error:
+            print error
+            if not data.move_first_server_entry_to_bottom():
+                print 'could not reorder servers'
+                break
+            data.save()
+            print 'Trying next server...'
 
 if __name__ == "__main__":
     parser = optparse.OptionParser('usage: %prog [options]')
@@ -138,12 +161,16 @@ if __name__ == "__main__":
                         action="store_true", help="tunnel local connections")
     parser.add_option("--global", "-g", dest="global_tunnel",     
                         action="store_true", help="global tunnel")
+    parser.add_option("--test-servers", "-t", dest="test_servers",
+                        action="store_true", help="will rotate and test all servers")
     (options, _) = parser.parse_args()
     
     if options.local_tunnel:
         connect('local')
     elif options.global_tunnel:
         connect('global')
+    elif options.test_servers:
+        test_all_servers()
     else:
         connect('local')
         
