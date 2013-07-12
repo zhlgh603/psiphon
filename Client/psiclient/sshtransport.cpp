@@ -33,6 +33,10 @@
 #define SSH_CONNECTION_TIMEOUT_SECONDS  20
 #define PLONK_EXE_NAME                  _T("psiphon3-plonk.exe")
 
+// TODO: Should this value be based on the performance/resources of the system?
+#define MULTI_CONNECT_COUNT             10
+#define SERVER_AFFINITY_HEAD_START_MS   500
+
 
 static bool SetPlonkSSHHostKey(
         const tstring& sshServerAddress,
@@ -68,9 +72,17 @@ public:
         int serverPort,
         const StopInfo& stopInfo);
 
-    bool CheckForConnected();
+    bool CheckForConnected(bool& o_connected);
 
     void StopPortFoward();
+
+    void GetConnectParams(
+        int& o_localSocksProxyPort,
+        tstring& o_serverAddress, 
+        tstring& o_serverHostKey, 
+        tstring& o_plonkPath, 
+        tstring& o_plonkCommandLine,
+        int& o_serverPort) const;
 
 protected:
     DWORD GetFreshLimit() const;
@@ -83,6 +95,14 @@ private:
     const StopInfo* m_stopInfo;
     HANDLE m_plonkInputHandle;
     HANDLE m_plonkOutputHandle;
+    bool m_connected;
+
+    int m_localSocksProxyPort;
+    tstring m_serverAddress; 
+    tstring m_serverHostKey; 
+    tstring m_plonkPath; 
+    tstring m_plonkCommandLine;
+    int m_serverPort;
 };
 
 
@@ -93,7 +113,6 @@ private:
 SSHTransportBase::SSHTransportBase()
 {
     m_localSocksProxyPort = DEFAULT_PLONK_SOCKS_PROXY_PORT;
-    m_serverPort = 0;
 }
 
 SSHTransportBase::~SSHTransportBase()
@@ -111,9 +130,9 @@ bool SSHTransportBase::IsSplitTunnelSupported() const
     return true;
 }
 
-bool SSHTransportBase::IsMultiConnectSupported() const
+unsigned int SSHTransportBase::GetMultiConnectCount() const
 {
-    return true;
+    return MULTI_CONNECT_COUNT;
 }
 
 bool SSHTransportBase::ServerHasCapabilities(const ServerEntry& entry) const
@@ -192,20 +211,41 @@ bool SSHTransportBase::DoPeriodicCheck()
 
         // Time to bring up the next connection and retire the current.
 
-        auto_ptr<PlonkConnection> nextPlonk(new PlonkConnection(m_sessionInfo));
+        auto_ptr<PlonkConnection> nextPlonk(new PlonkConnection(m_sessionInfo[m_chosenSessionInfoIndex]));
 
-        // TODO: Check for out-of-memory allocation failure
+        if (nextPlonk.get() == NULL)
+        {
+            throw std::exception(__FUNCTION__ ":" _STRINGIZE(__LINE__) ": Out of memory");
+        }
 
         // We assume that TransportConnectHelper has already been called, so 
         // the Plonk executable and server information are initialized.
 
+        int localSocksProxyPort;
+        tstring serverAddress; 
+        tstring serverHostKey; 
+        tstring plonkPath; 
+        tstring plonkCommandLine;
+        int serverPort;
+
+        m_currentPlonk->GetConnectParams(
+            localSocksProxyPort,
+            serverAddress, 
+            serverHostKey, 
+            plonkPath, 
+            plonkCommandLine,
+            serverPort);
+
+        assert(localSocksProxyPort == m_localSocksProxyPort);
+        assert(plonkPath == m_plonkPath);
+
         bool connectSuccess = nextPlonk->Connect(
-                                        m_localSocksProxyPort,
-                                        m_serverAddress.c_str(),
-                                        m_serverHostKey.c_str(),
-                                        m_plonkPath.c_str(),
-                                        m_plonkCommandLine.c_str(),
-                                        m_serverPort,
+                                        localSocksProxyPort,
+                                        serverAddress.c_str(),
+                                        serverHostKey.c_str(),
+                                        plonkPath.c_str(),
+                                        plonkCommandLine.c_str(),
+                                        serverPort,
                                         m_stopInfo);
 
         if (m_stopInfo.stopSignal->CheckSignal(m_stopInfo.stopReasons))
@@ -289,6 +329,8 @@ void SSHTransportBase::TransportConnectHelper()
 {
     my_print(NOT_SENSITIVE, false, _T("%s connecting..."), GetTransportDisplayName().c_str());
 
+    assert(m_systemProxySettings != NULL);
+
     // Extract executables and put to disk if not already
 
     if (m_plonkPath.size() == 0)
@@ -310,61 +352,123 @@ void SSHTransportBase::TransportConnectHelper()
     m_localSocksProxyPort = DEFAULT_PLONK_SOCKS_PROXY_PORT;
     if (!TestForOpenPort(m_localSocksProxyPort, 10, m_stopInfo))
     {
+        if (m_stopInfo.stopSignal->CheckSignal(m_stopInfo.stopReasons))
+        {
+            throw Abort();
+        }
+
         my_print(NOT_SENSITIVE, false, _T("Local SOCKS proxy could not find an available port."));
         throw TransportFailed();
     }
 
-    vector<SessionInfo>::const_iterator sessionInfo = m_sessionInfo.begin();
-    assert(sessionInfo != m_sessionInfo.end());
+    size_t sessionInfoIndex = 0;
+    assert(sessionInfoIndex < m_sessionInfo.size());
 
-    *** Loop through sessioninfo items, trying to start them.
-    *** For server stickiness, give the first one a head-start.
-
-    // To help with server affinity, give the first server a head start.
-
+    // The right-hand (second) part of the pair is the sessionInfo index, which we'll need later.
+    vector<pair<auto_ptr<PlonkConnection>, size_t>> allPlonkConnections;
+    auto_ptr<PlonkConnection> plonkConnection;
     
+    assert(m_currentPlonk.get() == NULL);
 
-    while (sessionInfo != m_sessionInfo.end())
+    // For the sake of server affinity, try the first server and give it a head-start.
+    if (InitiateConnection(m_sessionInfo[sessionInfoIndex], plonkConnection))
     {
+        // allPlonkConnections takes ownership at this point
+        allPlonkConnections.push_back(pair<auto_ptr<PlonkConnection>, size_t>(plonkConnection, sessionInfoIndex));
+        sessionInfoIndex++;
+
+        DWORD start = GetTickCount();
+        do 
+        {
+            if (m_stopInfo.stopSignal->CheckSignal(m_stopInfo.stopReasons))
+            {
+                throw Abort();
+            }
+
+            bool connected = false;
+            if (!allPlonkConnections.front().first->CheckForConnected(connected))
+            {
+                // The connection failed.
+                connected = false;
+                allPlonkConnections.pop_back();
+                break;
+            }
+            else if (connected)
+            {
+                // m_currentPlonk takes ownership
+                m_currentPlonk = allPlonkConnections.front().first;
+                m_chosenSessionInfoIndex = (int)allPlonkConnections.front().second;
+                break;
+            }
+
+            Sleep(100);
+        }
+        while (GetTickCountDiff(start, GetTickCount()) < SERVER_AFFINITY_HEAD_START_MS);
     }
 
-    // Start plonk using Psiphon server SSH parameters
+    // If the first server hasn't connected, we need to spin up the rest.
+    if (m_currentPlonk.get() == NULL)
+    {
+        while(sessionInfoIndex < m_sessionInfo.size()
+              && allPlonkConnections.size() < GetMultiConnectCount())  // this condidtion shouldn't be false, but check anyway
+        {
+            if (m_stopInfo.stopSignal->CheckSignal(m_stopInfo.stopReasons))
+            {
+                throw Abort();
+            }
 
-    if (!GetSSHParams(
-        sessionInfo,
-        m_localSocksProxyPort,
-        m_serverAddress, 
-        m_serverPort, 
-        m_serverHostKey, 
-        m_plonkCommandLine, 
-        systemProxySettings))
+            if (InitiateConnection(m_sessionInfo[sessionInfoIndex], plonkConnection))
+            {
+                // allPlonkConnections takes ownership at this point
+                allPlonkConnections.push_back(pair<auto_ptr<PlonkConnection>, size_t>(plonkConnection, sessionInfoIndex));
+                sessionInfoIndex++;
+            }
+        }
+    }
+
+    // We now have a vector of Plonk connections connecting.
+    // Check them until one succeeds, or they all fail, or the timeout expires.
+    DWORD start = GetTickCount();
+    while (m_currentPlonk.get() == NULL 
+           && allPlonkConnections.size() > 0
+           && GetTickCountDiff(start, GetTickCount()) < SSH_CONNECTION_TIMEOUT_SECONDS*1000)
+    {
+        if (m_stopInfo.stopSignal->CheckSignal(m_stopInfo.stopReasons))
+        {
+            throw Abort();
+        }
+
+        // Iterate in reverse, so we can remove dead connections
+        for (size_t i = allPlonkConnections.size()-1; i >= 0; --i)
+        {
+            bool connected = false;
+            if (!allPlonkConnections[i].first->CheckForConnected(connected))
+            {
+                allPlonkConnections.erase(allPlonkConnections.begin()+i);
+            }
+            else if (connected)
+            {
+                // m_currentPlonk takes ownership
+                m_currentPlonk = allPlonkConnections[i].first;
+                m_chosenSessionInfoIndex = (int)allPlonkConnections[i].second;
+                break;
+            }
+        }
+
+        Sleep(100);
+    }
+
+    if (m_currentPlonk.get() == NULL)
     {
         throw TransportFailed();
     }
 
-    m_currentPlonk.reset(new PlonkConnection(m_sessionInfo));
+    assert(m_currentPlonk.get() != NULL && m_chosenSessionInfoIndex >= 0);
 
-    // TODO: Check for out-of-memory allocation failure
+    // We got our connected Plonk connection. We'll let allPlonkConnections 
+    // going out of scope clean up the rest.
 
-    bool connectSuccess = m_currentPlonk->Connect(
-                                    m_localSocksProxyPort,
-                                    m_serverAddress.c_str(),
-                                    m_serverHostKey.c_str(),
-                                    m_plonkPath.c_str(),
-                                    m_plonkCommandLine.c_str(),
-                                    m_serverPort,
-                                    m_stopInfo);
-
-    if (m_stopInfo.stopSignal->CheckSignal(m_stopInfo.stopReasons))
-    {
-        throw Abort();
-    }
-    else if (!connectSuccess)
-    {
-        throw TransportFailed();
-    }
-
-    systemProxySettings->SetSocksProxyPort(m_localSocksProxyPort);
+    m_systemProxySettings->SetSocksProxyPort(m_localSocksProxyPort);
 
     my_print(NOT_SENSITIVE, false, _T("SOCKS proxy is running on localhost port %d."), m_localSocksProxyPort);
 }
@@ -430,11 +534,11 @@ bool SSHTransportBase::GetUserParentProxySettings(
 bool SSHTransportBase::GetSSHParams(
     const SessionInfo& sessionInfo,
     const int localSocksProxyPort,
+    SystemProxySettings* systemProxySettings,
     tstring& o_serverAddress, 
     int& o_serverPort, 
     tstring& o_serverHostKey, 
-    tstring& o_plonkCommandLine,
-    SystemProxySettings* systemProxySettings)
+    tstring& o_plonkCommandLine)
 {
     o_serverAddress.clear();
     o_serverPort = 0;
@@ -493,6 +597,63 @@ bool SSHTransportBase::GetSSHParams(
 }
 
 
+bool SSHTransportBase::InitiateConnection(
+    const SessionInfo& sessionInfo,
+    auto_ptr<PlonkConnection>& o_plonkConnection)
+{
+    o_plonkConnection.reset();
+
+    // Start plonk using Psiphon server SSH parameters
+
+    tstring serverAddress;
+    tstring serverHostKey;
+    tstring plonkCommandLine;
+    int serverPort;
+
+    if (!GetSSHParams(
+        sessionInfo,
+        m_localSocksProxyPort, 
+        m_systemProxySettings,
+        serverAddress, 
+        serverPort, 
+        serverHostKey, 
+        plonkCommandLine))
+    {
+        throw TransportFailed();
+    }
+
+    auto_ptr<PlonkConnection> plonkConnection(new PlonkConnection(sessionInfo));
+
+    if (plonkConnection.get() == NULL)
+    {
+        throw std::exception(__FUNCTION__ ":" _STRINGIZE(__LINE__) ": Out of memory");
+    }
+
+    bool success = plonkConnection->Connect(
+                                    m_localSocksProxyPort,
+                                    serverAddress.c_str(),
+                                    serverHostKey.c_str(),
+                                    m_plonkPath.c_str(),
+                                    plonkCommandLine.c_str(),
+                                    serverPort,
+                                    m_stopInfo);
+
+    if (m_stopInfo.stopSignal->CheckSignal(m_stopInfo.stopReasons))
+    {
+        throw Abort();
+    }
+
+    if (!success)
+    {
+        return false;
+    }
+
+    o_plonkConnection = plonkConnection;
+
+    return true;
+}
+
+
 /******************************************************************************
  PlonkConnection
 ******************************************************************************/
@@ -502,7 +663,10 @@ PlonkConnection::PlonkConnection(const SessionInfo& sessionInfo)
       m_sessionInfo(sessionInfo),
       m_stopInfo(NULL),
       m_plonkInputHandle(INVALID_HANDLE_VALUE),
-      m_plonkOutputHandle(INVALID_HANDLE_VALUE)
+      m_plonkOutputHandle(INVALID_HANDLE_VALUE),
+      m_connected(false),
+      m_localSocksProxyPort(-1),
+      m_serverPort(-1)
 {
     ZeroMemory(&m_processInfo, sizeof(m_processInfo));
 }
@@ -625,6 +789,13 @@ void PlonkConnection::Kill()
 {
     m_startTick = 0;
     m_stopInfo = NULL;
+    m_connected = false;
+    m_localSocksProxyPort = -1;
+    m_serverAddress.clear(); 
+    m_serverHostKey.clear(); 
+    m_plonkPath.clear();
+    m_plonkCommandLine.clear();
+    m_serverPort = -1;
 
     if (m_plonkInputHandle != INVALID_HANDLE_VALUE) CloseHandle(m_plonkInputHandle);
     m_plonkInputHandle = INVALID_HANDLE_VALUE;
@@ -659,7 +830,14 @@ bool PlonkConnection::Connect(
     // Ensure we start from a disconnected/clean state
     Kill();
 
+    m_localSocksProxyPort = localSocksProxyPort;
+    m_serverAddress = serverAddress; 
+    m_serverHostKey = serverHostKey; 
+    m_plonkPath = plonkPath;
+    m_plonkCommandLine = plonkCommandLine;
+    m_serverPort = serverPort;
     m_stopInfo = &stopInfo;
+
     m_startTick = GetTickCount();
 
     // Add host to Plonk's known host registry set
@@ -777,18 +955,24 @@ bool PlonkConnection::Connect(
 
 
 // Has the side-effect of closing the Plonk output handle when connected.
-bool PlonkConnection::CheckForConnected()
+// Returns true if no error occurred. Returns false if Plonk has died/failed.
+// Connected status is indicated by `o_connected`.
+bool PlonkConnection::CheckForConnected(bool& o_connected)
 {
+    o_connected = false;
+
+    // Once we're connected, we can't keep checking the pipe, so we'll use a
+    // cached success value.
+    if (m_connected)
+    {
+        o_connected = true;
+        return true;
+    }
+
     assert(m_stopInfo != NULL);
     assert(m_plonkOutputHandle != INVALID_HANDLE_VALUE);
 
     SetLastError(ERROR_SUCCESS);
-
-    if (m_stopInfo->stopSignal->CheckSignal(m_stopInfo->stopReasons))
-    {
-        my_print(NOT_SENSITIVE, true, _T("%s:%d - Stop signaled"), __TFUNCTION__, __LINE__);
-        return false;
-    }
 
     DWORD bytes_avail = 0;
 
@@ -829,12 +1013,13 @@ bool PlonkConnection::CheckForConnected()
             }
             m_plonkOutputHandle = INVALID_HANDLE_VALUE;
 
-            //my_print(LogSensitivity::NOT_SENSITIVE, true, "SSH connect SUCCESS");
-            return true;
+            // We got the expected output from Plonk and we're ready to go.
+            o_connected = true;
         }
     }
 
-    return false;
+    m_connected = o_connected;
+    return true;
 }
 
 
@@ -862,6 +1047,22 @@ void PlonkConnection::StopPortFoward()
     m_plonkInputHandle = INVALID_HANDLE_VALUE;
 }
 
+
+void PlonkConnection::GetConnectParams(
+        int& o_localSocksProxyPort,
+        tstring& o_serverAddress, 
+        tstring& o_serverHostKey, 
+        tstring& o_plonkPath, 
+        tstring& o_plonkCommandLine,
+        int& o_serverPort) const
+{
+    o_localSocksProxyPort = m_localSocksProxyPort;
+    o_serverAddress = m_serverAddress;
+    o_serverHostKey = m_serverHostKey;
+    o_plonkPath = m_plonkPath;
+    o_plonkCommandLine = m_plonkCommandLine;
+    o_serverPort = m_serverPort;
+}
 
 /******************************************************************************
  SSHTransport
@@ -920,30 +1121,25 @@ bool SSHTransport::IsHandshakeRequired(const ServerEntry& entry) const
 bool SSHTransport::GetSSHParams(
     const SessionInfo& sessionInfo,
     const int localSocksProxyPort,
-    const string& sshPassword,
+    SystemProxySettings* systemProxySettings,
     tstring& o_serverAddress, 
     int& o_serverPort, 
     tstring& o_serverHostKey, 
-    tstring& o_plonkCommandLine,
-    SystemProxySettings* systemProxySettings)
+    tstring& o_plonkCommandLine)
 {
-    tstring o_plonk_options;
-
     if(!SSHTransportBase::GetSSHParams(
         sessionInfo,
         localSocksProxyPort,
-        sshPassword,
+        systemProxySettings,
         o_serverAddress, 
         o_serverPort, 
         o_serverHostKey, 
-        o_plonk_options,
-        systemProxySettings))
+        o_plonkCommandLine))
     {
         return false;
     }
-    tstringstream args;
-    args << o_plonk_options << _T(" ") << o_serverAddress;
-    o_plonkCommandLine = args.str();
+
+    o_plonkCommandLine += _T(" ") + o_serverAddress;
 
     return true;
 }
@@ -1011,12 +1207,11 @@ bool OSSHTransport::IsHandshakeRequired(const ServerEntry& entry) const
 bool OSSHTransport::GetSSHParams(
     const SessionInfo& sessionInfo,
     const int localSocksProxyPort,
-    const string& sshPassword,
+    SystemProxySettings* systemProxySettings,
     tstring& o_serverAddress, 
     int& o_serverPort, 
     tstring& o_serverHostKey, 
-    tstring& o_plonkCommandLine,
-    SystemProxySettings* systemProxySettings)
+    tstring& o_plonkCommandLine)
 {
 
     if (sessionInfo.GetSSHObfuscatedPort() <= 0 
@@ -1031,22 +1226,17 @@ bool OSSHTransport::GetSSHParams(
     if(!SSHTransportBase::GetSSHParams(
         sessionInfo,
         localSocksProxyPort,
-        sshPassword,
+        systemProxySettings,
         o_serverAddress, 
         o_serverPort, 
         o_serverHostKey, 
-        o_plonk_options,
-        systemProxySettings))
+        o_plonkCommandLine))
     {
         return false;
     }
 
-    tstringstream args;
-
-    args << o_plonk_options; 
-    args << _T(" -z -Z ") << NarrowToTString(sessionInfo.GetSSHObfuscatedKey()).c_str();
-    args << _T(" ") << o_serverAddress.c_str();
-    o_plonkCommandLine = args.str();
+    o_plonkCommandLine += _T(" -z -Z ") + NarrowToTString(sessionInfo.GetSSHObfuscatedKey());
+    o_plonkCommandLine += o_serverAddress;
 
     return true;
 }
