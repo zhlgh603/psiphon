@@ -45,6 +45,13 @@
 #define IDC_INFO_LINK_STATIC                603
 #define IDC_SPLIT_TUNNEL_CHECKBOX           604
 #define IDC_FEEDBACK_BUTTON                 605
+#define IDC_SHARE_PROXIES_CHECKBOX          606
+#define IDC_SOCKS_PROXY_LABEL               607
+//#define IDC_SOCKS_PROXY_VALUE               608
+#define IDC_SOCKS_PROXY_LIST_BOX            608
+#define IDC_HTTP_PROXY_LABEL                609
+//#define IDC_HTTP_PROXY_VALUE                610
+#define IDC_HTTP_PROXY_LIST_BOX             610
 #define IDC_TRANSPORT_OPTION_RADIO_FIRST    700
 // 701-798 are reserved
 #define IDC_TRANSPORT_OPTION_RADIO_LAST     799

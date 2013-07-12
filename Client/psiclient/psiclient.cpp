@@ -70,6 +70,9 @@ LimitSingleInstance g_singleInstanceObject(TEXT("Global\\{B88F6262-9CC8-44EF-887
 //                 ' v                     '           | button   |  
 //                 + - - - - - - - - - - - +           |          |
 //                 [split tunnel check box.......]     +----------+ 
+//                 [share proxies check box......]     +----------+ 
+//                 SOCKS proxy port: xxxx              +----------+ 
+//                 HTTP proxy port: xxxx               +----------+ 
 // +--------------------------------------------------------------+   
 // | ^                                                            |   
 // | | log list box                                               |   
@@ -118,14 +121,56 @@ const int SPLIT_TUNNEL_Y = max(TOGGLE_BUTTON_HEIGHT,
 const int SPLIT_TUNNEL_WIDTH = TextWidth(splitTunnelPrompt);
 const int SPLIT_TUNNEL_HEIGHT = TextHeight() + SPACER;
 
+const TCHAR* shareProxiesPrompt = _T("Allow other devices on the network to access proxies");
+
+const int SHARE_PROXIES_X = SPLIT_TUNNEL_X;
+const int SHARE_PROXIES_Y = SPLIT_TUNNEL_Y + SPLIT_TUNNEL_HEIGHT;
+const int SHARE_PROXIES_WIDTH = TextWidth(shareProxiesPrompt);
+const int SHARE_PROXIES_HEIGHT = TextHeight() + SPACER;
+
+const TCHAR* socksProxyLabel = _T("SOCKS proxy");
+
+const int SOCKS_PROXY_LABEL_X = TOGGLE_BUTTON_X;
+const int SOCKS_PROXY_LABEL_Y = SHARE_PROXIES_Y + SHARE_PROXIES_HEIGHT;
+const int SOCKS_PROXY_LABEL_WIDTH = TextWidth(socksProxyLabel);
+const int SOCKS_PROXY_LABEL_HEIGHT = TextHeight();
+
+/*const int SOCKS_PROXY_VALUE_X = SOCKS_PROXY_LABEL_X + SOCKS_PROXY_LABEL_WIDTH;
+const int SOCKS_PROXY_VALUE_Y = SOCKS_PROXY_LABEL_Y;
+const int SOCKS_PROXY_VALUE_WIDTH = TextWidth(_T("00000"));
+const int SOCKS_PROXY_VALUE_HEIGHT = TextHeight();*/
+
+const int SOCKS_PROXY_LIST_BOX_X = SOCKS_PROXY_LABEL_X + SOCKS_PROXY_LABEL_WIDTH;
+const int SOCKS_PROXY_LIST_BOX_Y = SOCKS_PROXY_LABEL_Y;
+const int SOCKS_PROXY_LIST_BOX_WIDTH = TextWidth(_T("000.000.000.000:00000"));
+const int SOCKS_PROXY_LIST_BOX_HEIGHT = TextHeight() * 3;
+
+const TCHAR* httpProxyLabel = _T("HTTP proxy");
+
+const int HTTP_PROXY_LABEL_X = SOCKS_PROXY_LIST_BOX_X + SOCKS_PROXY_LIST_BOX_WIDTH + SPACER*2;
+const int HTTP_PROXY_LABEL_Y = SOCKS_PROXY_LABEL_Y;
+const int HTTP_PROXY_LABEL_WIDTH = TextWidth(httpProxyLabel);
+const int HTTP_PROXY_LABEL_HEIGHT = TextHeight();
+
+/*const int HTTP_PROXY_VALUE_X = HTTP_PROXY_LABEL_X + HTTP_PROXY_LABEL_WIDTH;
+const int HTTP_PROXY_VALUE_Y = HTTP_PROXY_LABEL_Y;
+const int HTTP_PROXY_VALUE_WIDTH = TextWidth(_T("00000"));
+const int HTTP_PROXY_VALUE_HEIGHT = TextHeight();*/
+
+const int HTTP_PROXY_LIST_BOX_X = HTTP_PROXY_LABEL_X + HTTP_PROXY_LABEL_WIDTH;
+const int HTTP_PROXY_LIST_BOX_Y = HTTP_PROXY_LABEL_Y;
+const int HTTP_PROXY_LIST_BOX_WIDTH = TextWidth(_T("000.000.000.000:00000"));
+const int HTTP_PROXY_LIST_BOX_HEIGHT = SOCKS_PROXY_LIST_BOX_HEIGHT;
+
 const int FEEDBACK_BUTTON_IMAGE_WIDTH = 48;
 const int FEEDBACK_BUTTON_WIDTH = 56;
 const int FEEDBACK_BUTTON_HEIGHT = 56;
 const int FEEDBACK_BUTTON_X = BANNER_X + BANNER_WIDTH + SPACER;
 const int FEEDBACK_BUTTON_Y = TOGGLE_BUTTON_Y;
 
-const int WINDOW_WIDTH = FEEDBACK_BUTTON_X + FEEDBACK_BUTTON_WIDTH + SPACER + 20; // non-client-area hack adjustment
-const int WINDOW_HEIGHT = 200;
+//const int WINDOW_WIDTH = FEEDBACK_BUTTON_X + FEEDBACK_BUTTON_WIDTH + SPACER + 20; // non-client-area hack adjustment
+const int WINDOW_WIDTH = HTTP_PROXY_LIST_BOX_X + HTTP_PROXY_LIST_BOX_WIDTH + SPACER*2;
+const int WINDOW_HEIGHT = 250;
 
 const int INFO_LINK_WIDTH = TextWidth(INFO_LINK_PROMPT);
 const int INFO_LINK_HEIGHT = TextHeight();
@@ -133,7 +178,7 @@ const int INFO_LINK_X = 0 + (WINDOW_WIDTH - INFO_LINK_WIDTH)/2;
 const int INFO_LINK_Y = WINDOW_HEIGHT - INFO_LINK_HEIGHT;
 
 const int LOG_LIST_BOX_X = 0;
-const int LOG_LIST_BOX_Y = SPLIT_TUNNEL_Y + SPLIT_TUNNEL_HEIGHT + SPACER;
+const int LOG_LIST_BOX_Y = HTTP_PROXY_LIST_BOX_Y + HTTP_PROXY_LIST_BOX_HEIGHT + SPACER;
 const int LOG_LIST_BOX_WIDTH = WINDOW_WIDTH;
 const int LOG_LIST_BOX_HEIGHT = WINDOW_HEIGHT - (LOG_LIST_BOX_Y + SPACER + INFO_LINK_HEIGHT);
 
@@ -149,6 +194,13 @@ HBITMAP g_hBannerBitmap = NULL;
 HBITMAP g_hEmailBitmap = NULL;
 HWND g_hTransportRadioButtons[transportOptionCount];
 HWND g_hSplitTunnelCheckBox = NULL;
+HWND g_hShareProxiesCheckBox = NULL;
+HWND g_hSocksProxyLabel = NULL;
+//HWND g_hSocksProxyValue = NULL;
+HWND g_hSocksProxyListBox = NULL;
+HWND g_hHTTPProxyLabel = NULL;
+//HWND g_hHTTPProxyValue = NULL;
+HWND g_hHTTPProxyListBox = NULL;
 HWND g_hLogListBox = NULL;
 HWND g_hInfoLinkStatic = NULL;
 HWND g_hInfoLinkTooltip = NULL;
@@ -304,6 +356,115 @@ void CreateControls(HWND hWndParent)
         NULL);
     
     SendMessage(g_hSplitTunnelCheckBox, WM_SETFONT, (WPARAM)g_hDefaultFont, NULL);
+
+    // Share Proxies Check Box
+
+    g_hShareProxiesCheckBox = CreateWindow(
+        L"Button",
+        shareProxiesPrompt,
+        WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,
+        SHARE_PROXIES_X,
+        SHARE_PROXIES_Y,
+        SHARE_PROXIES_WIDTH,
+        SHARE_PROXIES_HEIGHT,
+        hWndParent,
+        (HMENU)IDC_SHARE_PROXIES_CHECKBOX,
+        g_hInst,
+        NULL);
+    
+    SendMessage(g_hShareProxiesCheckBox, WM_SETFONT, (WPARAM)g_hDefaultFont, NULL);
+
+    // Proxy info labels
+
+    g_hSocksProxyLabel = CreateWindow(
+        L"Static",
+        socksProxyLabel,
+        WS_CHILD|WS_VISIBLE|SS_NOTIFY,
+        SOCKS_PROXY_LABEL_X,
+        SOCKS_PROXY_LABEL_Y,
+        SOCKS_PROXY_LABEL_WIDTH,
+        SOCKS_PROXY_LABEL_HEIGHT,
+        hWndParent,
+        (HMENU)IDC_SOCKS_PROXY_LABEL,
+        g_hInst,
+        NULL);
+
+    SendMessage(g_hSocksProxyLabel, WM_SETFONT, (WPARAM)g_hDefaultFont, NULL);
+
+    /*g_hSocksProxyValue = CreateWindow(
+        L"Static",
+        _T(""),
+        WS_CHILD|WS_VISIBLE|SS_NOTIFY,
+        SOCKS_PROXY_VALUE_X,
+        SOCKS_PROXY_VALUE_Y,
+        SOCKS_PROXY_VALUE_WIDTH,
+        SOCKS_PROXY_VALUE_HEIGHT,
+        hWndParent,
+        (HMENU)IDC_SOCKS_PROXY_VALUE,
+        g_hInst,
+        NULL);
+
+    SendMessage(g_hSocksProxyValue, WM_SETFONT, (WPARAM)g_hDefaultFont, NULL);*/
+
+    g_hSocksProxyListBox = CreateWindow(
+        L"Listbox",
+        L"",
+        WS_CHILD|WS_VISIBLE|WS_VSCROLL|LBS_NOINTEGRALHEIGHT|LBS_DISABLENOSCROLL|LBS_NOTIFY,
+        SOCKS_PROXY_LIST_BOX_X,
+        SOCKS_PROXY_LIST_BOX_Y,
+        SOCKS_PROXY_LIST_BOX_WIDTH,
+        SOCKS_PROXY_LIST_BOX_HEIGHT,
+        hWndParent,
+        (HMENU)IDC_SOCKS_PROXY_LIST_BOX,
+        g_hInst,
+        NULL);
+    SendMessage(g_hSocksProxyListBox, WM_SETFONT, (WPARAM)g_hDefaultFont, NULL);
+    SendMessage(g_hSocksProxyListBox, LB_ADDSTRING, NULL, (LPARAM)_T("127.0.0.1:1080"));
+
+    g_hHTTPProxyLabel = CreateWindow(
+        L"Static",
+        httpProxyLabel,
+        WS_CHILD|WS_VISIBLE|SS_NOTIFY,
+        HTTP_PROXY_LABEL_X,
+        HTTP_PROXY_LABEL_Y,
+        HTTP_PROXY_LABEL_WIDTH,
+        HTTP_PROXY_LABEL_HEIGHT,
+        hWndParent,
+        (HMENU)IDC_HTTP_PROXY_LABEL,
+        g_hInst,
+        NULL);
+
+    SendMessage(g_hHTTPProxyLabel, WM_SETFONT, (WPARAM)g_hDefaultFont, NULL);
+
+    /*g_hHTTPProxyValue = CreateWindow(
+        L"Static",
+        _T(""),
+        WS_CHILD|WS_VISIBLE|SS_NOTIFY,
+        HTTP_PROXY_VALUE_X,
+        HTTP_PROXY_VALUE_Y,
+        HTTP_PROXY_VALUE_WIDTH,
+        HTTP_PROXY_VALUE_HEIGHT,
+        hWndParent,
+        (HMENU)IDC_HTTP_PROXY_VALUE,
+        g_hInst,
+        NULL);
+
+    SendMessage(g_hHTTPProxyValue, WM_SETFONT, (WPARAM)g_hDefaultFont, NULL);*/
+
+    g_hHTTPProxyListBox = CreateWindow(
+        L"Listbox",
+        L"",
+        WS_CHILD|WS_VISIBLE|WS_VSCROLL|LBS_NOINTEGRALHEIGHT|LBS_DISABLENOSCROLL|LBS_NOTIFY,
+        HTTP_PROXY_LIST_BOX_X,
+        HTTP_PROXY_LIST_BOX_Y,
+        HTTP_PROXY_LIST_BOX_WIDTH,
+        HTTP_PROXY_LIST_BOX_HEIGHT,
+        hWndParent,
+        (HMENU)IDC_HTTP_PROXY_LIST_BOX,
+        g_hInst,
+        NULL);
+    SendMessage(g_hHTTPProxyListBox, WM_SETFONT, (WPARAM)g_hDefaultFont, NULL);
+    SendMessage(g_hHTTPProxyListBox, LB_ADDSTRING, NULL, (LPARAM)_T("127.0.0.1:8080"));
 
     // Log List
 
