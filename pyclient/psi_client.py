@@ -74,7 +74,7 @@ class Data(object):
             return False
 
 
-def connect_to_server(data, relay, tun_type='local', test=False):
+def connect_to_server(data, relay, bind_all, test=False):
 
     assert relay in ['SSH', 'OSSH']
 
@@ -89,10 +89,9 @@ def connect_to_server(data, relay, tun_type='local', test=False):
     for home_page in home_pages:
         print home_page
 
-    if tun_type == 'global':
+    if bind_all:
         listen_address=GLOBAL_HOST_IP
     else:
-    
         listen_address=LOCAL_HOST_IP
 
     if relay == 'OSSH':
@@ -115,7 +114,7 @@ def connect_to_server(data, relay, tun_type='local', test=False):
     server.disconnected(relay)
 
 
-def connect(tunnel_type):
+def connect(bind_all):
 
     while True:
 
@@ -123,9 +122,9 @@ def connect(tunnel_type):
 
         try:
             if os.path.isfile('./ssh'):
-                connect_to_server(data, 'OSSH', tunnel_type)
+                connect_to_server(data, 'OSSH', bind_all)
             else:
-                connect_to_server(data, 'SSH', tunnel_type)
+                connect_to_server(data, 'SSH', bind_all)
             break
         except Exception as error:
             print error
@@ -134,14 +133,16 @@ def connect(tunnel_type):
             data.save()
             print 'Trying next server...'
 
-def test_all_servers(tunnel_type='local'):
+
+def test_all_servers(bind_all=False):
+
     data = Data.load()
     for _ in data.servers():
         try:
             if os.path.isfile('./ssh'):
-                connect_to_server(data, 'OSSH', tunnel_type, test=True)
+                connect_to_server(data, 'OSSH', bind_all, test=True)
             else:
-                connect_to_server(data, 'SSH', tunnel_type, test=True)
+                connect_to_server(data, 'SSH', bind_all, test=True)
             print 'moving server to bottom'
             if not data.move_first_server_entry_to_bottom():
                 print "could not reorder servers"
@@ -155,25 +156,21 @@ def test_all_servers(tunnel_type='local'):
             data.save()
             print 'Trying next server...'
 
+
 if __name__ == "__main__":
+
     parser = optparse.OptionParser('usage: %prog [options]')
-    parser.add_option("--local", "-l", dest="local_tunnel", 
-                        action="store_true", help="tunnel local connections")
-    parser.add_option("--global", "-g", dest="global_tunnel",     
-                        action="store_true", help="global tunnel")
+    parser.add_option("--expose", "-e", dest="expose",     
+                        action="store_true", help="Expose SOCKS proxy to the network")
     parser.add_option("--test-servers", "-t", dest="test_servers",
-                        action="store_true", help="will rotate and test all servers")
+                        action="store_true", help="Test all servers")
     (options, _) = parser.parse_args()
     
-    if options.local_tunnel:
-        connect('local')
-    elif options.global_tunnel:
-        connect('global')
-    elif options.test_servers:
+    if options.test_servers:
         test_all_servers()
+    elif options.expose:
+        connect(True)
     else:
-        connect('local')
+        connect(False)
         
-    # connect()
-
 
