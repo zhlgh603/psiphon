@@ -85,6 +85,7 @@ class SSHConnection(object):
         try:
             print 'Press Ctrl-C to terminate.'
             self.ssh.wait()
+            raise Exception('SSH disconnected unexpectedly')
         except KeyboardInterrupt as e:
             print 'Terminating...'
             self.ssh.terminate()
