@@ -26,12 +26,12 @@ import sys
 
 class SSHConnection(object):
 
-    def __init__(self, ip_address, port, username, password, host_key, listen_port, listen_address):
-        self.ip_address = ip_address
-        self.port = port
-        self.username = username
-        self.password = password
-        self.host_key = host_key
+    def __init__(self, server, listen_port, listen_address):
+        self.ip_address = server.get_ip_address()
+        self.port = server.get_ssh_port()
+        self.username = server.get_username()
+        self.password = server.get_password()
+        self.host_key = server.get_host_key()
         self.listen_port = listen_port
         self.listen_address = listen_address
         self.ssh = None
@@ -95,9 +95,10 @@ class SSHConnection(object):
 
 class OSSHConnection(SSHConnection):
 
-    def __init__(self, ip_address, port, username, password, obfuscate_keyword, host_key, listen_port, listen_address):
-        self.obfuscate_keyword = obfuscate_keyword
-        SSHConnection.__init__(self, ip_address, port, username, password, host_key, listen_port, listen_address)
+    def __init__(self, server, listen_port, listen_address):
+        SSHConnection.__init__(self, server, listen_port, listen_address)
+        self.port = server.get_obfuscated_ssh_port()
+        self.obfuscate_keyword = server.get_obfuscate_keyword()
 
     def connect(self):
         self.ssh = pexpect.spawn('./ssh -D %s:%s -N -p %s -z -Z %s %s@%s' %

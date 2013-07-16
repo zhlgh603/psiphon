@@ -48,6 +48,7 @@ class Psiphon3Server(object):
         self.sponsor_id = sponsor_id
         self.client_version = client_version
         self.client_platform = client_platform
+        self.handshake_response = None
         # TODO: add proxy support
         handler = CertificateMatchingHTTPSHandler(self.web_server_certificate)
         self.opener = urllib2.build_opener(handler)
@@ -103,24 +104,24 @@ class Psiphon3Server(object):
         request_url = (self._common_request_url(relay_protocol) % ('handshake',) + '&' +
                        '&'.join(['known_server=%s' % (binascii.unhexlify(server).split(" ")[0],) for server in self.servers]))
         response = self.opener.open(request_url).read()
-        handshake_response = {'Upgrade': '',
-                              'SSHPort': '',
-                              'SSHUsername': '',
-                              'SSHPassword': '',
-                              'SSHHostKey': '',
-                              'SSHSessionID': '',
-                              'SSHObfuscatedPort': '',
-                              'SSHObfuscatedKey': '',
-                              'PSK': '',
-                              'Homepage': []}
+        self.handshake_response = {'Upgrade': '',
+                                   'SSHPort': '',
+                                   'SSHUsername': '',
+                                   'SSHPassword': '',
+                                   'SSHHostKey': '',
+                                   'SSHSessionID': '',
+                                   'SSHObfuscatedPort': '',
+                                   'SSHObfuscatedKey': '',
+                                   'PSK': '',
+                                   'Homepage': []}
 
         for line in response.split('\n'):
             key, value = line.split(': ', 1)
-            if key in handshake_response.keys():
-                if type(handshake_response[key]) == list:
-                    handshake_response[key].append(value)
+            if key in self.handshake_response.keys():
+                if type(self.handshake_response[key]) == list:
+                    self.handshake_response[key].append(value)
                 else:
-                    handshake_response[key] = value
+                    self.handshake_response[key] = value
             if key == 'Server':
                 # discovery
                 if value not in self.servers:
@@ -128,7 +129,52 @@ class Psiphon3Server(object):
             if key == 'SSHSessionID':
                 self.ssh_session_id = value
 
-        return handshake_response
+        return self.handshake_response
+
+    def get_ip_address(self):
+        return self.ip_address
+
+    def get_ssh_port(self):
+        if self.handshake_response:
+            return self.handshake_response['SSHPort']
+        if self._has_extended_config_value('sshPort'):
+            return self.extended_config['sshPort']
+        return None
+
+    def get_username(self):
+        if self.handshake_response:
+            return self.handshake_response['SSHUsername']
+        if self._has_extended_config_value('sshUsername'):
+            return self.extended_config['sshUsername']
+        return None
+
+    def get_password(self):
+        if self.handshake_response:
+            return self.handshake_response['SSHPassword']
+        if self._has_extended_config_value('sshPassword'):
+            return self.extended_config['sshPassword']
+        return None
+
+    def get_host_key(self):
+        if self.handshake_response:
+            return self.handshake_response['SSHHostKey']
+        if self._has_extended_config_value('sshHostKey'):
+            return self.extended_config['sshHostKey']
+        return None
+
+    def get_obfuscated_ssh_port(self):
+        if self.handshake_response:
+            return self.handshake_response['SSHObfuscatedPort']
+        if self._has_extended_config_value('sshObfuscatedPort'):
+            return self.extended_config['sshObfuscatedPort']
+        return None
+
+    def get_obfuscate_keyword(self):
+        if self.handshake_response:
+            return self.handshake_response['SSHObfuscatedKey']
+        if self._has_extended_config_value('sshObfuscatedKey'):
+            return self.extended_config['sshObfuscatedKey']
+        return None
 
     # TODO: download
 
