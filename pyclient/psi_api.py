@@ -63,6 +63,8 @@ class Psiphon3Server(object):
                 (type(self.extended_config[key]) == int and self.extended_config[key] != 0) or
                 (type(self.extended_config[key]) == list))
  
+    # This will return False if there is not enough information in the server entry to determine
+    # if the relay protocol is supported.
     def relay_not_supported(self, relay_protocol):
         if relay_protocol not in ['SSH', 'OSSH']: return True
         if self._has_extended_config_value('capabilities'):
