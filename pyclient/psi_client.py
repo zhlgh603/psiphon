@@ -26,8 +26,8 @@ import os
 import optparse
 
 
-# TODO: add support to server for indicating platform
 CLIENT_VERSION = 1
+CLIENT_PLATFORM = 'Python'
 SOCKS_PORT = 1080
 LOCAL_HOST_IP = '127.0.0.1'
 GLOBAL_HOST_IP = '0.0.0.0'
@@ -78,7 +78,11 @@ def connect_to_server(data, relay, bind_all, test=False):
 
     assert relay in ['SSH', 'OSSH']
 
-    server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION)
+    server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION, CLIENT_PLATFORM)
+
+    if not server.supports_relay(relay):
+        raise Exception('Server does not support %s' % relay)
+
     handshake_response = server.handshake(relay)
     # handshake might update the server list with newly discovered servers
     data.save()
