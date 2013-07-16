@@ -51,26 +51,50 @@ class Psiphon3Server(object):
         handler = CertificateMatchingHTTPSHandler(self.web_server_certificate)
         self.opener = urllib2.build_opener(handler)
 
+    def _has_extended_config_key(self, key):
+        if not self.extended_config: return False
+        return key in self.extended_config
+
+    def _has_extended_config_value(self, key):
+        if not self._has_extended_config_key(key): return False
+        return ((type(self.extended_config[key]) == str and len(self.extended_config[key]) > 0) or
+                (type(self.extended_config[key]) == unicode and len(self.extended_config[key]) > 0) or
+                (type(self.extended_config[key]) == int and self.extended_config[key] != 0) or
+                (type(self.extended_config[key]) == list))
+ 
+    def supports_relay(self, relay_protocol):
+        if relay_protocol not in ['SSH', 'OSSH']: return False
+        if self._has_extended_config_value('capabilities'):
+            return relay_protocol in self.extended_config['capabilities']
+        if relay_protocol == 'SSH':
+            if (self._has_extended_config_key('sshPort') and
+                not self._has_extended_config_value('sshPort')): return False
+        elif relay_protocol == 'OSSH':
+            if (self._has_extended_config_key('sshObfuscatedPort') and
+                not self._has_extended_config_value('sshObfuscatedPort')): return False
+            if (self._has_extended_config_key('sshObfuscatedKey') and
+                not self._has_extended_config_value('sshObfuscatedKey')): return False
+        else:
+            return False
+        return True
+
     def can_attempt_relay_before_handshake(self, relay_protocol):
         if relay_protocol not in ['SSH', 'OSSH']: return False
-        if not self.extended_config: return False
-        def has_key(key):
-            return (key in self.extended_config and
-                    ((type(self.extended_config[key]) == str and len(self.extended_config[key]) > 0) or
-                     (type(self.extended_config[key]) == unicode and len(self.extended_config[key]) > 0) or
-                     (type(self.extended_config[key]) == int and self.extended_config[key] != 0)))
-        if not has_key('sshUsername'): return False
-        if not has_key('sshPassword'): return False
-        if not has_key('sshHostKey'): return False
+        if not self._has_extended_config_value('sshUsername'): return False
+        if not self._has_extended_config_value('sshPassword'): return False
+        if not self._has_extended_config_value('sshHostKey'): return False
         if relay_protocol == 'SSH':
-            if not has_key('sshPort'): return False
+            if not self._has_extended_config_value('sshPort'): return False
+        elif relay_protocol == 'OSSH':
+            if not self._has_extended_config_value('sshObfuscatedPort'): return False
+            if not self._has_extended_config_value('sshObfuscatedKey'): return False
         else:
-            if not has_key('sshObfuscatedPort'): return False
-            if not has_key('sshObfuscatedKey'): return False
+            return False
         return True
 
     # handshake
     # Note that self.servers may be updated with newly discovered servers after a successful handshake
+    # TODO: upgrade the current server entry if not self.extended_config
     def handshake(self, relay_protocol):
         # TODO: page view regexes
         request_url = (self._common_request_url(relay_protocol) % ('handshake',) + '&' +
