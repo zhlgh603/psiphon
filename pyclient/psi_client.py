@@ -87,6 +87,24 @@ def do_handshake(server, data, relay):
         print home_page
 
 
+def make_ssh_connection(server, relay, bind_all):
+
+    if bind_all:
+        listen_address=GLOBAL_HOST_IP
+    else:
+        listen_address=LOCAL_HOST_IP
+
+    if relay == 'OSSH':
+        ssh_connection = OSSHConnection(server, str(SOCKS_PORT), str(listen_address))
+    elif relay == 'SSH':
+        ssh_connection = SSHConnection(server, str(SOCKS_PORT), str(listen_address))
+    else:
+        assert False
+
+    ssh_connection.connect()
+    return ssh_connection
+
+
 def connect_to_server(data, relay, bind_all, test=False):
 
     assert relay in ['SSH', 'OSSH']
@@ -101,33 +119,36 @@ def connect_to_server(data, relay, bind_all, test=False):
         do_handshake(server, data, relay)
         handshake_performed = True
 
-    if bind_all:
-        listen_address=GLOBAL_HOST_IP
-    else:
-        listen_address=LOCAL_HOST_IP
-
-    if relay == 'OSSH':
-        ssh_connection = OSSHConnection(server, str(SOCKS_PORT), str(listen_address))
-    else:
-        ssh_connection = SSHConnection(server, str(SOCKS_PORT), str(listen_address))
-
-    ssh_connection.connect()
+    ssh_connection = make_ssh_connection(server, relay, bind_all)
 
     if not handshake_performed:
-        do_handshake(server, data, relay)
-        handshake_performed = True
+        try:
+            do_handshake(server, data, relay)
+            handshake_performed = True
+        except:
+            pass
         
     ssh_connection.test_connection()
 
+    connected_performed = False
     if handshake_performed:
-        server.connected(relay)
+        try:
+            server.connected(relay)
+            connected_performed = True
+        except:
+            pass
 
     if test:
         print 'Testing connection to ip %s' % server.ip_address
         ssh_connection.disconnect_on_success(test_site=test)
     else:
         ssh_connection.wait_for_disconnect()
-    server.disconnected(relay)
+
+    if connected_performed:
+        try:
+            server.disconnected(relay)
+        except:
+            pass
 
 
 def connect(bind_all):
