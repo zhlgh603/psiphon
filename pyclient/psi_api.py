@@ -32,7 +32,7 @@ import json
 
 class Psiphon3Server(object):
 
-    def __init__(self, servers, propagation_channel_id, sponsor_id, client_version):
+    def __init__(self, servers, propagation_channel_id, sponsor_id, client_version, client_platform):
         self.servers = servers
         server_entry = binascii.unhexlify(servers[0]).split(" ")
         (self.ip_address, self.web_server_port, self.web_server_secret,
@@ -47,6 +47,7 @@ class Psiphon3Server(object):
         self.propagation_channel_id = propagation_channel_id
         self.sponsor_id = sponsor_id
         self.client_version = client_version
+        self.client_platform = client_platform
         # TODO: add proxy support
         handler = CertificateMatchingHTTPSHandler(self.web_server_certificate)
         self.opener = urllib2.build_opener(handler)
@@ -160,10 +161,10 @@ class Psiphon3Server(object):
 
     def _common_request_url(self, relay_protocol):
         assert relay_protocol in ['VPN','SSH','OSSH']
-        return 'https://%s:%s/%%s?server_secret=%s&propagation_channel_id=%s&sponsor_id=%s&client_version=%s&relay_protocol=%s' % (
+        return 'https://%s:%s/%%s?server_secret=%s&propagation_channel_id=%s&sponsor_id=%s&client_version=%s&client_platform=%s&relay_protocol=%s' % (
             self.ip_address, self.web_server_port, self.web_server_secret,
             self.propagation_channel_id, self.sponsor_id, self.client_version,
-            relay_protocol)
+            self.client_platform, relay_protocol)
 
 
 #
