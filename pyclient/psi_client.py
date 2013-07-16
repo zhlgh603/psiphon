@@ -80,7 +80,7 @@ def connect_to_server(data, relay, bind_all, test=False):
 
     server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION, CLIENT_PLATFORM)
 
-    if not server.supports_relay(relay):
+    if server.relay_not_supported(relay):
         raise Exception('Server does not support %s' % relay)
 
     handshake_response = server.handshake(relay)
