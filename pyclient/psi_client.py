@@ -74,14 +74,7 @@ class Data(object):
             return False
 
 
-def connect_to_server(data, relay, bind_all, test=False):
-
-    assert relay in ['SSH', 'OSSH']
-
-    server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION, CLIENT_PLATFORM)
-
-    if server.relay_not_supported(relay):
-        raise Exception('Server does not support %s' % relay)
+def do_handshake(server, data, relay):
 
     handshake_response = server.handshake(relay)
     # handshake might update the server list with newly discovered servers
@@ -93,23 +86,42 @@ def connect_to_server(data, relay, bind_all, test=False):
     for home_page in home_pages:
         print home_page
 
+
+def connect_to_server(data, relay, bind_all, test=False):
+
+    assert relay in ['SSH', 'OSSH']
+
+    server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION, CLIENT_PLATFORM)
+
+    if server.relay_not_supported(relay):
+        raise Exception('Server does not support %s' % relay)
+
+    handshake_performed = False
+    if not server.can_attempt_relay_before_handshake(relay):
+        do_handshake(server, data, relay)
+        handshake_performed = True
+
     if bind_all:
         listen_address=GLOBAL_HOST_IP
     else:
         listen_address=LOCAL_HOST_IP
 
     if relay == 'OSSH':
-        ssh_connection = OSSHConnection(server.ip_address, handshake_response['SSHObfuscatedPort'],
-                                        handshake_response['SSHUsername'], handshake_response['SSHPassword'],
-                                        handshake_response['SSHObfuscatedKey'], handshake_response['SSHHostKey'],
-                                        str(SOCKS_PORT), str(listen_address))
+        ssh_connection = OSSHConnection(server, str(SOCKS_PORT), str(listen_address))
     else:
-        ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
-                                       handshake_response['SSHUsername'], handshake_response['SSHPassword'],
-                                       handshake_response['SSHHostKey'], str(SOCKS_PORT), str(listen_address))
+        ssh_connection = SSHConnection(server, str(SOCKS_PORT), str(listen_address))
+
     ssh_connection.connect()
+
+    if not handshake_performed:
+        do_handshake(server, data, relay)
+        handshake_performed = True
+        
     ssh_connection.test_connection()
-    server.connected(relay)
+
+    if handshake_performed:
+        server.connected(relay)
+
     if test:
         print 'Testing connection to ip %s' % server.ip_address
         ssh_connection.disconnect_on_success(test_site=test)
