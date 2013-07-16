@@ -23,6 +23,7 @@ import httplib
 import ssl
 import socket
 import binascii
+import json
 
 
 #
@@ -33,15 +34,40 @@ class Psiphon3Server(object):
 
     def __init__(self, servers, propagation_channel_id, sponsor_id, client_version):
         self.servers = servers
-        # TODO: read the new json config element of the server entry, if present
+        server_entry = binascii.unhexlify(servers[0]).split(" ")
         (self.ip_address, self.web_server_port, self.web_server_secret,
-         self.web_server_certificate) = binascii.unhexlify(servers[0]).split(" ")[:4]
+         self.web_server_certificate) = server_entry[:4]
+        # read the new json config element of the server entry, if present
+        self.extended_config = None
+        if len(server_entry) > 4:
+            try:
+                self.extended_config = json.loads(' '.join(server_entry[4:]))
+            except Exception:
+                pass
         self.propagation_channel_id = propagation_channel_id
         self.sponsor_id = sponsor_id
         self.client_version = client_version
         # TODO: add proxy support
         handler = CertificateMatchingHTTPSHandler(self.web_server_certificate)
         self.opener = urllib2.build_opener(handler)
+
+    def can_attempt_relay_before_handshake(self, relay_protocol):
+        if relay_protocol not in ['SSH', 'OSSH']: return False
+        if not self.extended_config: return False
+        def has_key(key):
+            return (key in self.extended_config and
+                    ((type(self.extended_config[key]) == str and len(self.extended_config[key]) > 0) or
+                     (type(self.extended_config[key]) == unicode and len(self.extended_config[key]) > 0) or
+                     (type(self.extended_config[key]) == int and self.extended_config[key] != 0)))
+        if not has_key('sshUsername'): return False
+        if not has_key('sshPassword'): return False
+        if not has_key('sshHostKey'): return False
+        if relay_protocol == 'SSH':
+            if not has_key('sshPort'): return False
+        else:
+            if not has_key('sshObfuscatedPort'): return False
+            if not has_key('sshObfuscatedKey'): return False
+        return True
 
     # handshake
     # Note that self.servers may be updated with newly discovered servers after a successful handshake
