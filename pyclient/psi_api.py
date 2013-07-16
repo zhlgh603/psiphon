@@ -63,21 +63,21 @@ class Psiphon3Server(object):
                 (type(self.extended_config[key]) == int and self.extended_config[key] != 0) or
                 (type(self.extended_config[key]) == list))
  
-    def supports_relay(self, relay_protocol):
-        if relay_protocol not in ['SSH', 'OSSH']: return False
+    def relay_not_supported(self, relay_protocol):
+        if relay_protocol not in ['SSH', 'OSSH']: return True
         if self._has_extended_config_value('capabilities'):
-            return relay_protocol in self.extended_config['capabilities']
+            return relay_protocol not in self.extended_config['capabilities']
         if relay_protocol == 'SSH':
             if (self._has_extended_config_key('sshPort') and
-                not self._has_extended_config_value('sshPort')): return False
+                not self._has_extended_config_value('sshPort')): return True
         elif relay_protocol == 'OSSH':
             if (self._has_extended_config_key('sshObfuscatedPort') and
-                not self._has_extended_config_value('sshObfuscatedPort')): return False
+                not self._has_extended_config_value('sshObfuscatedPort')): return True
             if (self._has_extended_config_key('sshObfuscatedKey') and
-                not self._has_extended_config_value('sshObfuscatedKey')): return False
+                not self._has_extended_config_value('sshObfuscatedKey')): return True
         else:
-            return False
-        return True
+            return True
+        return False
 
     def can_attempt_relay_before_handshake(self, relay_protocol):
         if relay_protocol not in ['SSH', 'OSSH']: return False
