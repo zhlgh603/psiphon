@@ -22,7 +22,7 @@ from psi_api import Psiphon3Server
 from psi_ssh_connection import SSHConnection, OSSHConnection
 import json
 import os
-
+import subprocess
 import optparse
 
 
@@ -160,6 +160,17 @@ def connect_to_server(data, relay, bind_all, test=False):
             ssh_connection.disconnect()
 
 
+def _test_executable(path):
+    if os.path.isfile(path):
+        try:
+            with open(os.devnull, 'w') as devnull:
+                subprocess.call(path, stdout=devnull, stderr=devnull)
+                return True
+        except OSError:
+            pass
+    return False
+
+
 def connect(bind_all, test=False):
 
     while True:
@@ -167,10 +178,14 @@ def connect(bind_all, test=False):
         data = Data.load()
 
         try:
-            if os.path.isfile('./ssh'):
+            relay = 'SSH'
+            # NOTE that this path is also hard-coded in psi_ssh_connection
+            ossh_path = './ssh'
+            if _test_executable(ossh_path):
                 relay = 'OSSH'
             else:
-                relay = 'SSH'
+                print '%s is not a valid executable. Using standard ssh.' % (ossh_path,)
+
             connect_to_server(data, relay, bind_all, test)
             break
         except Exception as error:
