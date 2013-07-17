@@ -32,7 +32,7 @@ class SSHConnection(object):
         self.ip_address = server.get_ip_address()
         self.port = server.get_ssh_port()
         self.username = server.get_username()
-        self.password = server.get_password()
+        self.password = server.get_password_for_ssh_authentication()
         self.host_key = server.get_host_key()
         self.listen_port = listen_port
         self.listen_address = listen_address
