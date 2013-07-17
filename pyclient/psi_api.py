@@ -18,6 +18,7 @@
 #
 
 
+import os
 import sys
 import httplib
 import ssl
@@ -53,6 +54,7 @@ class Psiphon3Server(object):
         self.client_version = client_version
         self.client_platform = client_platform
         self.handshake_response = None
+        self.client_session_id = os.urandom(16).encode('hex')
         socks.setdefaultproxy()
         handler = CertificateMatchingHTTPSHandler(self.web_server_certificate)
         self.opener = urllib2.build_opener(handler)
@@ -106,8 +108,8 @@ class Psiphon3Server(object):
     # handshake
     # Note that self.servers may be updated with newly discovered servers after a successful handshake
     # TODO: upgrade the current server entry if not self.extended_config
+    # TODO: page view regexes
     def handshake(self, relay_protocol):
-        # TODO: page view regexes
         request_url = (self._common_request_url(relay_protocol) % ('handshake',) + '&' +
                        '&'.join(['known_server=%s' % (binascii.unhexlify(server).split(" ")[0],) for server in self.servers]))
         response = self.opener.open(request_url).read()
@@ -161,6 +163,9 @@ class Psiphon3Server(object):
         if self._has_extended_config_value('sshPassword'):
             return self.extended_config['sshPassword']
         return None
+
+    def get_password_for_ssh_authentication(self):
+        return self.client_session_id + self.get_password()
 
     def get_host_key(self):
         if self.handshake_response:
@@ -216,10 +221,10 @@ class Psiphon3Server(object):
 
     def _common_request_url(self, relay_protocol):
         assert relay_protocol in ['VPN','SSH','OSSH']
-        return 'https://%s:%s/%%s?server_secret=%s&propagation_channel_id=%s&sponsor_id=%s&client_version=%s&client_platform=%s&relay_protocol=%s' % (
+        return 'https://%s:%s/%%s?server_secret=%s&propagation_channel_id=%s&sponsor_id=%s&client_version=%s&client_platform=%s&relay_protocol=%s&client_session_id=%s' % (
             self.ip_address, self.web_server_port, self.web_server_secret,
             self.propagation_channel_id, self.sponsor_id, self.client_version,
-            self.client_platform, relay_protocol)
+            self.client_platform, relay_protocol, self.client_session_id)
 
 
 #
