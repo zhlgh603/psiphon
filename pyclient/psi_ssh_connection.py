@@ -51,7 +51,7 @@ class SSHConnection(object):
         return ':'.join(a + b for a, b in zip(md5_hash[::2], md5_hash[1::2]))
 
     def command_line(self):
-        cmd_line = ('ssh -D %s:%d -N -p %s %s@%s' %
+        cmd_line = ('ssh -C -D %s:%d -N -p %s %s@%s' %
                                  (self.listen_address, self.listen_port, self.port, self.username, self.ip_address))
         return cmd_line
 
@@ -113,7 +113,7 @@ class OSSHConnection(SSHConnection):
         self.obfuscate_keyword = server.get_obfuscate_keyword()
 
     def command_line(self):
-        cmd_line = ('./ssh -D %s:%d -N -p %s -z -Z %s %s@%s' %
+        cmd_line = ('./ssh -C -D %s:%d -N -p %s -z -Z %s %s@%s' %
                                  (self.listen_address, self.listen_port, self.port, self.obfuscate_keyword,
                                   self.username, self.ip_address))
         return cmd_line
