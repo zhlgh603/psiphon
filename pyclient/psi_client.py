@@ -79,12 +79,16 @@ def do_handshake(server, data, relay):
     handshake_response = server.handshake(relay)
     # handshake might update the server list with newly discovered servers
     data.save()
+    return handshake_response
 
+
+def print_sponsor_message(handshake_response):
     home_pages = handshake_response['Homepage']
     if len(home_pages) > 0:
         print '\nPlease visit our sponsor\'s homepage%s:' % ('s' if len(home_pages) > 1 else '',)
     for home_page in home_pages:
         print home_page
+    print ''
 
 
 def make_ssh_connection(server, relay, bind_all):
@@ -95,9 +99,9 @@ def make_ssh_connection(server, relay, bind_all):
         listen_address=LOCAL_HOST_IP
 
     if relay == 'OSSH':
-        ssh_connection = OSSHConnection(server, str(SOCKS_PORT), str(listen_address))
+        ssh_connection = OSSHConnection(server, SOCKS_PORT, str(listen_address))
     elif relay == 'SSH':
-        ssh_connection = SSHConnection(server, str(SOCKS_PORT), str(listen_address))
+        ssh_connection = SSHConnection(server, SOCKS_PORT, str(listen_address))
     else:
         assert False
 
@@ -116,42 +120,47 @@ def connect_to_server(data, relay, bind_all, test=False):
 
     handshake_performed = False
     if not server.can_attempt_relay_before_handshake(relay):
-        do_handshake(server, data, relay)
+        handshake_response = do_handshake(server, data, relay)
         handshake_performed = True
 
     ssh_connection = make_ssh_connection(server, relay, bind_all)
+    ssh_connection.test_connection()
+
+    server.set_socks_proxy(SOCKS_PORT)
 
     if not handshake_performed:
         try:
-            do_handshake(server, data, relay)
+            handshake_response = do_handshake(server, data, relay)
             handshake_performed = True
-        except:
-            pass
-        
-    ssh_connection.test_connection()
+        except Exception as e:
+            print 'DEBUG: handshake request: ' + str(e)
 
     connected_performed = False
     if handshake_performed:
+        print_sponsor_message(handshake_response)
         try:
             server.connected(relay)
             connected_performed = True
-        except:
-            pass
+        except Exception as e:
+            print 'DEBUG: connected request: ' + str(e)
 
     if test:
         print 'Testing connection to ip %s' % server.ip_address
         ssh_connection.disconnect_on_success(test_site=test)
     else:
-        ssh_connection.wait_for_disconnect()
-
-    if connected_performed:
+        print 'Press Ctrl-C to terminate.'
         try:
-            server.disconnected(relay)
-        except:
-            pass
+            ssh_connection.wait_for_disconnect()
+        except KeyboardInterrupt as e:
+            if connected_performed:
+                try:
+                    server.disconnected(relay)
+                except Exception as e:
+                    print 'DEBUG: disconnected request: ' + str(e)
+            ssh_connection.disconnect()
 
 
-def connect(bind_all):
+def connect(bind_all, test=False):
 
     while True:
 
@@ -159,13 +168,17 @@ def connect(bind_all):
 
         try:
             if os.path.isfile('./ssh'):
-                connect_to_server(data, 'OSSH', bind_all)
+                relay = 'OSSH'
             else:
-                connect_to_server(data, 'SSH', bind_all)
+                relay = 'SSH'
+            connect_to_server(data, relay, bind_all, test)
             break
         except Exception as error:
-            print error
+            print 'DEBUG: %s connection: %s' % (relay, str(error))
+            if test:
+                break
             if not data.move_first_server_entry_to_bottom():
+                print 'DEBUG: could not reorder servers'
                 break
             data.save()
             print 'Trying next server...'
@@ -175,23 +188,12 @@ def test_all_servers(bind_all=False):
 
     data = Data.load()
     for _ in data.servers():
-        try:
-            if os.path.isfile('./ssh'):
-                connect_to_server(data, 'OSSH', bind_all, test=True)
-            else:
-                connect_to_server(data, 'SSH', bind_all, test=True)
-            print 'moving server to bottom'
-            if not data.move_first_server_entry_to_bottom():
-                print "could not reorder servers"
-                break
-            data.save()
-        except Exception as error:
-            print error
-            if not data.move_first_server_entry_to_bottom():
-                print 'could not reorder servers'
-                break
-            data.save()
-            print 'Trying next server...'
+        connect(bind_all, test=True)
+        print 'DEBUG: moving server to bottom'
+        if not data.move_first_server_entry_to_bottom():
+            print "could not reorder servers"
+            break
+        data.save()
 
 
 if __name__ == "__main__":
