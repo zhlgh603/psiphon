@@ -22,6 +22,8 @@ import pexpect
 import hashlib
 import base64
 import sys
+import socket
+import time
 
 
 class SSHConnection(object):
@@ -49,7 +51,7 @@ class SSHConnection(object):
         return ':'.join(a + b for a, b in zip(md5_hash[::2], md5_hash[1::2]))
 
     def connect(self):
-        self.ssh = pexpect.spawn('ssh -D %s:%s -N -p %s %s@%s' %
+        self.ssh = pexpect.spawn('ssh -D %s:%d -N -p %s %s@%s' %
                                  (self.listen_address, self.listen_port, self.port, self.username, self.ip_address))
         # Print ssh output:
         #self.ssh.logfile_read = sys.stdout
@@ -62,8 +64,16 @@ class SSHConnection(object):
             self.ssh.sendline(self.password)
 
     def test_connection(self):
-        # TODO: test the connection
-        print '\nYour SOCKS proxy is now running at %s:%s' % (self.listen_address, self.listen_port)
+        MAX_WAIT_SECONDS = 10
+        for i in range(MAX_WAIT_SECONDS):
+            try:
+                socket.socket().connect((self.listen_address, self.listen_port))
+            except:
+                if i < MAX_WAIT_SECONDS - 1:
+                    time.sleep(1)
+                else:
+                    raise
+        print '\nYour SOCKS proxy is now running at %s:%d' % (self.listen_address, self.listen_port)
 
     def disconnect_on_success(self, test_site=False):
         try:
@@ -74,7 +84,7 @@ class SSHConnection(object):
                 print 'Site Response %s' % (response)   
             if response != 200:
                 print 'FAILED!'
-            self.ssh.terminate()
+            self.disconnect()
         except ImportError as error:
             print 'Failed importing module: %s' % str(error)
             raise error
@@ -82,14 +92,12 @@ class SSHConnection(object):
             print 'Failed: %s' % str(error)
 
     def wait_for_disconnect(self):
-        try:
-            print 'Press Ctrl-C to terminate.'
-            self.ssh.wait()
-            raise Exception('SSH disconnected unexpectedly')
-        except KeyboardInterrupt as e:
-            print 'Terminating...'
-            self.ssh.terminate()
+        self.ssh.wait()
+        raise Exception('SSH disconnected unexpectedly')
 
+    def disconnect(self):
+        print 'Terminating...'
+        self.ssh.terminate()
         print 'Connection closed'
 
 
@@ -101,7 +109,7 @@ class OSSHConnection(SSHConnection):
         self.obfuscate_keyword = server.get_obfuscate_keyword()
 
     def connect(self):
-        self.ssh = pexpect.spawn('./ssh -D %s:%s -N -p %s -z -Z %s %s@%s' %
+        self.ssh = pexpect.spawn('./ssh -D %s:%d -N -p %s -z -Z %s %s@%s' %
                                  (self.listen_address, self.listen_port, self.port, self.obfuscate_keyword,
                                   self.username, self.ip_address))
         # Print ssh output:

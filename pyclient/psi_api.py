@@ -18,12 +18,16 @@
 #
 
 
-import urllib2
+import sys
 import httplib
 import ssl
-import socket
 import binascii
 import json
+sys.path.insert(0, 'SocksiPy')
+import socks
+import socket
+socket.socket = socks.socksocket
+import urllib2
 
 
 #
@@ -49,9 +53,12 @@ class Psiphon3Server(object):
         self.client_version = client_version
         self.client_platform = client_platform
         self.handshake_response = None
-        # TODO: add proxy support
+        socks.setdefaultproxy()
         handler = CertificateMatchingHTTPSHandler(self.web_server_certificate)
         self.opener = urllib2.build_opener(handler)
+
+    def set_socks_proxy(self, proxy_port):
+        socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, '127.0.0.1', proxy_port)
 
     def _has_extended_config_key(self, key):
         if not self.extended_config: return False
