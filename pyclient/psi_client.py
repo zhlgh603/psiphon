@@ -22,12 +22,13 @@ from psi_api import Psiphon3Server
 from psi_ssh_connection import SSHConnection, OSSHConnection
 import json
 import os
-
+import subprocess
 import optparse
 
 
-# TODO: add support to server for indicating platform
+DATA_FILENAME = 'psi_client.dat'
 CLIENT_VERSION = 1
+CLIENT_PLATFORM = 'Python'
 SOCKS_PORT = 1080
 LOCAL_HOST_IP = '127.0.0.1'
 GLOBAL_HOST_IP = '0.0.0.0'
@@ -41,20 +42,21 @@ class Data(object):
     @staticmethod
     def load():
         try:
-            with open('psi_client.dat', 'r') as data_file:
+            with open(DATA_FILENAME, 'r') as data_file:
                 data = Data(json.loads(data_file.read()))
             # Validate
             data.servers()[0]
             data.propagation_channel_id()
             data.sponsor_id()
         except (IOError, ValueError, KeyError, IndexError, TypeError) as error:
-            print '\nPlease obtain a valid psi_client.dat file and try again.\n'
+            print '\nPlease obtain a valid %s file and try again.\n' % (DATA_FILENAME,)
             raise
         return data
 
     def save(self):
-        with open('psi_client.dat', 'w') as data_file:
+        with open(DATA_FILENAME+'.new', 'w') as data_file:
             data_file.write(json.dumps(self.data))
+        os.rename(DATA_FILENAME+'.new', DATA_FILENAME)
 
     def servers(self):
         return self.data['servers']
@@ -74,106 +76,157 @@ class Data(object):
             return False
 
 
-def connect_to_server(data, relay, tun_type='local', test=False):
+def do_handshake(server, data, relay):
 
-    assert relay in ['SSH', 'OSSH']
-
-    server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION)
     handshake_response = server.handshake(relay)
     # handshake might update the server list with newly discovered servers
     data.save()
+    return handshake_response
 
+
+def print_sponsor_message(handshake_response):
     home_pages = handshake_response['Homepage']
     if len(home_pages) > 0:
         print '\nPlease visit our sponsor\'s homepage%s:' % ('s' if len(home_pages) > 1 else '',)
     for home_page in home_pages:
         print home_page
+    print ''
 
-    if tun_type == 'global':
+
+def make_ssh_connection(server, relay, bind_all):
+
+    if bind_all:
         listen_address=GLOBAL_HOST_IP
     else:
-    
         listen_address=LOCAL_HOST_IP
 
     if relay == 'OSSH':
-        ssh_connection = OSSHConnection(server.ip_address, handshake_response['SSHObfuscatedPort'],
-                                        handshake_response['SSHUsername'], handshake_response['SSHPassword'],
-                                        handshake_response['SSHObfuscatedKey'], handshake_response['SSHHostKey'],
-                                        str(SOCKS_PORT), str(listen_address))
+        ssh_connection = OSSHConnection(server, SOCKS_PORT, str(listen_address))
+    elif relay == 'SSH':
+        ssh_connection = SSHConnection(server, SOCKS_PORT, str(listen_address))
     else:
-        ssh_connection = SSHConnection(server.ip_address, handshake_response['SSHPort'],
-                                       handshake_response['SSHUsername'], handshake_response['SSHPassword'],
-                                       handshake_response['SSHHostKey'], str(SOCKS_PORT), str(listen_address))
+        assert False
+
     ssh_connection.connect()
+    return ssh_connection
+
+
+def connect_to_server(data, relay, bind_all, test=False):
+
+    assert relay in ['SSH', 'OSSH']
+
+    server = Psiphon3Server(data.servers(), data.propagation_channel_id(), data.sponsor_id(), CLIENT_VERSION, CLIENT_PLATFORM)
+
+    if server.relay_not_supported(relay):
+        raise Exception('Server does not support %s' % relay)
+
+    handshake_performed = False
+    if not server.can_attempt_relay_before_handshake(relay):
+        handshake_response = do_handshake(server, data, relay)
+        handshake_performed = True
+
+    ssh_connection = make_ssh_connection(server, relay, bind_all)
     ssh_connection.test_connection()
-    server.connected(relay)
+
+    server.set_socks_proxy(SOCKS_PORT)
+
+    if not handshake_performed:
+        try:
+            handshake_response = do_handshake(server, data, relay)
+            handshake_performed = True
+        except Exception as e:
+            print 'DEBUG: handshake request: ' + str(e)
+
+    connected_performed = False
+    if handshake_performed:
+        print_sponsor_message(handshake_response)
+        try:
+            server.connected(relay)
+            connected_performed = True
+        except Exception as e:
+            print 'DEBUG: connected request: ' + str(e)
+
     if test:
         print 'Testing connection to ip %s' % server.ip_address
         ssh_connection.disconnect_on_success(test_site=test)
     else:
-        ssh_connection.wait_for_disconnect()
-    server.disconnected(relay)
+        print 'Press Ctrl-C to terminate.'
+        try:
+            ssh_connection.wait_for_disconnect()
+        except KeyboardInterrupt as e:
+            if connected_performed:
+                try:
+                    server.disconnected(relay)
+                except Exception as e:
+                    print 'DEBUG: disconnected request: ' + str(e)
+            ssh_connection.disconnect()
 
 
-def connect(tunnel_type):
+def _test_executable(path):
+    if os.path.isfile(path):
+        try:
+            with open(os.devnull, 'w') as devnull:
+                subprocess.call(path, stdout=devnull, stderr=devnull)
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def connect(bind_all, test=False):
 
     while True:
 
         data = Data.load()
 
         try:
-            if os.path.isfile('./ssh'):
-                connect_to_server(data, 'OSSH', tunnel_type)
+            relay = 'SSH'
+            # NOTE that this path is also hard-coded in psi_ssh_connection
+            ossh_path = './ssh'
+            if _test_executable(ossh_path):
+                relay = 'OSSH'
             else:
-                connect_to_server(data, 'SSH', tunnel_type)
+                print '%s is not a valid executable. Using standard ssh.' % (ossh_path,)
+
+            connect_to_server(data, relay, bind_all, test)
             break
         except Exception as error:
-            print error
+            print 'DEBUG: %s connection: %s' % (relay, str(error))
+            if test:
+                break
             if not data.move_first_server_entry_to_bottom():
+                print 'DEBUG: could not reorder servers'
                 break
             data.save()
             print 'Trying next server...'
 
-def test_all_servers(tunnel_type='local'):
+
+def test_all_servers(bind_all=False):
+
     data = Data.load()
     for _ in data.servers():
-        try:
-            if os.path.isfile('./ssh'):
-                connect_to_server(data, 'OSSH', tunnel_type, test=True)
-            else:
-                connect_to_server(data, 'SSH', tunnel_type, test=True)
-            print 'moving server to bottom'
-            if not data.move_first_server_entry_to_bottom():
-                print "could not reorder servers"
-                break
-            data.save()
-        except Exception as error:
-            print error
-            if not data.move_first_server_entry_to_bottom():
-                print 'could not reorder servers'
-                break
-            data.save()
-            print 'Trying next server...'
+        connect(bind_all, test=True)
+        print 'DEBUG: moving server to bottom'
+        if not data.move_first_server_entry_to_bottom():
+            print "could not reorder servers"
+            break
+        data.save()
+
 
 if __name__ == "__main__":
+
     parser = optparse.OptionParser('usage: %prog [options]')
-    parser.add_option("--local", "-l", dest="local_tunnel", 
-                        action="store_true", help="tunnel local connections")
-    parser.add_option("--global", "-g", dest="global_tunnel",     
-                        action="store_true", help="global tunnel")
+    parser.add_option("--expose", "-e", dest="expose",     
+                        action="store_true", help="Expose SOCKS proxy to the network")
     parser.add_option("--test-servers", "-t", dest="test_servers",
-                        action="store_true", help="will rotate and test all servers")
+                        action="store_true", help="Test all servers")
     (options, _) = parser.parse_args()
     
-    if options.local_tunnel:
-        connect('local')
-    elif options.global_tunnel:
-        connect('global')
-    elif options.test_servers:
+    if options.test_servers:
         test_all_servers()
+    elif options.expose:
+        connect(True)
     else:
-        connect('local')
+        connect(False)
         
-    # connect()
-
 
