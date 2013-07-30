@@ -26,6 +26,7 @@ import subprocess
 import optparse
 
 
+DATA_FILENAME = 'psi_client.dat'
 CLIENT_VERSION = 1
 CLIENT_PLATFORM = 'Python'
 SOCKS_PORT = 1080
@@ -41,20 +42,21 @@ class Data(object):
     @staticmethod
     def load():
         try:
-            with open('psi_client.dat', 'r') as data_file:
+            with open(DATA_FILENAME, 'r') as data_file:
                 data = Data(json.loads(data_file.read()))
             # Validate
             data.servers()[0]
             data.propagation_channel_id()
             data.sponsor_id()
         except (IOError, ValueError, KeyError, IndexError, TypeError) as error:
-            print '\nPlease obtain a valid psi_client.dat file and try again.\n'
+            print '\nPlease obtain a valid %s file and try again.\n' % (DATA_FILENAME,)
             raise
         return data
 
     def save(self):
-        with open('psi_client.dat', 'w') as data_file:
+        with open(DATA_FILENAME+'.new', 'w') as data_file:
             data_file.write(json.dumps(self.data))
+        os.rename(DATA_FILENAME+'.new', DATA_FILENAME)
 
     def servers(self):
         return self.data['servers']
