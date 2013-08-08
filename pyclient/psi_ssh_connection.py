@@ -22,16 +22,18 @@ import pexpect
 import hashlib
 import base64
 import sys
+import socket
+import time
 
 
 class SSHConnection(object):
 
-    def __init__(self, ip_address, port, username, password, host_key, listen_port, listen_address):
-        self.ip_address = ip_address
-        self.port = port
-        self.username = username
-        self.password = password
-        self.host_key = host_key
+    def __init__(self, server, listen_port, listen_address):
+        self.ip_address = server.get_ip_address()
+        self.port = server.get_ssh_port()
+        self.username = server.get_username()
+        self.password = server.get_password_for_ssh_authentication()
+        self.host_key = server.get_host_key()
         self.listen_port = listen_port
         self.listen_address = listen_address
         self.ssh = None
@@ -48,9 +50,13 @@ class SSHConnection(object):
         md5_hash = hashlib.md5(base64_key).hexdigest()
         return ':'.join(a + b for a, b in zip(md5_hash[::2], md5_hash[1::2]))
 
-    def connect(self):
-        self.ssh = pexpect.spawn('ssh -D %s:%s -N -p %s %s@%s' %
+    def command_line(self):
+        cmd_line = ('ssh -C -D %s:%d -N -p %s %s@%s' %
                                  (self.listen_address, self.listen_port, self.port, self.username, self.ip_address))
+        return cmd_line
+
+    def connect(self):
+        self.ssh = pexpect.spawn(self.command_line())
         # Print ssh output:
         #self.ssh.logfile_read = sys.stdout
         prompt = self.ssh.expect([self._ssh_fingerprint(), 'Password:'])
@@ -62,8 +68,16 @@ class SSHConnection(object):
             self.ssh.sendline(self.password)
 
     def test_connection(self):
-        # TODO: test the connection
-        print '\nYour SOCKS proxy is now running at %s:%s' % (self.listen_address, self.listen_port)
+        MAX_WAIT_SECONDS = 10
+        for i in range(MAX_WAIT_SECONDS):
+            try:
+                socket.socket().connect((self.listen_address, self.listen_port))
+            except:
+                if i < MAX_WAIT_SECONDS - 1:
+                    time.sleep(1)
+                else:
+                    raise
+        print '\nYour SOCKS proxy is now running at %s:%d' % (self.listen_address, self.listen_port)
 
     def disconnect_on_success(self, test_site=False):
         try:
@@ -74,7 +88,7 @@ class SSHConnection(object):
                 print 'Site Response %s' % (response)   
             if response != 200:
                 print 'FAILED!'
-            self.ssh.terminate()
+            self.disconnect()
         except ImportError as error:
             print 'Failed importing module: %s' % str(error)
             raise error
@@ -82,34 +96,26 @@ class SSHConnection(object):
             print 'Failed: %s' % str(error)
 
     def wait_for_disconnect(self):
-        try:
-            print 'Press Ctrl-C to terminate.'
-            self.ssh.wait()
-        except KeyboardInterrupt as e:
-            print 'Terminating...'
-            self.ssh.terminate()
+        self.ssh.wait()
+        raise Exception('SSH disconnected unexpectedly')
 
+    def disconnect(self):
+        print 'Terminating...'
+        self.ssh.terminate()
         print 'Connection closed'
 
 
 class OSSHConnection(SSHConnection):
 
-    def __init__(self, ip_address, port, username, password, obfuscate_keyword, host_key, listen_port, listen_address):
-        self.obfuscate_keyword = obfuscate_keyword
-        SSHConnection.__init__(self, ip_address, port, username, password, host_key, listen_port, listen_address)
+    def __init__(self, server, listen_port, listen_address):
+        SSHConnection.__init__(self, server, listen_port, listen_address)
+        self.port = server.get_obfuscated_ssh_port()
+        self.obfuscate_keyword = server.get_obfuscate_keyword()
 
-    def connect(self):
-        self.ssh = pexpect.spawn('./ssh -D %s:%s -N -p %s -z -Z %s %s@%s' %
+    def command_line(self):
+        cmd_line = ('./ssh -C -D %s:%d -N -p %s -z -Z %s %s@%s' %
                                  (self.listen_address, self.listen_port, self.port, self.obfuscate_keyword,
                                   self.username, self.ip_address))
-        # Print ssh output:
-        #self.ssh.logfile_read = sys.stdout
-        prompt = self.ssh.expect([self._ssh_fingerprint(), 'Password:'])
-        if prompt == 0:
-            self.ssh.sendline('yes')
-            self.ssh.expect('Password:')
-            self.ssh.sendline(self.password)
-        else:
-            self.ssh.sendline(self.password)
+        return cmd_line
 
 
