@@ -63,23 +63,26 @@ typedef ServerEntries::const_iterator ServerEntryIterator;
 class ServerList
 {
 public:
-    ServerList();
+    ServerList(LPCSTR listName);
     virtual ~ServerList();
 
-    void MarkServerFailed(const string& serverAddress);
-    ServerEntry GetNextServer();
     ServerEntries GetList();
 
     // serverEntry is optional. It is an extra server entry that should be
     // stored. Typically this is the current server with additional info.
-    void AddEntriesToList(
+    // Returns the number of new entries added.
+    size_t AddEntriesToList(
         const vector<string>& newServerEntryList, 
         const ServerEntry* serverEntry);
 
-    void MoveEntriesToFront(
-        const ServerEntries& entries);
+    void MarkServersFailed(const ServerEntries& failedServerEntries);
+    void MarkServerFailed(const ServerEntry& failedServerEntry);
+
+    void MoveEntriesToFront(const ServerEntries& entries);
+    void MoveEntryToFront(const ServerEntry& serverEntry);
 
 private:
+    string GetListName() const;
     ServerEntries GetListFromEmbeddedValues();
     ServerEntries GetListFromSystem();
     ServerEntries ParseServerEntries(const char* serverEntryListString);
@@ -88,4 +91,5 @@ private:
     string EncodeServerEntries(const ServerEntries& serverEntryList);
 
     HANDLE m_mutex;
+    string m_name;
 };
