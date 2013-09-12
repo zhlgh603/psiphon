@@ -355,6 +355,12 @@ public interface UpgradeManager
          */
         public static void notifyUpgrade(Context context)
         {
+            // Play Store Build instances must not use custom auto-upgrade
+            if (!EmbeddedValues.hasEverBeenSideLoaded(context))
+            {
+                return;
+            }
+            
             VerifiedUpgradeFile file = getAvailableCompleteUpgradeFile(context); 
             if (file == null)
             {
@@ -429,7 +435,7 @@ public interface UpgradeManager
         public void start(int versionNumber)
         {
             // Play Store Build instances must not use custom auto-upgrade
-            if (0 == EmbeddedValues.UPGRADE_URL.length() || EmbeddedValues.IS_PLAY_STORE_BUILD)
+            if (0 == EmbeddedValues.UPGRADE_URL.length() || !EmbeddedValues.hasEverBeenSideLoaded(context))
             {
                 return;
             }
