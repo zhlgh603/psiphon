@@ -43,7 +43,8 @@ Android/PsiphonProxiedWebApp/gen
 Android/PsiphonAndroidLibrary/src/com/psiphon3/psiphonlibrary/EmbeddedValues.java
 Client/psiclient/embeddedvalues.h
 
-node_modules
+node_modules/
+out/
 
 # Numerous always-ignore extensions
 *.diff

@@ -1,0 +1,195 @@
+@import "../../files/vendor/twitter-bootstrap/less/mixins";
+@import "../../files/vendor/twitter-bootstrap/less/variables";
+@import "../../files/vendor/twitter-bootstrap/less/responsive-utilities.less";
+@import "_rtl-support";
+@import "_annotations";
+
+@navbar-padding-add: 20px;
+
+body {
+  padding-top: (@navbar-height + @navbar-padding-add);
+}
+
+h1 {
+  margin-bottom: 1em;
+}
+
+h2 {
+  color: rgb(182, 102, 0);
+}
+
+// This sets our logo as part of the "brand" in the navbar
+.navbar-brand {
+  @brandImgMargin: 8px;
+  @brandImgSize: (@navbar-height - (@brandImgMargin * 2));
+  font-size: 2.5em;
+  background: url("<%= @relativeToRoot '/images/psiphon-logo-72.png' %>") no-repeat @brandImgMargin center;
+  background-size: @brandImgSize;
+  padding-left: (@brandImgSize + @brandImgMargin + @brandImgMargin);
+  margin-right: 5px;
+}
+
+.navbar-nav {
+  font-size: 1.5em;
+}
+
+// Because of the fixed navbar, we need to monkey with the size of anchor (hash)
+// link targets.
+.anchor-target {
+  padding-top: (@navbar-height + @navbar-padding-add);
+  margin-top: -(@navbar-height + @navbar-padding-add);
+
+  // Needed on Webkit
+  display: inline-block;
+}
+
+.index-splash {
+  margin-bottom: 2em;
+}
+
+.index-splash img {
+  // Center image
+  margin: auto;
+}
+
+.super-splash a {
+  // Make the link fill the image space
+  display: block;
+  height: 100%;
+}
+
+@media (min-width: @screen-md) {
+  .index-splash img {
+    display: none;
+  }
+
+  .super-splash {
+    background: url("<%= @relativeToRoot '/images/widesplash-big.png' %>") no-repeat center center;
+    height: 300px;
+  }
+}
+
+@media (min-width: @screen-sm) and (max-width: @screen-sm-max) {
+  .index-splash img {
+    display: none;
+  }
+
+  .super-splash {
+    background: url("<%= @relativeToRoot '/images/widesplash-small.png' %>") no-repeat center center;
+    height: 200px;
+  }
+}
+
+@media (max-width: @screen-xs-max) {
+  .index-splash img {
+    display: inline;
+  }
+
+  .super-splash {
+    display: none;
+  }
+}
+
+.faq-qa {
+  margin-top: 3em;
+  border-top: thin lighten(@text-color, 60%) solid;
+}
+
+.faq-question {
+  .make-rtl-md-col(0, 3, 9);
+}
+
+.faq-answer {
+  .make-rtl-md-col(3, 9, 0);
+}
+
+/*
+ * Download page
+ */
+
+.download-item img {
+  .img-responsive;
+  max-height: 5em;
+}
+
+.download-head {
+  .make-sm-column(12);
+}
+
+@media (max-width: @screen-xs-max) {
+  .download-os, .download-os-with-qr {
+    .make-rtl-xs-col(0, 4, 8);
+  }
+
+  .download-link, .download-link-with-qr {
+    .make-rtl-xs-col(4, 8, 0);
+  }
+
+  .download-qr {
+    display: none !important;
+  }
+}
+
+@media (min-width: @screen-sm) {
+  .download-os, .download-os-with-qr {
+    .make-rtl-sm-col(0, 2, 10);
+  }
+
+  .download-link{
+    .make-rtl-sm-col(2, 10, 0);
+  }
+
+  .download-link-with-qr {
+    .make-rtl-sm-col(2, 8, 2);
+  }
+
+  .download-qr {
+    .make-rtl-sm-col(10, 2, 0);
+  }
+}
+
+.download-list-join {
+  margin-bottom: 2em;
+}
+
+.user-guide img {
+  margin-top: 2em;
+  margin-bottom: 2em;
+}
+
+pre.highlighted {
+  // Bootstrap adds a background colour that we need to clear so that the
+  // syntax highlighting styles look right.
+  background-color: transparent;
+}
+
+.sponsor-info {
+  margin-bottom: 1em;
+}
+
+.sponsor-info .sponsored-by {
+  font-size: 1.5em;
+}
+
+.sponsor-info .sponsor-banner img {
+  height: 4em;
+  margin: auto;  // Center image
+}
+
+.sponsor-info .sponsor-separator {
+  width: 80%;
+}
+
+footer {
+  margin-top: 2em;
+  font-size: 0.8em;
+}
+
+/*
+ * Helpers for dealing with equal-height columns
+ */
+@media (max-width: @screen-sm-max) {
+  .equal-height-md {
+    height: inherit !important;
+  }
+}
