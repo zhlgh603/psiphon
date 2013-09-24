@@ -1,0 +1,20 @@
+<!-- HEADER -->
+<header>
+  <div class="row sponsor-info">
+    <div class="col-md-12 sponsored-by">
+      <%= @tt 'sponsor-header-sponsored-by' %>
+    </div>
+    <div class="col-md-12 sponsor-banner">
+      <a href="http://psiphon.ca" target="_blank">
+        <img src="<%= @document.pathToRoot %>/images/psiphon-banner.png" class="img-responsive">
+      </a>
+    </div>
+    <div class="col-md-12 become-sponsor <%- @ifRTL 'text-left', 'text-right' %>">
+      <a href="<%= @getPageURL '/sponsor.html' %>">
+        <%= @tt 'sponsor-header-become-a-sponsor' %>
+      </a>
+    </div>
+    <hr class="sponsor-separator"/>
+  </div>
+</header>
+<!-- /HEADER -->
