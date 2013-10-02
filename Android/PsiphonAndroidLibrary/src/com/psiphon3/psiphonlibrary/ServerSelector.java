@@ -20,12 +20,17 @@
 package com.psiphon3.psiphonlibrary;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InterruptedIOException;
+import java.io.OutputStream;
+import java.net.ConnectException;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.net.Socket;
 import java.net.SocketException;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
@@ -34,13 +39,15 @@ import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import org.json.JSONException;
-import org.json.JSONObject;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import android.content.Context;
 import android.os.Build;
 import android.os.SystemClock;
+
+import ch.ethz.ssh2.HTTPProxyException;
+import ch.ethz.ssh2.transport.ClientServerHello;
+import ch.ethz.ssh2.util.StringEncoder;
 
 import com.psiphon3.psiphonlibrary.R;
 import com.psiphon3.psiphonlibrary.ServerInterface.PsiphonServerInterfaceException;
@@ -61,6 +68,7 @@ public class ServerSelector
     private boolean protectSocketsRequired = false;
     private Thread thread = null;
     private boolean stopFlag = false;
+    private AtomicBoolean workerPrintedProxyError = new AtomicBoolean(false);
 
     public Socket firstEntrySocket = null;
     public String firstEntryIpAddress = null;
@@ -79,6 +87,7 @@ public class ServerSelector
     {
         ServerEntry entry = null;
         boolean responded = false;
+        boolean completed = false;
         long responseTime = -1;
         SocketChannel channel = null;
 
@@ -89,9 +98,10 @@ public class ServerSelector
         
         public void run()
         {
+            PsiphonData.SystemProxySettings proxySettings = PsiphonData.getPsiphonData().getSystemProxySettings(context);
             long startTime = SystemClock.elapsedRealtime();
             Selector selector = null;
-
+            
             try
             {
                 this.channel = SocketChannel.open();
@@ -103,23 +113,54 @@ public class ServerSelector
                 }
                 
                 this.channel.configureBlocking(false);
-                this.channel.connect(new InetSocketAddress(
-                                        this.entry.ipAddress,
-                                        this.entry.getPreferredReachablityTestPort()));
                 selector = Selector.open();
-                this.channel.register(selector, SelectionKey.OP_CONNECT);
                 
-                while (selector.select(SHUTDOWN_POLL_MILLISECONDS) == 0)
+                if (proxySettings != null)
                 {
-                    if (stopFlag)
-                    {
-                        break;
-                    }
-                }
+                    makeSocketChannelConnection(selector, proxySettings.proxyHost, proxySettings.proxyPort);
+                    this.channel.finishConnect();
+                    selector.close();
+                    this.channel.configureBlocking(true);
                 
-                this.responded = this.channel.finishConnect();
+                    makeConnectionViaHTTPProxy();
+                    this.responded = true;
+                }
+                else
+                {
+                    makeSocketChannelConnection(selector,
+                            this.entry.ipAddress,
+                            this.entry.getPreferredReachablityTestPort());
+                    
+                    this.responded = this.channel.finishConnect();
+                }
             }
-            catch (IOException e) {}
+            catch (ClosedByInterruptException e) {}
+            catch (InterruptedIOException e) {}
+            catch (ConnectException e)
+            {
+                // Avoid printing the same message multiple times in the case of a network proxy error
+                if (proxySettings != null && 
+                        workerPrintedProxyError.compareAndSet(false, true))
+                {
+                    MyLog.e(R.string.network_proxy_connect_exception, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, e.getLocalizedMessage());
+                }
+            }
+            catch (SocketException e)
+            {
+                // Avoid printing the same message multiple times in the case of a network proxy error
+                if (proxySettings != null && 
+                        workerPrintedProxyError.compareAndSet(false, true))
+                {
+                    MyLog.e(R.string.network_proxy_connect_exception, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, e.getLocalizedMessage());
+                }
+            }
+            catch (IOException e)
+            {
+                if (proxySettings != null)
+                {
+                    MyLog.w(R.string.network_proxy_connect_exception, MyLog.Sensitivity.NOT_SENSITIVE, e.getLocalizedMessage());
+                }
+            }
             finally
             {
                 if (selector != null)
@@ -153,6 +194,100 @@ public class ServerSelector
             }
             
             this.responseTime = SystemClock.elapsedRealtime() - startTime;
+            this.completed = true;
+        }
+        
+        private void makeSocketChannelConnection(Selector selector, String ipAddress, int port) throws IOException
+        {
+            this.channel.connect(new InetSocketAddress(ipAddress, port));
+            this.channel.register(selector, SelectionKey.OP_CONNECT);
+            
+            while (selector.select(SHUTDOWN_POLL_MILLISECONDS) == 0)
+            {
+                if (stopFlag)
+                {
+                    break;
+                }
+            }
+        }
+        
+        private void makeConnectionViaHTTPProxy() throws IOException
+        {
+            Socket sock = this.channel.socket();
+            
+            // The following is mostly copied from ch.ethz.ssh2.transport.TransportManager.establishConnection()
+
+            sock.setSoTimeout(0);
+    
+            /* OK, now tell the proxy where we actually want to connect to */
+    
+            StringBuffer sb = new StringBuffer();
+    
+            sb.append("CONNECT ");
+            sb.append(this.entry.ipAddress);
+            sb.append(':');
+            sb.append(this.entry.getPreferredReachablityTestPort());
+            sb.append(" HTTP/1.0\r\n");
+            sb.append("\r\n");
+    
+            OutputStream out = sock.getOutputStream();
+    
+            out.write(StringEncoder.GetBytes(sb.toString()));
+            out.flush();
+    
+            /* Now parse the HTTP response */
+    
+            byte[] buffer = new byte[1024];
+            InputStream in = sock.getInputStream();
+    
+            int len = ClientServerHello.readLineRN(in, buffer);
+    
+            String httpResponse = StringEncoder.GetString(buffer, 0, len);
+    
+            if (httpResponse.startsWith("HTTP/") == false)
+            {
+                throw new IOException("The proxy did not send back a valid HTTP response.");
+            }
+    
+            /* "HTTP/1.X XYZ X" => 14 characters minimum */
+    
+            if ((httpResponse.length() < 14) || (httpResponse.charAt(8) != ' ') || (httpResponse.charAt(12) != ' '))
+            {
+                throw new IOException("The proxy did not send back a valid HTTP response.");
+            }
+    
+            int errorCode = 0;
+    
+            try
+            {
+                errorCode = Integer.parseInt(httpResponse.substring(9, 12));
+            }
+            catch (NumberFormatException ignore)
+            {
+                throw new IOException("The proxy did not send back a valid HTTP response.");
+            }
+    
+            if ((errorCode < 0) || (errorCode > 999))
+            {
+                throw new IOException("The proxy did not send back a valid HTTP response.");
+            }
+    
+            if (errorCode != 200)
+            {
+                throw new HTTPProxyException(httpResponse.substring(13), errorCode);
+            }
+    
+            /* OK, read until empty line */
+    
+            while (true)
+            {
+                len = ClientServerHello.readLineRN(in, buffer);
+                if (len == 0)
+                {
+                    break;
+                }
+            }
+            return;
         }
     }
     
@@ -258,6 +393,17 @@ public class ServerSelector
             
             String egressRegion = PsiphonData.getPsiphonData().getEgressRegion();
         
+            MyLog.g("SelectedRegion", "regionCode", egressRegion);
+            MyLog.g("ProxyChaining", "enabled", 
+                    PsiphonData.getPsiphonData().getSystemProxySettings(context) == null ?
+                    "False" : "True");
+            // Note that workers will still call getSystemProxySettings().  This is in case the
+            // system proxy settings actually do change while the pool is running, and the log
+            // above will not reflect that change.
+
+            // Reset this flag before running the workers.
+            workerPrintedProxyError.set(false);
+            
             for (ServerEntry entry : serverEntries)
             {
                 if (-1 != entry.getPreferredReachablityTestPort() &&
@@ -292,14 +438,23 @@ public class ServerSelector
                     if (wait > 0 && (wait % RESULTS_POLL_MILLISECONDS) == 0)
                     {
                         int resultCount = 0;
+                        boolean workQueueIsFinished = true;
                         for (CheckServerWorker worker : workers)
                         {
                             resultCount += worker.responded ? 1 : 0;
+                            if (!worker.completed)
+                            {
+                                workQueueIsFinished = false;
+                            }
                         }
                         if (resultCount > 0)
                         {
                             // Use the results we have so far
                             stopFlag = true;
+                            break;
+                        }
+                        if (workQueueIsFinished)
+                        {
                             break;
                         }
                     }
@@ -315,8 +470,6 @@ public class ServerSelector
                 Thread.currentThread().interrupt();
             }
 
-            MyLog.g("SelectedRegion", "regionCode", egressRegion);
-            
             for (CheckServerWorker worker : workers)
             {
                 MyLog.g(
