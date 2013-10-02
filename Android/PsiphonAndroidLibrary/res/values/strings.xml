@@ -113,6 +113,7 @@
     <string name="start">Start</string>
     <string name="stop">Stop</string>
     <string name="status_tab_name">Status</string>
+    <string name="settings_tab_name">Options</string>
     <string name="statistics_tab_name">Statistics</string>
     <string name="logs_tab_name">Logs</string>
     <string name="socks_proxy_address">Local SOCKS proxy is running at %s</string>
@@ -122,6 +123,7 @@
     <string name="share_proxies_prompt_message">The app needs to restart to apply this setting.</string>
     <string name="share_proxies_prompt_positive">Restart now</string>
     <string name="share_proxies_prompt_negative">Cancel</string>
+    <string name="use_system_proxy_settings_toggle">Connect through the network\'s HTTP Proxy</string>
     <string name="region_name_any">Best performance</string>
     <string name="region_name_us">United States</string>
     <string name="region_name_gb">United Kingdom</string>
@@ -130,4 +132,10 @@
     <string name="region_name_jp">Japan</string>
     <string name="region_name_hk">Hong Kong</string>
     <string name="region_name_sg">Singapore</string>
+    <string name="about">About Psiphon</string>
+    <string name="feedback">Feedback</string>
+    <string name="tunnel_whole_device_toggle">Tunnel Whole Device (requires root or Android 4.0+)</string>
+    <string name="region_selector">Select region</string>
+    <string name="network_proxy_connect_exception">Failed to connect to the network\'s HTTP Proxy: %s</string>
+    <string name="tunnel_whole_device_exception">Your device does not support the non-root whole device tunnel option.</string>
 </resources>
