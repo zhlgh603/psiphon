@@ -11,16 +11,31 @@
     android:layout_weight="1.0"
     android:orientation="vertical" >
     
-            <TabWidget
+            <RelativeLayout
+                android:id="@+id/tablayout"
                 android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:id="@android:id/tabs"/>
+                android:layout_height="wrap_content" >
+                
+                <HorizontalScrollView
+                    android:layout_width="fill_parent"
+                    android:layout_height="wrap_content"
+                    android:fillViewport="true"
+                    android:scrollbars="none" >
+                
+                    <TabWidget
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:id="@android:id/tabs"/>
+                    
+                </HorizontalScrollView>
+                
+            </RelativeLayout>
                 
             <FrameLayout
                 android:id="@android:id/tabcontent"
                 android:layout_width="fill_parent"
                 android:layout_height="fill_parent"
-                android:layout_below="@android:id/tabs" >
+                android:layout_below="@+id/tablayout" >
                 
                 <LinearLayout
                     android:id="@+id/statusTab"
@@ -54,6 +69,85 @@
                         android:text="" />
 
                 </LinearLayout>
+                
+                <ScrollView android:id="@+id/settingsView"
+                    android:layout_width="fill_parent"
+                    android:layout_height="fill_parent"
+                    android:orientation="vertical" 
+                    android:scrollbarAlwaysDrawVerticalTrack="false" 
+                    android:weightSum="1.0">
+                    
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:orientation="vertical" >
+                        
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:orientation="horizontal" >
+    
+                            <TextView
+                                android:id="@+id/regionPrompt"
+                                android:layout_marginRight="5dp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:text="@string/region_selector"
+                                android:textAppearance="?android:attr/textAppearanceSmall"/>
+
+                            <Spinner
+                                android:id="@+id/regionSelector"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:drawSelectorOnTop="true"
+                                android:textAppearance="?android:attr/textAppearanceSmall"/>
+            
+                        </LinearLayout>
+                        
+                        <CheckBox
+                            android:id="@+id/tunnelWholeDeviceToggle"
+                            android:onClick="onTunnelWholeDeviceToggle"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:layout_gravity="left"
+                            android:text="@string/tunnel_whole_device_toggle"
+                            android:textAppearance="?android:attr/textAppearanceSmall"/>
+                        
+                        <CheckBox
+                            android:id="@+id/useSystemProxySettingsToggle"
+                            android:onClick="onUseSystemProxySettingsToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="left"
+                            android:text="@string/use_system_proxy_settings_toggle"
+                            android:textAppearance="?android:attr/textAppearanceSmall" />
+
+                        <Button
+                            android:id="@+id/feedbackButton"
+                            android:onClick="onFeedbackClick"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="@string/feedback"
+                            android:textAppearance="?android:attr/textAppearanceSmall" />
+    
+                        <Button
+                            android:id="@+id/aboutButton"
+                            android:onClick="onAboutClick"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="@string/about"
+                            android:textAppearance="?android:attr/textAppearanceSmall" />
+            
+                    </LinearLayout>
+                
+                </ScrollView>
                 
                 <ScrollView android:id="@+id/statisticsView"
                     android:layout_width="fill_parent"
