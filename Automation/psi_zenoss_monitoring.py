@@ -335,7 +335,7 @@ def set_psiphon_modeling_config(host, zenapi):
 
 def start_monitoring(hosts, zenapi):    
     for host in hosts:
-        device_path = PSIPHON_ORGANIZER + '/' + PROVIDERS[host.provider]
+        device_path = '/' + PSIPHON_ORGANIZER + '/' + PROVIDERS[host.provider]
         data = dict(deviceName=host.ip_address,
                     deviceClass=device_path,
                     collector=ZENOSS_COLLECTOR,
@@ -376,7 +376,7 @@ def update_locations(zenoss_hosts, zenapi, mapped_locations):
             zenapi.add_location(data)
 
 # Calling this with no arguments will set up a new Organizer in the 'Devices' group
-def check_providers(zenapi, uids=[ORGANIZER], defaultUid=DEVICE_ORGANIZER):
+def check_providers(zenapi, uids=[PSIPHON_ORGANIZER], defaultUid=DEVICE_ORGANIZER):
     for u in uids:
         uid = defaultUid + '/' + u
         data = {'uid': uid, 'keys': ['name', 'uid']}
