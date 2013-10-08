@@ -103,10 +103,10 @@ class ZenossAPI():
         
         # Submit the request and convert the returned JSON to objects
         return json.loads(self.urlOpener.open(req, reqData).read())
-
+    
     def get_device_events(self, data):
         return self._router_request('EventsRouter', 'query', [data])
-
+    
     def acknowledge_device_events(self, data):
         return self._router_request('EventsRouter', 'acknowledge', [data])
     
@@ -115,9 +115,12 @@ class ZenossAPI():
     
     def add_device(self, data):
         return self._router_request('DeviceRouter', 'addDevice', [data])
-
+    
     def add_location(self, data):
         return self._router_request('DeviceRouter', 'addLocationNode', [data])
+    
+    def add_node(self, data):
+        return self._router_request('DeviceRouter', 'addNode', [data])
     
     def remove_device(self, data):
         return self._router_request('DeviceRouter', 'removeDevices', [data])
@@ -136,19 +139,19 @@ class ZenossAPI():
     
     def get_locations(self, data):
         return self._router_request('DeviceRouter', 'getTree', [data])
-
+    
     def get_info(self, data):
         return self._router_request('DeviceRouter', 'getInfo', [data])
     
     def remodel_device(self, data):
         return self._router_request('DeviceRouter', 'remodel', [data])
-
+    
     def get_job_status(self, data):
         return self._router_request('JobsRouter', 'userjobs', [data])
 
 ################################################################################
 def get_psiphon_host_list(zenapi):
-    device_path = DEVICE_ORGANIZER + PSIPHON_ORGANIZER
+    device_path = DEVICE_ORGANIZER + '/' + PSIPHON_ORGANIZER
     data = {'uid': device_path,
             'keys': ['name', 'ipAddress', 'productionState'],
             'params': {}, 'sort':'name', 'dir': 'ASC', 'limit':4000}
@@ -247,7 +250,7 @@ def model_hosts(zenoss_hosts, zenapi):
                     zenapi.remodel_device(data)
 
 def organize_hosts(hosts, zenoss_hosts, zenapi):
-    device_path = DEVICE_ORGANIZER + PSIPHON_ORGANIZER
+    device_path = DEVICE_ORGANIZER + '/' + PSIPHON_ORGANIZER
     for zhost in zenoss_hosts:
         found_host = next((host for host in hosts if host.id == zhost['name']), None)
         if found_host:
@@ -273,7 +276,7 @@ def organize_hosts_by_country(hosts, zenoss_hosts, zenapi):
 # Set device specific configuration options here
 # including user credentials and how to monitor.
 def set_psiphon_hosts_model_config(hosts, zenoss_hosts, zenapi):
-    device_path = DEVICE_ORGANIZER + PSIPHON_ORGANIZER
+    device_path = DEVICE_ORGANIZER + '/' + PSIPHON_ORGANIZER
     for zhost in zenoss_hosts:
         found_host = next((host for host in hosts if host.id == zhost['name']), None)
         if found_host:
@@ -305,7 +308,7 @@ def set_psiphon_hosts_model_config(hosts, zenoss_hosts, zenapi):
             zenapi.set_device_property(data)
 
 def set_psiphon_modeling_config(host, zenapi):
-    device_path = DEVICE_ORGANIZER + PSIPHON_ORGANIZER + '/' + PROVIDERS[host.provider]
+    device_path = DEVICE_ORGANIZER + '/' + PSIPHON_ORGANIZER + '/' + PROVIDERS[host.provider]
     data = dict(uid=device_path + '/devices/'
                 + host.ip_address,
                 zProperty='zCommandUsername',
@@ -372,6 +375,25 @@ def update_locations(zenoss_hosts, zenapi, mapped_locations):
                         )
             zenapi.add_location(data)
 
+# Calling this with no arguments will set up a new Organizer in the 'Devices' group
+def check_providers(zenapi=zenapi, uids=[ORGANIZER], defaultUid=DEVICE_ORGANIZER):
+    for u in uids:
+        uid = defaultUid + '/' + u
+        data = {'uid': uid, 'keys': ['name', 'uid']}
+        resp = zenapi.get_devices(data)
+        if resp['result']['success'] == True:
+            continue
+        else:
+            print 'Organizer: %s is not found, adding' % (uid)
+            data = {'id': u, 'type': 'organizer', 
+                    'contextUid': defaultUid}
+            resp = zenapi.add_node(data)
+            if resp['result']['success'] == True:
+                print 'Added organizer %s' % (u)
+            else:
+                print 'Failed: %s', resp['result']['msg']
+
+
 ####################################################
 if __name__ == "__main__":
     start_time = time.time()
@@ -395,6 +417,9 @@ if __name__ == "__main__":
     # Connect to Zenoss and add in hosts
     try:
         zenapi = ZenossAPI()
+        check_providers(uids=PROVIDERS.values(), 
+                        defaultUid=DEVICE_ORGANIZER + '/' + PSIPHON_ORGANIZER)
+        
         #jobs_left = check_running_jobs(zenapi)
         print "Adding hosts to be monitored"
         start_monitoring(hosts, zenapi)
