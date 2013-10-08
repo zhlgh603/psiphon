@@ -376,7 +376,7 @@ def update_locations(zenoss_hosts, zenapi, mapped_locations):
             zenapi.add_location(data)
 
 # Calling this with no arguments will set up a new Organizer in the 'Devices' group
-def check_providers(zenapi=zenapi, uids=[ORGANIZER], defaultUid=DEVICE_ORGANIZER):
+def check_providers(zenapi, uids=[ORGANIZER], defaultUid=DEVICE_ORGANIZER):
     for u in uids:
         uid = defaultUid + '/' + u
         data = {'uid': uid, 'keys': ['name', 'uid']}
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     # Connect to Zenoss and add in hosts
     try:
         zenapi = ZenossAPI()
-        check_providers(uids=PROVIDERS.values(), 
+        check_providers(zenapi, uids=PROVIDERS.values(), 
                         defaultUid=DEVICE_ORGANIZER + '/' + PSIPHON_ORGANIZER)
         
         #jobs_left = check_running_jobs(zenapi)
