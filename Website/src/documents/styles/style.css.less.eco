@@ -198,8 +198,8 @@ footer {
   font-size: 1.5em;
 }
 
-.blog-post-info > * {
-  margin-right: 1em;
+.blog-post-info {
+  margin-bottom: 1em;
 }
 
 /*
