@@ -1,0 +1,18 @@
+<!-- HEADER -->
+<header>
+  <div class="row sponsor-info">
+    <div class="col-md-12 sponsored-by">
+      <%= @tt 'sponsor-header-sponsored-by' %>
+    </div>
+    <div class="col-md-12 sponsor-banner">
+      <img src="<%= @document.pathToRoot %>/images/sponsor-banner.png" data-link-file="<%= @document.pathToRoot %>/images/sponsor-banner-link.json" class="img-responsive">
+    </div>
+    <div class="col-md-12 become-sponsor <%- @ifRTL 'text-left', 'text-right' %>">
+      <a href="<%= @getPageURL '/sponsor.html' %>">
+        <%= @tt 'sponsor-header-become-a-sponsor' %>
+      </a>
+    </div>
+    <hr class="sponsor-separator"/>
+  </div>
+</header>
+<!-- /HEADER -->
