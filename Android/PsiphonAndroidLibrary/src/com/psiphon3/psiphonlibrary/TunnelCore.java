@@ -19,7 +19,10 @@
 
 package com.psiphon3.psiphonlibrary;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -27,6 +30,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -438,11 +442,61 @@ public class TunnelCore implements IStopSignalPending, Tun2Socks.IProtectSocket
         }
     }
     
+    private String dumpRouteHelper(String networkValue)
+    {
+        // Convert "101A8C0" to "192.168.1.1"
+        
+        if(networkValue.length() != 8)
+        {
+            return networkValue;
+        }
+
+        // The odd formatting (" . ") is to skip the PII IP address scrubber
+        return
+            Integer.toString(Integer.parseInt(networkValue.substring(6, 8), 16)) + " . " +
+            Integer.toString(Integer.parseInt(networkValue.substring(4, 6), 16)) + " . " +
+            Integer.toString(Integer.parseInt(networkValue.substring(2, 4), 16)) + " . " +
+            Integer.toString(Integer.parseInt(networkValue.substring(0, 2), 16));
+    }
+    
+    private void dumpRoutes(String when)
+    {
+        // *** WARNING: this dump many include PII. Not for general release ***
+
+        if (PsiphonConstants.DEBUG) 
+        {
+            try
+            {
+                StringBuffer output = new StringBuffer();
+                BufferedReader reader = new BufferedReader(new FileReader("/proc/net/route"));
+                String line;
+                for (int lineCount = 0; (line = reader.readLine()) != null; lineCount++)
+                {
+                    line = line.trim();
+                    String[] tokens = line.split("\t");
+                    
+                    if (lineCount > 0) {
+                        tokens[1] = dumpRouteHelper(tokens[1]);
+                        tokens[2] = dumpRouteHelper(tokens[2]);
+                        tokens[7] = dumpRouteHelper(tokens[7]);
+                    }
+                    
+                    output.append(Arrays.toString(tokens));
+                }
+                reader.close();
+                MyLog.g("Routes", "when", when, "output", output.toString());
+            }
+            catch(IOException e) {}
+        }
+    }
+    
     private boolean runTunnelOnce(boolean[] activeServices)
     {
         setState(State.CONNECTING);
         
         MyLog.v(R.string.current_network_type, MyLog.Sensitivity.NOT_SENSITIVE, Utils.getNetworkTypeName(m_parentContext));
+        
+        dumpRoutes("before connecting");
         
         PsiphonData.getPsiphonData().setTunnelRelayProtocol("");
         PsiphonData.getPsiphonData().setTunnelSessionID("");
@@ -863,6 +917,8 @@ public class TunnelCore implements IStopSignalPending, Tun2Socks.IProtectSocket
                 // will fail if the tunnel is successfully established.
                 throw new IOException();
             }
+            
+            dumpRoutes("after connecting");
             
             if (m_useGenericLogMessages)
             {
