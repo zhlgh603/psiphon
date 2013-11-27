@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@drawable/widget_background"
+    android:padding="@dimen/widget_margin" >
+
+    <ImageButton
+        android:id="@+id/launchactivitybutton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="4dp"
+        android:background="@null"
+        android:src="@drawable/ic_launcher" />
+
+    <ImageButton
+        android:id="@+id/toggleconnectionbutton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@null"
+        android:src="@drawable/small_widget_toggle_off" />
+      
+</LinearLayout>

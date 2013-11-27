@@ -117,6 +117,14 @@ public class StatusActivity
     }
 
     @Override
+    protected void onResume()
+    {
+        super.onResume();
+
+        HandleCurrentIntent();
+    }
+    
+    @Override
     protected void onNewIntent(Intent intent)
     {
         super.onNewIntent(intent);
@@ -160,6 +168,33 @@ public class StatusActivity
                             null,
                             this,
                             this.getClass()));
+        }
+        
+        if (0 == intent.getAction().compareTo(DO_TOGGLE))
+        {
+            // TODO: this crashes if Psiphon hasn't been run before
+
+            // We only want to respond to the DO_TOGGLE action once,
+            // so we need to clear it (by setting it to a non-special intent).
+            setIntent(new Intent(
+                            "ACTION_VIEW",
+                            null,
+                            this,
+                            this.getClass()));
+
+            // We don't want to show the activity when stopping the connection from the widget
+            boolean suppressActivity = false;
+            if (isServiceRunning())
+            {
+                suppressActivity = true;
+            }
+
+            doToggle();
+            
+            if (suppressActivity)
+            {
+                finish();
+            }
         }
         
         // No explicit action for UNEXPECTED_DISCONNECT, just show the activity
