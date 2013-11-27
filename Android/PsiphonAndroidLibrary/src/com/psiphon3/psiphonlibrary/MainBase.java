@@ -128,6 +128,7 @@ public abstract class MainBase
         public static final String TUNNEL_STARTING = "com.psiphon3.PsiphonAndroidActivity.TUNNEL_STARTING";
         public static final String TUNNEL_STOPPING = "com.psiphon3.PsiphonAndroidActivity.TUNNEL_STOPPING";
         public static final String STATUS_ENTRY_AVAILABLE = "com.psiphon3.PsiphonAndroidActivity.STATUS_ENTRY_AVAILABLE";
+        public static final String DO_TOGGLE = "com.psiphon3.PsiphonAndroidActivity.DO_TOGGLE";
         public static final String EGRESS_REGION_PREFERENCE = "egressRegionPreference";
         public static final String TUNNEL_WHOLE_DEVICE_PREFERENCE = "tunnelWholeDevicePreference";
         public static final String WDM_FORCE_IPTABLES_PREFERENCE = "wdmForceIptablesPreference";
@@ -522,7 +523,7 @@ public abstract class MainBase
             m_localBroadcastManager.registerReceiver(
                     new StatusEntryAvailable(),
                     new IntentFilter(STATUS_ENTRY_AVAILABLE));
-
+            
             initToggleResources();
             
             PsiphonData.getPsiphonData().setDisplayDataTransferStats(true);
