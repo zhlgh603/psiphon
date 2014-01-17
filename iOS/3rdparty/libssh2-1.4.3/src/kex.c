@@ -672,6 +672,16 @@ static int diffie_hellman_sha1(LIBSSH2_SESSION *session,
 
     exchange_state->state = libssh2_NB_state_idle;
 
+    /* Obfuscation implementation */
+    if(session->obfuscation)
+    {
+        //Key exchange is done, set session->send and recv 
+        //back to  libssh2 send/recv functions
+        session->send = _libssh2_send;
+        session->recv = _libssh2_recv;
+    }
+    /* Obfuscation implementation end */
+
     return ret;
 }
 

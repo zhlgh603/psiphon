@@ -809,6 +809,9 @@ struct _LIBSSH2_SESSION
     int keepalive_interval;
     int keepalive_want_reply;
     time_t keepalive_last_sent;
+
+    /*Obfuscated handshake */
+    LIBSSH2_OBFUSCATION *obfuscation;
 };
 
 /* session.state bits */
@@ -910,6 +913,27 @@ struct _LIBSSH2_COMP_METHOD
                    void **abstract);
     int (*dtor) (LIBSSH2_SESSION * session, int compress, void **abstract);
 };
+
+/* Obfuscation implementation */
+#include <openssl/rc4.h>
+#define OBFUSCATE_KEY_LENGTH 	16
+#define OBFUSCATE_SEED_LENGTH	16
+#define OBFUSCATE_HASH_ITERATIONS 6000
+#define OBFUSCATE_MAX_PADDING	8192
+#define OBFUSCATE_MAGIC_VALUE	0x0BF5CA7E
+
+struct _LIBSSH2_OBFUSCATION
+{
+    LIBSSH2_SESSION *session;
+    const char *keyword;
+    int use_http_prefix;
+    int http_prefix_skipped;
+    int do_ssh_obfuscation_prefix_state;
+    const unsigned char seed[OBFUSCATE_SEED_LENGTH];
+    RC4_KEY rc4_input;
+    RC4_KEY rc4_output;
+};
+/* Obfuscation implementation end */
 
 #ifdef LIBSSH2DEBUG
 void _libssh2_debug(LIBSSH2_SESSION * session, int context, const char *format,

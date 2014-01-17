@@ -376,6 +376,8 @@ int _libssh2_transport_read(LIBSSH2_SESSION * session)
                 _libssh2_debug(session, LIBSSH2_TRACE_SOCKET,
                                "Error recving %d bytes (got %d)",
                                PACKETBUFSIZE - remainbuf, -nread);
+                debugdump(session, "libssh2_transport_read() error",
+                        &p->buf[remainbuf], nread);
                 return LIBSSH2_ERROR_SOCKET_RECV;
             }
             _libssh2_debug(session, LIBSSH2_TRACE_SOCKET,
