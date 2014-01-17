@@ -78,3 +78,21 @@ publish
 Automation/zenoss_credentials.py
 pyclient/psi_client.dat
 Server/psi_health_check.py
+
+# Mac OS X and Xcode
+syntax: glob
+build
+*.swp
+
+*.mode1
+*.mode1v3
+*.mode2
+*.mode2v3
+*.pbxuser
+*.perspective
+*.perspectivev3
+xcuserdata
+
+*~.nib
+
+.DS_Store
