@@ -1,0 +1,33 @@
+//
+//  EmbeddedValues.m
+//  Psiphon
+//
+//  Created by eugene on 2013-10-09.
+//  Copyright (c) 2013 Psiphon. All rights reserved.
+//
+
+#import "EmbeddedValues.h"
+
+NSString *const PROPAGATION_CHANNEL_ID = @"";
+
+NSString *const SPONSOR_ID = @""; 
+
+NSString *const CLIENT_VERSION = @"1";
+
+NSString *const CLIENT_PLATFORM = @"iOS";
+
+NSString * const EMBEDDED_SERVER_LIST[] = { };
+
+NSString *const REMOTE_SERVER_LIST_URL = @"https://s3.amazonaws.com/xxxxx/server_list";
+
+NSString *const REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY = @"";
+
+NSString *const FEEDBACK_ENCRYPTION_PUBLIC_KEY = @"";
+
+// NOTE: Info link may be opened when not tunneled
+NSString *const INFO_LINK_URL = @"http://psiphon3.com";
+
+NSString *const PROXIED_WEB_APP_HTTP_AUTH_USERNAME = @"";
+
+NSString *const PROXIED_WEB_APP_HTTP_AUTH_PASSWORD = @"";
+
