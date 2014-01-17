@@ -276,6 +276,7 @@ typedef struct _LIBSSH2_CHANNEL                     LIBSSH2_CHANNEL;
 typedef struct _LIBSSH2_LISTENER                    LIBSSH2_LISTENER;
 typedef struct _LIBSSH2_KNOWNHOSTS                  LIBSSH2_KNOWNHOSTS;
 typedef struct _LIBSSH2_AGENT                       LIBSSH2_AGENT;
+typedef struct _LIBSSH2_OBFUSCATION                 LIBSSH2_OBFUSCATION;
 
 typedef struct _LIBSSH2_POLLFD {
     unsigned char type; /* LIBSSH2_POLLFD_* below */
@@ -463,6 +464,13 @@ libssh2_session_init_ex(LIBSSH2_ALLOC_FUNC((*my_alloc)),
                         LIBSSH2_FREE_FUNC((*my_free)),
                         LIBSSH2_REALLOC_FUNC((*my_realloc)), void *abstract);
 #define libssh2_session_init() libssh2_session_init_ex(NULL, NULL, NULL, NULL)
+
+/* Obfuscation implementation */
+LIBSSH2_API LIBSSH2_OBFUSCATION *
+libssh2_session_obfuscation_init(LIBSSH2_SESSION *session, 
+        int use_http_prefix, 
+        const char* obfuscation_keyword);
+/* Obfuscation implementation end */
 
 LIBSSH2_API void **libssh2_session_abstract(LIBSSH2_SESSION *session);
 

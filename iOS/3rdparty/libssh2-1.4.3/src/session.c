@@ -57,6 +57,7 @@
 #include "channel.h"
 #include "mac.h"
 #include "misc.h"
+#include "obfuscate.h"
 
 /* libssh2_default_alloc
  */
@@ -125,7 +126,7 @@ banner_receive(LIBSSH2_SESSION * session)
         }
         else
             _libssh2_debug(session, LIBSSH2_TRACE_SOCKET,
-                           "Recved %d bytes banner", ret);
+                           "Recved %d bytes banner: %c", ret, c);
 
         if (ret < 0) {
             if (ret == -EAGAIN) {
@@ -502,6 +503,48 @@ libssh2_session_init_ex(LIBSSH2_ALLOC_FUNC((*my_alloc)),
     return session;
 }
 
+/* Obfuscation implementation 
+ *
+ * libssh2_session_obfuscation_init
+ *
+ * Set obfuscation options and keyword
+ */
+LIBSSH2_API LIBSSH2_OBFUSCATION *
+libssh2_session_obfuscation_init(LIBSSH2_SESSION *session, int use_http_prefix, const char* keyword)
+{
+    int keyword_len = 0;
+    session->obfuscation =
+        LIBSSH2_ALLOC(session, sizeof(LIBSSH2_OBFUSCATION));
+    if (!session->obfuscation) {
+        _libssh2_error(session, LIBSSH2_ERROR_ALLOC,
+                "Unable to allocate space for obfuscation data");
+        return NULL;
+    }
+
+    session->obfuscation->use_http_prefix = use_http_prefix;
+    session->obfuscation->http_prefix_skipped = 0;
+    session->obfuscation->do_ssh_obfuscation_prefix_state = 0;
+
+    if( NULL != keyword )
+    {
+        keyword_len = strlen(keyword) + 1;
+        session->obfuscation->keyword =
+            LIBSSH2_ALLOC(session, keyword_len);
+        if (!session->obfuscation->keyword) {
+            _libssh2_error(session, LIBSSH2_ERROR_ALLOC,
+                    "Unable to allocate space for obfuscation keyword");
+            return NULL;
+        }
+        memcpy(session->obfuscation->keyword, keyword, keyword_len);
+    }
+    session->obfuscation->session = session;
+
+    //generate seed and setup RC4 input/output keys
+    _libssh2_obfuscation_initialize(session->obfuscation);
+    return session->obfuscation;
+}
+/* Obfuscation implementation end */
+
 /*
  * libssh2_session_callback_set
  *
@@ -690,11 +733,27 @@ session_startup(LIBSSH2_SESSION *session, libssh2_socket_t sock)
             session_nonblock(session->socket_fd, 1);
         }
 
+        if (session->obfuscation)
+        {
+            /* Obfuscation implementation */
+            // send obfuscation seed before we send the banner
+            // This is done only once per session
+            _libssh2_obfuscation_send_seed(session);
+
+            //Override session->send & session->recv functions
+            session->abstract = session->obfuscation;
+            session->send = _libssh2_obfuscation_send;
+            session->recv = _libssh2_obfuscation_recv;
+
+            /* Obfuscation implementation end */
+        }
+
         session->startup_state = libssh2_NB_state_created;
     }
 
     if (session->startup_state == libssh2_NB_state_created) {
         rc = banner_send(session);
+        rc = 0;
         if (rc) {
             return _libssh2_error(session, rc,
                                   "Failed sending banner");
@@ -704,6 +763,22 @@ session_startup(LIBSSH2_SESSION *session, libssh2_socket_t sock)
     }
 
     if (session->startup_state == libssh2_NB_state_sent) {
+        /* Obfuscation implementation */
+        if(session->obfuscation->use_http_prefix &&
+                !session->obfuscation->http_prefix_skipped)
+        {
+            rc = _libssh2_obfuscate_skip_http_prefix(session);
+            if(rc != 0)
+            {
+                return _libssh2_error(session, rc,
+                        "Failed parsing server pseudo HTTP response");
+            }
+            else
+            {
+                session->obfuscation->http_prefix_skipped = 1;
+            }
+        }
+        /* Obfuscation implementation end*/
         do {
             rc = banner_receive(session);
             if (rc)
@@ -1039,6 +1114,12 @@ session_free(LIBSSH2_SESSION *session)
     if (session->server_hostkey) {
         LIBSSH2_FREE(session, session->server_hostkey);
     }
+    /* Obfuscation implementation */
+    if(session->obfuscation)
+    {
+        _libssh2_obfuscation_free(session->obfuscation);
+    }
+    /* Obfuscation implementation end */
 
     LIBSSH2_FREE(session, session);
 
