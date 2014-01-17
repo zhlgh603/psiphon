@@ -1,0 +1,39 @@
+//
+// Prefix header for all source files of the 'Psiphon' target in the 'Psiphon' project
+//
+
+#import <Availability.h>
+
+#ifndef __IPHONE_3_0
+#warning "This project uses features only available in iOS SDK 3.0 and later."
+#endif
+
+#ifdef __OBJC__
+    #import <UIKit/UIKit.h>
+    #import <Foundation/Foundation.h>
+    #import <CoreData/CoreData.h>
+    #import "MKNetworkKit.h"
+    #import "PsiphonData.h"
+#endif
+
+
+#define UIColorFromHEX(rgbValue) [UIColor colorWithRed:((float)((rgbValue & 0xFF0000) >> 16))/255.0 green:((float)((rgbValue & 0xFF00) >> 8))/255.0 blue:((float)(rgbValue & 0xFF))/255.0 alpha:1.0]
+
+#define LIBRARY_PATH(inPath) [[NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:inPath]
+
+
+
+#define kAddTabDuration 0.3
+#define kRemoveTabDuration 0.3
+
+#define kTabsToolbarHeigth 44.0
+#define kTabsHeigth  35.0
+#define kTabsBottomMargin 1.0
+
+#define kAddButtonWidth 40.
+
+#define kCornerRadius 6.5
+#define kShadowRadius 5.0
+
+#define kTabColor  [UIColor colorWithRed:208./255. green:212./255. blue:225./255. alpha:1.0]
+#define kTabDarkerColor [UIColor colorWithRed:138./255. green:142./255. blue:155./255. alpha:1.0]

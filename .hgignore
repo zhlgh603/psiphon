@@ -42,6 +42,7 @@ Android/PsiphonProxiedWebApp/gen
 
 Android/PsiphonAndroidLibrary/src/com/psiphon3/psiphonlibrary/EmbeddedValues.java
 Client/psiclient/embeddedvalues.h
+iOS/Psiphon/EmbeddedValues.m
 
 node_modules/
 out/
