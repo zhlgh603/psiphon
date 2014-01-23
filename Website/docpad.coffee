@@ -38,13 +38,16 @@ docpadConfig = {
       styles: [
         "/styles/twitter-bootstrap.css"
         "/vendor/highlightjs.css"
+        "/vendor/slabtext.css"
         "/styles/style.css"
       ]
 
       # Scripts
       scripts: [
-        "/vendor/jquery-1.10.2.min.js"
         "/vendor/modernizr-2.6.2.min.js"
+        "/vendor/respond-1.3.0.min.js"
+        "/vendor/jquery-1.10.2.min.js"
+        "/vendor/jquery.slabtext.min.js"
         "/vendor/twitter-bootstrap/dist/js/bootstrap.min.js"
         "/scripts/script.js"
       ]
@@ -74,7 +77,7 @@ docpadConfig = {
     translations: {}
 
     # Indicates which languages are not well translated and will
-    fallback_languages: ['ar', 'zh', 'tk', 'es', 'vi']
+    fallback_languages: ['ar', 'tk', 'vi']
 
     # Info about all pages
     # This would be largely unnecessary if we could put metadata on layouts
@@ -132,7 +135,7 @@ docpadConfig = {
           { name: 'license' }
         ]
       }
-      { name: 'sponsor' }
+      { name: 'sponsor', additional_classes: ['show-if-not-sponsored', 'hidden'] }
     ]
 
     downloads:
@@ -305,7 +308,8 @@ docpadConfig = {
     formatDate: (date) ->
       # Maybe we should use the JavaScript Date toLocaleDateString()?
       # Returning ISO8601 date for now
-      month = date.getUTCMonth()
+      # Note: getUTCMonth returns a 0-based month number and we want 1-based for the format
+      month = date.getUTCMonth() + 1
       if month < 10 then month = '0' + month
       return "#{date.getUTCFullYear()}-#{month}-#{date.getUTCDate()}"
 
@@ -363,16 +367,6 @@ docpadConfig = {
   # Plugins
 
   plugins:
-    downloader:
-      downloads: [
-        {
-          name: 'Twitter Bootstrap'
-          path: 'src/files/vendor/twitter-bootstrap'
-          url: 'https://codeload.github.com/twbs/bootstrap/tar.gz/master'
-          tarExtractClean: true
-        }
-      ]
-
     fattrimmer:
       fat: [
         /\/_/  # files and directories with leading underscore
