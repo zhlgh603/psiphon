@@ -1,0 +1,8 @@
+tk:
+  plaintext_email_no_attachment: |
+    Türkmençe - {{0}}/{0}/index.html
+  html_email_no_attachment: |
+    <div style="direction: ltr;">
+    Türkmençe - <a href="{{0}}/{0}/index.html">{{0}}/{0}/index.html</a>
+    <br>
+    </div>

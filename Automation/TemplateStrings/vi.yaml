@@ -1,0 +1,6 @@
+vi:
+  plaintext_email_no_attachment: |+
+    Tiếng Anh - {{0}}/{0}/index.html
+
+  html_email_no_attachment: "<div style=\"direction: ltr;\"> \nTiếng Anh - <a href=\"{{0}}/{0}/index.html\"\
+    >{{0}}/{0}/index.html</a><br>\n</div>\n\n"
