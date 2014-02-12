@@ -16,22 +16,19 @@ docpadConfig = {
       # Here are some old site urls that you would like to redirect from
       oldUrls: []
 
-      # The website description (for SEO)
-      description: """
-        Psiphon is a circumvention tool from Psiphon Inc. that utilizes VPN, SSH and HTTP Proxy technology to provide you with uncensored access to Internet content.
-        """
+      # The website description meta (for SEO).
+      # Individual pages should set their own if needed. Otherwise we won't
+      # have one.
+      description: ''
 
-      # The website keywords (for SEO) separated by commas
-      keywords: """
-        vpn, censorship, circumvention, ssh, proxy, facebook, uncensored, access, twitter, youtube, tunnel
-        """
+      # The website keywords (for SEO) -- array of keyword strings
+      # Individual pages should set their own if needed. Otherwise we won't
+      # have one.
+      keywords: ''
 
       companyName: "Psiphon Inc."
 
-      # The website author's name
-      author: "Psiphon Inc."
-
-      # The website author's email
+      # The website contact email
       email: "info@psiphon.ca"
 
       # Styles
@@ -76,7 +73,7 @@ docpadConfig = {
     # Translations will be loaded into this object.
     translations: {}
 
-    # Indicates which languages are not well translated and will
+    # Indicates which languages are not well translated and instead English will be used
     fallback_languages: ['ar', 'tk', 'vi']
 
     # Info about all pages
@@ -107,10 +104,10 @@ docpadConfig = {
         title_key: 'about-title'
         nav_title_key: 'about-nav-title'
 
-      'blog':
+      'blog-index':
         filename: '/blog/index.html'
         title_key: 'blog-index-title'
-        nav_title_key: 'blog-nav-title'
+        nav_title_key: 'blog-index-nav-title'
 
       'license':
         filename: '/license.html'
@@ -122,11 +119,6 @@ docpadConfig = {
         title_key: 'open-source-title'
         nav_title_key: 'open-source-nav-title'
 
-      'virtualname':
-        filename: '/virtualname.html'
-        title_key: 'license-title'
-        nav_title_key: 'license-nav-title'
-
     navLayout: [
       { name: 'download' }
       {
@@ -136,7 +128,7 @@ docpadConfig = {
           { name: 'user-guide' }
           { name: 'faq' }
           { name: 'about' }
-          { name: 'blog' }
+          { name: 'blog-index' }
           { name: 'license' }
           { name: 'open-source' }
         ]
@@ -154,10 +146,24 @@ docpadConfig = {
     # -----------------------------
     # Helper Functions
 
-    # Throws exception if `name` not found.
-    getPageInfo: (name) ->
+    # `document` arugment is optional -- if not supplied, @document will be used
+    getPageInfoKeyFromDocument: (document) ->
+      if not document
+        document = @document
+
+      path = require 'path'
+      return document.relativeBase.split(path.sep).slice(1).join('-')
+
+    # `name` is optional. If not defined, current document will be used.
+    # Throws exception if `name` not found and throwIfNotFound is true.
+    getPageInfo: (name, throwIfNotFound = true) ->
+      name = name or @getPageInfoKeyFromDocument()
+
       if name not of @pageInfo
-        throw "@getPageInfo: bad page name: #{name}"
+        if throwIfNotFound
+          throw "@getPageInfo from #{arguments.callee.caller}: bad page name: #{name}"
+        else
+          return null
       return @pageInfo[name]
 
     # The title might need to be translated from a string key.
@@ -166,12 +172,15 @@ docpadConfig = {
       if not document
         document = @document
 
+      # An explicit page title should only be present in rare circumstances, as
+      # it will not be in the string table and so no get translated normally.
+      # The only current use for this is blog post titles.
       if document.title?
         return document.title
 
       title_key = document.title_key
       if not title_key?
-        title_key = @getPageInfo(document.basename).title_key
+        title_key = @getPageInfo(@getPageInfoKeyFromDocument(document)).title_key
 
       if title_key?
         return @tt title_key
@@ -182,24 +191,34 @@ docpadConfig = {
     # Get the prepared site/document title
     # Often we would like to specify particular formatting to our page's title
     # we can apply that formatting here
-    getPreparedTitle: ->
-      # if we have a document title, then we should use that and suffix the site's title onto it
-      title = @getTitle()
-      if title
-        "#{title} | #{@tt 'site-title'}"
-      # if our document does not have it's own title, then we should just use the site's title
+    getPreparedMetaTitle: ->
+      if @document.meta_title_key
+        title = @tt(@document.meta_title_key)
       else
-        @tt 'site-title'
+        title = @getTitle()
+
+      if title
+        return "#{@tt 'psiphon'} | #{title}"
+      else
+        # if our document does not have it's own title, then we should just use the site's title
+        return "#{@tt 'psiphon'}"
 
     # Get the prepared site/document description
     getPreparedDescription: ->
       # if we have a document description, then we should use that, otherwise use the site's description
-      @document.description or @site.description
+      if @document.description_key
+        return @tt(@document.description_key)
+      else
+        return @site.description
 
     # Get the prepared site/document keywords
     getPreparedKeywords: ->
       # Merge the document keywords with the site keywords
-      @site.keywords.concat(@document.keywords or []).join(', ')
+      if @document.keywords_keys
+        page_keywords = @document.keywords_keys.map((kk) => @tt(kk))
+        return page_keywords.concat(@site.keywords).join(',')
+      else
+        return @site.keywords.join(',')
 
     # Translate the given key into the language of the current document.
     # Fails back to English if the key is not found.
