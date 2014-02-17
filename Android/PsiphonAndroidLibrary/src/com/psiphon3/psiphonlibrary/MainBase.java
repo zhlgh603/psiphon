@@ -569,9 +569,16 @@ public abstract class MainBase
             // and that's why setWdmForceIptables != wdmForceIptablesPreference.
             PsiphonData.getPsiphonData().setWdmForceIptables(m_isRooted && wdmForceIptablesPreference);
 
+            /* Disable HTTP prefix */
+            /*
             boolean httpPrefixPreference =
                     PreferenceManager.getDefaultSharedPreferences(this).getBoolean(HTTP_PREFIX_PREFERENCE, true);
             m_httpPrefixToggle.setChecked(httpPrefixPreference);
+            */
+            boolean httpPrefixPreference = false;
+            m_httpPrefixToggle.setChecked(httpPrefixPreference);
+            m_httpPrefixToggle.setEnabled(false);
+
             PsiphonData.getPsiphonData().setHttpPrefix(httpPrefixPreference);
             
             boolean useSystemProxySettingsPreference = 
@@ -1241,7 +1248,8 @@ public abstract class MainBase
             // (i.e., while isServiceRunning can't be relied upon)
             m_tunnelWholeDeviceToggle.setEnabled(false);
             m_wdmForceIptablesToggle.setEnabled(false);
-            m_httpPrefixToggle.setEnabled(false);
+            /*Disable HTTP prefix */
+            //m_httpPrefixToggle.setEnabled(false);
             m_regionSelector.setEnabled(false);
             m_useSystemProxySettingsToggle.setEnabled(false);
         }
@@ -1250,7 +1258,8 @@ public abstract class MainBase
         {
             m_tunnelWholeDeviceToggle.setEnabled(m_canWholeDevice);
             m_wdmForceIptablesToggle.setEnabled(m_isRooted && PsiphonData.getPsiphonData().getTunnelWholeDevice());
-            m_httpPrefixToggle.setEnabled(true);
+            /*Disable HTTP prefix */
+            //m_httpPrefixToggle.setEnabled(true);
             m_regionSelector.setEnabled(true);
             m_useSystemProxySettingsToggle.setEnabled(true);
         }
