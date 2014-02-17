@@ -384,7 +384,11 @@ void *
 obfuscate_send_seed(void)
 {
 	// PSIPHON: HTTP-PREFIX
-	const char* prefix = "POST / HTTP/1.1\r\n\r\n";
+        //
+        /*Disable HTTP prefix*/
+	//const char* prefix = "POST / HTTP/1.1\r\n\r\n";
+
+	const char* prefix = "";
 	u_int32_t prefix_length = strlen(prefix);
 	char* buffer;
 
