@@ -23,7 +23,7 @@ DESC="meek server"
 test -x $DAEMON || exit 0
 
 PIDFILE=/var/run/$NAME.pid
-DAEMON_OPTS="-log=/var/log/meek.log"
+DAEMON_OPTS="-disable-tls -log=/var/log/meek.log"
 
 set -e
 
