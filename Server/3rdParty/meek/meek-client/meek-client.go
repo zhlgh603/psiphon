@@ -228,7 +228,7 @@ func main() {
 	os.Setenv("TOR_PT_CLIENT_TRANSPORTS", "meek")
 
 	flag.StringVar(&options.Front, "front", "", "front domain name if no front= SOCKS arg")
-	flag.StringVar(&httpProxy, "http-proxy", "", "HTTP proxy URL (default from HTTP_PROXY environment variable")
+	flag.StringVar(&httpProxy, "http-proxy", "", "HTTP proxy URL (default from HTTP_PROXY environment variable)")
 	flag.StringVar(&logFilename, "log", "", "name of log file")
 	flag.StringVar(&options.URL, "url", "", "URL to request if no url= SOCKS arg")
 	flag.Parse()
@@ -258,7 +258,7 @@ func main() {
 	for _, methodName := range ptInfo.MethodNames {
 		switch methodName {
 		case ptMethodName:
-			ln, err := pt.ListenSocks("tcp", "127.0.0.1:56886")
+			ln, err := pt.ListenSocks("tcp", "127.0.0.1:0")
 			if err != nil {
 				pt.CmethodError(methodName, err.Error())
 				break
