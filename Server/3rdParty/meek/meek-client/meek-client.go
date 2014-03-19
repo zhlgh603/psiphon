@@ -54,6 +54,9 @@ type RequestInfo struct {
 	// behavior is used, which is to check the HTTP_PROXY and http_proxy
 	// environment for a proxy URL.
 	HTTPProxyURL *url.URL
+        // Target address from SOCKS
+        // This may be used by the meek server instead of ORPort
+        TargetAddress string
 }
 
 func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
@@ -72,6 +75,7 @@ func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("X-Session-Id", info.SessionID)
+	req.Header.Set("X-Target-Address", info.TargetAddress)
 	return tr.RoundTrip(req)
 }
 
@@ -149,6 +153,8 @@ func handler(conn *pt.SocksConn) error {
 	var info RequestInfo
 	info.SessionID = genSessionId()
 
+        info.TargetAddress = conn.Req.Target
+
 	// First check url= SOCKS arg, then --url option, then SOCKS target.
 	urlArg, ok := conn.Req.Args.Get("url")
 	if ok {
@@ -217,9 +223,12 @@ func main() {
 	var httpProxy string
 	var logFilename string
 	var err error
+	
+	os.Setenv("TOR_PT_MANAGED_TRANSPORT_VER", "1")
+	os.Setenv("TOR_PT_CLIENT_TRANSPORTS", "meek")
 
 	flag.StringVar(&options.Front, "front", "", "front domain name if no front= SOCKS arg")
-	flag.StringVar(&httpProxy, "http-proxy", "", "HTTP proxy URL (default from HTTP_PROXY environment variable)")
+	flag.StringVar(&httpProxy, "http-proxy", "", "HTTP proxy URL (default from HTTP_PROXY environment variable")
 	flag.StringVar(&logFilename, "log", "", "name of log file")
 	flag.StringVar(&options.URL, "url", "", "URL to request if no url= SOCKS arg")
 	flag.Parse()
@@ -249,7 +258,7 @@ func main() {
 	for _, methodName := range ptInfo.MethodNames {
 		switch methodName {
 		case ptMethodName:
-			ln, err := pt.ListenSocks("tcp", "127.0.0.1:0")
+			ln, err := pt.ListenSocks("tcp", "127.0.0.1:56886")
 			if err != nil {
 				pt.CmethodError(methodName, err.Error())
 				break

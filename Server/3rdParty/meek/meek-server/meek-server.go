@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -95,10 +94,19 @@ func (state *State) GetSession(sessionId string, req *http.Request) (*Session, e
 
 	session := state.sessionMap[sessionId]
 	if session == nil {
-		// log.Printf("unknown session id %q; creating new session", sessionId)
+		log.Printf("unknown session id %q; creating new session", sessionId)
 
-		or, err := pt.DialOr(&ptInfo, req.RemoteAddr, ptMethodName)
+                target := req.Header.Get("X-Target-Address")
+                if target != ""{
+			targetAddr, err := net.ResolveTCPAddr("tcp", target)
+			if err != nil {
+				return nil, err
+			}
+			ptInfo.OrAddr = targetAddr
+		} 
+	        or, err := pt.DialOr(&ptInfo, req.RemoteAddr, ptMethodName)
 		if err != nil {
+	 		fmt.Printf("Error dialing %+v", err)
 			return nil, err
 		}
 		session = &Session{Or: or}
@@ -159,7 +167,7 @@ func (state *State) Post(w http.ResponseWriter, req *http.Request) {
 func (state *State) CloseSession(sessionId string) {
 	state.lock.Lock()
 	defer state.lock.Unlock()
-	// log.Printf("closing session %q", sessionId)
+	log.Printf("closing session %q", sessionId)
 	session, ok := state.sessionMap[sessionId]
 	if ok {
 		session.Or.Close()
@@ -173,7 +181,7 @@ func (state *State) ExpireSessions() {
 		state.lock.Lock()
 		for sessionId, session := range state.sessionMap {
 			if session.Expired() {
-				// log.Printf("deleting expired session %q", sessionId)
+				log.Printf("deleting expired session %q", sessionId)
 				session.Or.Close()
 				delete(state.sessionMap, sessionId)
 			}
@@ -182,50 +190,11 @@ func (state *State) ExpireSessions() {
 	}
 }
 
-func listenTLS(network string, addr *net.TCPAddr, certFilename, keyFilename string) (net.Listener, error) {
-	// This is cribbed from the source of net/http.Server.ListenAndServeTLS.
-	// We have to separate the Listen and Serve parts because we need to
-	// report the listening address before entering Serve (which is an
-	// infinite loop).
-	config := &tls.Config{}
-	config.NextProtos = []string{"http/1.1"}
-
-	var err error
-	config.Certificates = make([]tls.Certificate, 1)
-	config.Certificates[0], err = tls.LoadX509KeyPair(certFilename, keyFilename)
-	if err != nil {
-		return nil, err
-	}
-
-	conn, err := net.ListenTCP(network, addr)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsListener := tls.NewListener(conn, config)
-
-	return tlsListener, nil
-}
-
 func startListener(network string, addr *net.TCPAddr) (net.Listener, error) {
 	ln, err := net.ListenTCP(network, addr)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("listening with plain HTTP on %s", ln.Addr())
-	return startServer(ln)
-}
-
-func startListenerTLS(network string, addr *net.TCPAddr, certFilename, keyFilename string) (net.Listener, error) {
-	ln, err := listenTLS(network, addr, certFilename, keyFilename)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("listening with HTTPS on %s", ln.Addr())
-	return startServer(ln)
-}
-
-func startServer(ln net.Listener) (net.Listener, error) {
 	state := NewState()
 	go state.ExpireSessions()
 	server := &http.Server{
@@ -233,7 +202,7 @@ func startServer(ln net.Listener) (net.Listener, error) {
 	}
 	go func() {
 		defer ln.Close()
-		err := server.Serve(ln)
+		err = server.Serve(ln)
 		if err != nil {
 			log.Printf("Error in Serve: %s", err)
 		}
@@ -242,14 +211,9 @@ func startServer(ln net.Listener) (net.Listener, error) {
 }
 
 func main() {
-	var disableTLS bool
-	var certFilename, keyFilename string
 	var logFilename string
 	var port int
 
-	flag.BoolVar(&disableTLS, "disable-tls", false, "don't use HTTPS")
-	flag.StringVar(&certFilename, "cert", "", "TLS certificate file (required without --disable-tls)")
-	flag.StringVar(&keyFilename, "key", "", "TLS private key file (required without --disable-tls)")
 	flag.StringVar(&logFilename, "log", "", "name of log file")
 	flag.IntVar(&port, "port", 0, "port to listen on")
 	flag.Parse()
@@ -261,16 +225,6 @@ func main() {
 		}
 		defer f.Close()
 		log.SetOutput(f)
-	}
-
-	if disableTLS {
-		if certFilename != "" || keyFilename != "" {
-			log.Fatalf("The --cert and --key options are not allowed with --disable-tls.\n")
-		}
-	} else {
-		if certFilename == "" || keyFilename == "" {
-			log.Fatalf("The --cert and --key options are required.\n")
-		}
 	}
 
 	var err error
@@ -287,17 +241,13 @@ func main() {
 		}
 		switch bindaddr.MethodName {
 		case ptMethodName:
-			var ln net.Listener
-			if disableTLS {
-				ln, err = startListener("tcp", bindaddr.Addr)
-			} else {
-				ln, err = startListenerTLS("tcp", bindaddr.Addr, certFilename, keyFilename)
-			}
+			ln, err := startListener("tcp", bindaddr.Addr)
 			if err != nil {
 				pt.SmethodError(bindaddr.MethodName, err.Error())
 				break
 			}
 			pt.Smethod(bindaddr.MethodName, ln.Addr())
+			log.Printf("listening on %s", ln.Addr())
 			listeners = append(listeners, ln)
 		default:
 			pt.SmethodError(bindaddr.MethodName, "no such method")
