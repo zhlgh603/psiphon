@@ -32,6 +32,7 @@ import urllib2
 import psi_config
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Automation')))
 import psi_ops_discovery
 
 plugins = []

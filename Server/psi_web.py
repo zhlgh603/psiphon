@@ -52,6 +52,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
 import psi_ops
+import psi_ops_discovery
 
 psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
@@ -262,10 +263,6 @@ class ServerInstance(object):
 
         # If the request is tunnelled, we should find a pre-computed
         # ip_address_strategy_value stored in redis by psi_auth.
-
-        # NOTE: psi_ops.__get_encoded_server_list will return the
-        # embedded servers for this propagation channel when the
-        # client_ip_address_strategy_value remains None.
 
         client_ip_address_strategy_value = None
         if self._is_request_tunnelled(client_ip_address):
