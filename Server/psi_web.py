@@ -260,8 +260,14 @@ class ServerInstance(object):
         self._log_event('handshake', inputs)
         client_ip_address = request.remote_addr
 
-        # If the request is tunnelled, we can get the last octet of the client's
-        # actual IP address from the discovery redis.
+        # If the request is tunnelled, we should find a pre-computed
+        # ip_address_strategy_value stored in redis by psi_auth.
+
+        # NOTE: psi_ops.__get_encoded_server_list will return the
+        # embedded servers for this propagation channel when the
+        # client_ip_address_strategy_value remains None.
+
+        client_ip_address_strategy_value = None
         if self._is_request_tunnelled(client_ip_address):
             client_ip_address = None
             if request.params.has_key('client_session_id'):
@@ -270,9 +276,9 @@ class ServerInstance(object):
                 if record:
                     self.discovery_redis.delete(client_session_id)
                     discovery_info = json.loads(record)
-                    # Handshake will correctly handle a client_ip_address string with less than three dots
-                    # See the docs for socket.inet_aton
-                    client_ip_address = discovery_info['client_ip_last_octet']
+                    client_ip_address_strategy_value = discovery_info['client_ip_address_strategy_value']
+        else:
+            client_ip_address_strategy_value = psi_ops_discovery.calculate_ip_address_strategy_value(client_ip_address)
                 
         # logger callback will add log entry for each server IP address discovered
         def discovery_logger(server_ip_address):
@@ -286,7 +292,7 @@ class ServerInstance(object):
 
         config = psinet.handshake(
                     self.server_ip_address,
-                    client_ip_address,
+                    client_ip_address_strategy_value,
                     client_region,
                     inputs_lookup['propagation_channel_id'],
                     inputs_lookup['sponsor_id'],
