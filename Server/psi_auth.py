@@ -31,6 +31,10 @@ import urllib
 import urllib2
 import psi_config
 
+sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Automation')))
+import psi_ops_discovery
+
 plugins = []
 try:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'Plugins'))
@@ -125,20 +129,18 @@ def set_session_region(pam_rhost, session_id):
     redis_session.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
     
     # Now fill in the discovery database
-    # NOTE: We are storing the last octet of the user's IP address
+    # NOTE: We are storing a value derived from the user's IP address
     # to be used by the discovery algorithm done in handshake when
     # the web request is made through the SSH/SSH+ tunnel
     # This is potentially PII.  We have a short (5 minute) expiry on
     # this data, and it will also be discarded immediately after use
-    # TODO: Consider implementing the discovery algorithm here so that
-    # this does not need to be stored
     try:
-        client_ip_last_octet = str(ord(socket.inet_aton(pam_rhost)[-1]))
+        client_ip_address_strategy_value = psi_ops_discovery.calculate_ip_address_strategy_value(pam_rhost)
         redis_discovery = redis.StrictRedis(
                 host=psi_config.DISCOVERY_DB_HOST,
                 port=psi_config.DISCOVERY_DB_PORT,
                 db=psi_config.DISCOVERY_DB_INDEX)
-        redis_discovery.set(session_id, json.dumps({'client_ip_last_octet' : client_ip_last_octet}))
+        redis_discovery.set(session_id, json.dumps({'client_ip_address_strategy_value' : client_ip_address_strategy_value}))
         redis_discovery.expire(session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
     except socket.error:
         pass
