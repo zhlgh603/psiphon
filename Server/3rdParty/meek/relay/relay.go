@@ -18,6 +18,7 @@ import (
     "encoding/json"
     "code.google.com/p/go.crypto/nacl/box"
     "sync"
+    mrand "math/rand"
 )
 
 const HTTPS_DEFAULT_PORT = 443
@@ -26,7 +27,9 @@ const OBFUSCATE_SEED_LENGTH = 16
 const OBFUSCATE_KEY_LENGTH = 16
 const OBFUSCATE_HASH_ITERATIONS = 6000
 const OBFUSCATE_MAGIC_VALUE uint32 = 0x0BF5CA7E
+const OBFUSCATE_MAX_PADDING = 32
 const CLIENT_TO_SERVER_IV = "client_to_server"
+const SERVER_TO_CLIENT_IV = "server_to_client"
 const maxSessionStaleness = 120 * time.Second
 
 type Session struct {
@@ -151,7 +154,7 @@ func (relay *Relay)buildServerPayload(r *http.Request, meekSessionID string) (st
     if err != nil {
         return "", err
     }
-    data, err := relay.crypto.encryptDataWithNaCl(j)
+    data, err := relay.crypto.Encrypt(j)
     if err != nil {
         return "", err
     }
@@ -168,6 +171,9 @@ func (relay *Relay) Start(s *http.Server, tls bool, certFilename string, keyFile
 }
 
 func (relay *Relay) GetSession(r *http.Request, payload string)(*Session, error) {
+    if len(payload) == 0{
+        return nil, errors.New("GetSession: payload is empty")
+    }
     relay.lock.Lock()
     defer relay.lock.Unlock()
 
@@ -251,14 +257,24 @@ func (cr *Crypto)Decrypt(data []byte)([]byte, error) {
     return jsondata, nil
 }
 
-func (cr *Crypto)deobfuscateData(data []byte) ([]byte, error) {
-    if len(data) < OBFUSCATE_SEED_LENGTH {
-        return nil, errors.New("deobfuscateData: payload is too short")
+func (cr *Crypto)Encrypt(data []byte)([]byte, error) {
+    cipherdata, err := cr.obfuscateData(data)
+    if err != nil {
+        return nil, err
     }
+
+    jsondata, err := cr.encryptDataWithNaCl(cipherdata)
+    if err != nil {
+        return nil, err
+    }
+    return jsondata, nil
+}
+
+func (cr *Crypto) generateKey(seed []byte, keyword []byte,  iv []byte) ([]byte, error) {
     h := sha1.New()
-    h.Write(data[0:OBFUSCATE_SEED_LENGTH])
-    h.Write([]byte(cr.obfuscationKeyword))
-    h.Write([]byte(CLIENT_TO_SERVER_IV))
+    h.Write(seed)
+    h.Write(keyword)
+    h.Write(iv)
     digest := h.Sum(nil)
 
     for i := 0; i < 6000; i++ {
@@ -268,14 +284,71 @@ func (cr *Crypto)deobfuscateData(data []byte) ([]byte, error) {
     }
 
     if len(digest) < OBFUSCATE_KEY_LENGTH {
-        return nil, errors.New("deobfuscateData: SHA1 digest is too short")
+        return nil, errors.New("generateKey: SHA1 digest is too short")
     }
 
     digest = digest[0:OBFUSCATE_KEY_LENGTH]
+    return digest, nil
+}
 
-    cipher, err := rc4.NewCipher(digest)
+func (cr *Crypto)obfuscateData(data []byte) ([]byte, error) {
+    seed := make([]byte, OBFUSCATE_SEED_LENGTH)
+    _, err := rand.Read(seed)
     if err != nil {
-        return nil, errors.New("deobfuscateData: couldn'y init SHA1")
+        return nil, err
+    }
+
+    key, err := cr.generateKey(seed, []byte(cr.obfuscationKeyword), []byte(SERVER_TO_CLIENT_IV))
+    if err != nil {
+        return nil, err
+    }
+
+    mrand.Seed( time.Now().UTC().UnixNano())
+    plength := mrand.Intn(OBFUSCATE_MAX_PADDING)
+
+    padding := make([]byte, plength)
+    _, err = rand.Read(padding)
+    if err != nil {
+        return nil, err
+    }
+
+    output := make([]byte, OBFUSCATE_SEED_LENGTH + 4 + 4 + plength)
+
+    offset := 0
+    copy(output[offset:OBFUSCATE_SEED_LENGTH], seed)
+
+    offset += OBFUSCATE_SEED_LENGTH
+    binary.BigEndian.PutUint32(output[offset:4], OBFUSCATE_MAGIC_VALUE)
+
+    offset +=4
+    binary.BigEndian.PutUint32(output[offset:4], uint32(plength))
+
+    offset += plength
+    copy(output[offset:plength], padding)
+
+    cipher, err := rc4.NewCipher(key)
+    if err != nil {
+        return nil, errors.New("obfuscateData: couldn't init new RC4")
+    }
+
+    cipher.XORKeyStream(output[OBFUSCATE_SEED_LENGTH:], output[OBFUSCATE_SEED_LENGTH:])
+    return output, nil
+
+}
+
+func (cr *Crypto)deobfuscateData(data []byte) ([]byte, error) {
+    if len(data) < OBFUSCATE_SEED_LENGTH {
+        return nil, errors.New("deobfuscateData: payload is too short")
+    }
+
+    key, err := cr.generateKey(data[0:OBFUSCATE_SEED_LENGTH], []byte(cr.obfuscationKeyword), []byte(CLIENT_TO_SERVER_IV))
+    if err != nil {
+        return nil, err
+    }
+
+    cipher, err := rc4.NewCipher(key)
+    if err != nil {
+        return nil, errors.New("deobfuscateData: couldn't init new RC4")
     }
 
     data = data[OBFUSCATE_SEED_LENGTH:]
