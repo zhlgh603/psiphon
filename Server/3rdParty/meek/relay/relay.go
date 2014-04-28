@@ -29,14 +29,11 @@ const OBFUSCATE_MAGIC_VALUE uint32 = 0x0BF5CA7E
 const CLIENT_TO_SERVER_IV = "client_to_server"
 const maxSessionStaleness = 120 * time.Second
 
-type ClientData struct {
-    meekSessionID string
-    psiphonServer string
-}
-
 type Session struct {
-    clientData *ClientData
+    psiphonServer string
+    meekSessionID string
     LastSeen time.Time
+    serverPayload string
 }
 
 func (session *Session) Touch() {
@@ -61,16 +58,14 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         break
     }
 
-    session , err := relay.GetSession(clientPayload)
+    session , err := relay.GetSession(r, clientPayload)
     if err != nil {
         log.Printf("GetSession: %s", err)
         http.NotFound(w, r)
         return
     }
 
-    clientData := session.clientData
-
-    fr, err := relay.buildRequest(r, clientData)
+    fr, err := relay.buildRequest(r, session)
     if err != nil {
         log.Printf("buildRequest: %s", err)
         http.NotFound(w, r)
@@ -95,19 +90,14 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     io.Copy(w, resp.Body)
 }
 
-func (relay *Relay)buildRequest(r *http.Request, clientData *ClientData) (*http.Request, error) {
+func (relay *Relay)buildRequest(r *http.Request, session *Session) (*http.Request, error) {
 
-    cReq, err := http.NewRequest(r.Method, fmt.Sprintf("http://%s/", clientData.psiphonServer), r.Body)
+    cReq, err := http.NewRequest(r.Method, fmt.Sprintf("http://%s/", session.psiphonServer), r.Body)
     if err != nil {
         return nil, err
     }
 
-    serverPayload, err := relay.buildServerPayload(r, clientData.meekSessionID)
-    if err != nil {
-        return nil, err
-    }
-
-    cookie := &http.Cookie{Name: "key", Value: string(serverPayload)}
+    cookie := &http.Cookie{Name: "key", Value: session.serverPayload}
     cReq.AddCookie(cookie)
 
     for _, key := range reflectedHeaderFields {
@@ -177,7 +167,7 @@ func (relay *Relay) Start(s *http.Server, tls bool, certFilename string, keyFile
     }
 }
 
-func (relay *Relay) GetSession(payload string)(*Session, error) {
+func (relay *Relay) GetSession(r *http.Request, payload string)(*Session, error) {
     relay.lock.Lock()
     defer relay.lock.Unlock()
 
@@ -193,11 +183,20 @@ func (relay *Relay) GetSession(payload string)(*Session, error) {
             return nil, err
         }
 
-        cldata, err := decodeClientJSON(jsondata)
+        pServer, mSessID , err := decodeClientJSON(jsondata)
         if err != nil {
             return nil, err
         }
-        session = &Session{clientData: cldata}
+        sPayload, err := relay.buildServerPayload(r, mSessID)
+        if err != nil {
+            return nil, err
+        }
+
+        session = &Session{
+            psiphonServer: pServer,
+            meekSessionID: mSessID,
+            serverPayload: sPayload,
+        }
         session.Touch()
         relay.sessionMap[payload] = session
     }
@@ -345,13 +344,13 @@ func NewCrypto (oK string, cPrivKey [32]byte,  sPubKey [32]byte) (cr *Crypto){
     }
 }
 
-func decodeClientJSON(j []byte) (*ClientData, error) {
+func decodeClientJSON(j []byte) ( string,  string, error) {
     var f interface{}
     var s, p string
 
     err := json.Unmarshal(j, &f)
     if err != nil {
-        return nil, err
+        return "", "", err
     }
 
     m := f.(map[string]interface{})
@@ -363,10 +362,11 @@ func decodeClientJSON(j []byte) (*ClientData, error) {
 
     if len(s) == 0 || len(p) == 0 {
         err := fmt.Errorf("decodeClientJSON error decoding '%s'", string(j))
-        return nil, err
+        return "", "", err
     }
 
-    return &ClientData{s,p}, nil
+    //order: server, sessionId
+    return p, s, nil
 }
 
 
