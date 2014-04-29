@@ -104,7 +104,7 @@ func (relay *Relay)buildRequest(r *http.Request, session *Session) (*http.Reques
 func (relay *Relay)buildServerPayload(r *http.Request, meekSessionID, psiphonServer string) (string, error) {
     payload := make(map[string]string)
     payload["s"] = meekSessionID
-    payload["s"] = psiphonServer
+    payload["p"] = psiphonServer
 
     //we do not trust any injected headers in plain HTTP
     if !relay.listenTLS {
