@@ -29,7 +29,6 @@ const OBFUSCATE_HASH_ITERATIONS = 6000
 const OBFUSCATE_MAGIC_VALUE uint32 = 0x0BF5CA7E
 const OBFUSCATE_MAX_PADDING = 32
 const CLIENT_TO_SERVER_IV = "client_to_server"
-const SERVER_TO_CLIENT_IV = "server_to_client"
 const maxSessionStaleness = 120 * time.Second
 
 type Session struct {
@@ -298,7 +297,7 @@ func (cr *Crypto)obfuscateData(data []byte) ([]byte, error) {
         return nil, err
     }
 
-    key, err := cr.generateKey(seed, []byte(cr.obfuscationKeyword), []byte(SERVER_TO_CLIENT_IV))
+    key, err := cr.generateKey(seed, []byte(cr.obfuscationKeyword), []byte(CLIENT_TO_SERVER_IV))
     if err != nil {
         return nil, err
     }
@@ -312,19 +311,22 @@ func (cr *Crypto)obfuscateData(data []byte) ([]byte, error) {
         return nil, err
     }
 
-    output := make([]byte, OBFUSCATE_SEED_LENGTH + 4 + 4 + plength)
+    output := make([]byte, OBFUSCATE_SEED_LENGTH + 4 + 4 + plength + len(data))
 
     offset := 0
-    copy(output[offset:OBFUSCATE_SEED_LENGTH], seed)
+    copy(output[offset:offset+OBFUSCATE_SEED_LENGTH], seed)
 
     offset += OBFUSCATE_SEED_LENGTH
-    binary.BigEndian.PutUint32(output[offset:4], OBFUSCATE_MAGIC_VALUE)
+    binary.BigEndian.PutUint32(output[offset:offset+4], OBFUSCATE_MAGIC_VALUE)
 
     offset +=4
-    binary.BigEndian.PutUint32(output[offset:4], uint32(plength))
+    binary.BigEndian.PutUint32(output[offset:offset+4], uint32(plength))
+
+    offset += 4
+    copy(output[offset:offset+plength], padding)
 
     offset += plength
-    copy(output[offset:plength], padding)
+    copy(output[offset:], data)
 
     cipher, err := rc4.NewCipher(key)
     if err != nil {
@@ -360,7 +362,7 @@ func (cr *Crypto)deobfuscateData(data []byte) ([]byte, error) {
     }
 
     if binary.BigEndian.Uint32(data[0:4]) != OBFUSCATE_MAGIC_VALUE {
-        return nil, errors.New("deobfuscateData: NewCipher error")
+        return nil, errors.New("deobfuscateData: magic value mismatch")
     }
 
     data = data[4:]
