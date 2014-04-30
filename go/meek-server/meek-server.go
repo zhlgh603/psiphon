@@ -1,46 +1,36 @@
 package main
 
 import (
-	"crypto/tls"
+	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
-	"path"
 	"sync"
-	"syscall"
 	"time"
 )
 
-import "git.torproject.org/pluggable-transports/goptlib.git"
+const HTTP_DEFAULT_PORT = 80
 
-const ptMethodName = "meek"
-const minSessionIdLength = 32
 const maxPayloadLength = 0x10000
 const turnaroundDeadline = 10 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
 
-var ptInfo pt.ServerInfo
-
-// When a connection handler starts, +1 is written to this channel; when it
-// ends, -1 is written.
-var handlerChan = make(chan int)
-
-func httpBadRequest(w http.ResponseWriter) {
-	http.Error(w, "Bad request.\n", http.StatusBadRequest)
-}
-
-func httpInternalServerError(w http.ResponseWriter) {
-	http.Error(w, "Internal server error.\n", http.StatusInternalServerError)
+type GeoData struct {
+	region string
+	city   string
+	isp    string
 }
 
 type Session struct {
-	Or       *net.TCPConn
+	psiConn  *net.TCPConn
 	LastSeen time.Time
 }
 
@@ -52,215 +42,181 @@ func (session *Session) Expired() bool {
 	return time.Since(session.LastSeen) > maxSessionStaleness
 }
 
-type State struct {
+type Dispatcher struct {
 	sessionMap map[string]*Session
-	lock       sync.Mutex
+	lock       sync.RWMutex
+	crypto     *crypto.Crypto
 }
 
-func NewState() *State {
-	state := new(State)
-	state.sessionMap = make(map[string]*Session)
-	return state
-}
-
-func (state *State) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	handlerChan <- 1
-	defer func() {
-		handlerChan <- -1
-	}()
-
-	switch req.Method {
-	case "GET":
-		state.Get(w, req)
-	case "POST":
-		state.Post(w, req)
-	default:
-		httpBadRequest(w)
+func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	clientPayload := ""
+	for _, c := range r.Cookies() {
+		clientPayload = c.Value
+		break
 	}
-}
 
-func (state *State) Get(w http.ResponseWriter, req *http.Request) {
-	if path.Clean(req.URL.Path) != "/" {
-		http.NotFound(w, req)
+	if r.Method != "POST" {
+		log.Printf("Bad HTTP request: %+v", r)
+		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("I’m just a happy little web server.\n"))
+
+	session, err := d.GetSession(r, clientPayload)
+	if err != nil {
+		log.Printf("GetSession: %s", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	err = d.dispatch(session, w, r)
+	if err != nil {
+		log.Printf("dispatch: %s", err)
+		http.NotFound(w, r)
+		d.CloseSession(clientPayload)
+		return
+	}
 }
 
-func (state *State) GetSession(sessionId string, req *http.Request) (*Session, error) {
-	state.lock.Lock()
-	defer state.lock.Unlock()
+func (d *Dispatcher) GetSession(r *http.Request, payload string) (*Session, error) {
+	if len(payload) == 0 {
+		return nil, errors.New("payload is empty")
+	}
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
-	session := state.sessionMap[sessionId]
-	if session == nil {
-		// log.Printf("unknown session id %q; creating new session", sessionId)
+	session, ok := d.sessionMap[payload]
 
-	        target := req.Header.Get("X-Target-Address")
-                if target != ""{
-			targetAddr, err := net.ResolveTCPAddr("tcp", target)
-			if err != nil {
-				return nil, err
-			}
-			ptInfo.OrAddr = targetAddr
-		} 
-
-		or, err := pt.DialOr(&ptInfo, req.RemoteAddr, ptMethodName)
+	if !ok {
+		encrypted, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
 			return nil, err
 		}
-		session = &Session{Or: or}
-		state.sessionMap[sessionId] = session
-	}
-	session.Touch()
+		jsondata, err := d.crypto.Decrypt(encrypted)
+		if err != nil {
+			return nil, err
+		}
 
+		psiphonServer, userIP, geoData, err := decodePayloadJSON(jsondata)
+		if err != nil {
+			return nil, err
+		}
+
+		psiphonServerAddr, err := net.ResolveTCPAddr("tcp", psiphonServer)
+		if err != nil {
+			return nil, err
+		}
+
+		net.DialTCP("tcp", nil, psiphonServerAddr)
+		if err != nil {
+			return nil, err
+		}
+
+		d.doStats(userIP, geoData)
+	}
 	return session, nil
 }
 
-func transact(session *Session, w http.ResponseWriter, req *http.Request) error {
+func (d *Dispatcher) doStats(IP string, geoDada *GeoData) {
+	log.Printf("IP: %s, geoData: (%+v)", IP, geoDada)
+}
+
+func (d *Dispatcher) CloseSession(sessionId string) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	_, ok := d.sessionMap[sessionId]
+	if ok {
+		delete(d.sessionMap, sessionId)
+	}
+}
+
+func (d *Dispatcher) ExpireSessions() {
+	for {
+		time.Sleep(maxSessionStaleness / 2)
+		d.lock.Lock()
+		for sessionId, session := range d.sessionMap {
+			if session.Expired() {
+				delete(d.sessionMap, sessionId)
+			}
+		}
+		d.lock.Unlock()
+	}
+}
+
+func (d *Dispatcher) dispatch(session *Session, w http.ResponseWriter, req *http.Request) error {
 	body := http.MaxBytesReader(w, req.Body, maxPayloadLength+1)
-	_, err := io.Copy(session.Or, body)
+	_, err := io.Copy(session.psiConn, body)
 	if err != nil {
-		return errors.New(fmt.Sprintf("copying body to ORPort: %s", err))
+		return errors.New(fmt.Sprintf("copying body to psiConn: %s", err))
 	}
 
 	buf := make([]byte, maxPayloadLength)
-	session.Or.SetReadDeadline(time.Now().Add(turnaroundDeadline))
-	n, err := session.Or.Read(buf)
+	session.psiConn.SetReadDeadline(time.Now().Add(turnaroundDeadline))
+	n, err := session.psiConn.Read(buf)
 	if err != nil {
 		if e, ok := err.(net.Error); !ok || !e.Timeout() {
-			httpInternalServerError(w)
-			return errors.New(fmt.Sprintf("reading from ORPort: %s", err))
+			return errors.New(fmt.Sprintf("reading from psiConn: %s", err))
 		}
 	}
-	// log.Printf("read %d bytes from ORPort: %q", n, buf[:n])
 	n, err = w.Write(buf[:n])
 	if err != nil {
 		return errors.New(fmt.Sprintf("writing to response: %s", err))
 	}
-	// log.Printf("wrote %d bytes to response", n)
 	return nil
 }
 
-func (state *State) Post(w http.ResponseWriter, req *http.Request) {
-	sessionId := req.Header.Get("X-Session-Id")
-	if len(sessionId) < minSessionIdLength {
-		httpBadRequest(w)
-		return
-	}
-
-	session, err := state.GetSession(sessionId, req)
-	if err != nil {
-		log.Print(err)
-		httpInternalServerError(w)
-		return
-	}
-
-	err = transact(session, w, req)
-	if err != nil {
-		log.Print(err)
-		state.CloseSession(sessionId)
-		return
-	}
+func NewDispatcher() *Dispatcher {
+	d := new(Dispatcher)
+	d.sessionMap = make(map[string]*Session)
+	return d
 }
 
-func (state *State) CloseSession(sessionId string) {
-	state.lock.Lock()
-	defer state.lock.Unlock()
-	// log.Printf("closing session %q", sessionId)
-	session, ok := state.sessionMap[sessionId]
+func decodePayloadJSON(j []byte) (psiphonServer, userIP string, geoData *GeoData, err error) {
+	var f interface{}
+
+	err = json.Unmarshal(j, &f)
+	if err != nil {
+		return
+	}
+
+	mm := f.(map[string]interface{})
+
+	v, ok := mm["p"]
+	if !ok {
+		err = fmt.Errorf("decodePayloadJSON error decoding '%s'", string(j))
+		return
+	}
+	psiphonServer = v.(string)
+
+	v, ok = mm["ip"]
 	if ok {
-		session.Or.Close()
-		delete(state.sessionMap, sessionId)
+		userIP = v.(string)
+		return //we do no need geoData if we got the IP
 	}
-}
-
-func (state *State) ExpireSessions() {
-	for {
-		time.Sleep(maxSessionStaleness / 2)
-		state.lock.Lock()
-		for sessionId, session := range state.sessionMap {
-			if session.Expired() {
-				// log.Printf("deleting expired session %q", sessionId)
-				session.Or.Close()
-				delete(state.sessionMap, sessionId)
-			}
+	v, ok = mm["g"]
+	if ok {
+		gg := v.(map[string]interface{})
+		geoData = &GeoData{
+			region: gg["r"].(string),
+			city:   gg["c"].(string),
+			isp:    gg["i"].(string),
 		}
-		state.lock.Unlock()
+		return
 	}
-}
-
-func listenTLS(network string, addr *net.TCPAddr, certFilename, keyFilename string) (net.Listener, error) {
-	// This is cribbed from the source of net/http.Server.ListenAndServeTLS.
-	// We have to separate the Listen and Serve parts because we need to
-	// report the listening address before entering Serve (which is an
-	// infinite loop).
-	config := &tls.Config{}
-	config.NextProtos = []string{"http/1.1"}
-
-	var err error
-	config.Certificates = make([]tls.Certificate, 1)
-	config.Certificates[0], err = tls.LoadX509KeyPair(certFilename, keyFilename)
-	if err != nil {
-		return nil, err
-	}
-
-	conn, err := net.ListenTCP(network, addr)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsListener := tls.NewListener(conn, config)
-
-	return tlsListener, nil
-}
-
-func startListener(network string, addr *net.TCPAddr) (net.Listener, error) {
-	ln, err := net.ListenTCP(network, addr)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("listening with plain HTTP on %s", ln.Addr())
-	return startServer(ln)
-}
-
-func startListenerTLS(network string, addr *net.TCPAddr, certFilename, keyFilename string) (net.Listener, error) {
-	ln, err := listenTLS(network, addr, certFilename, keyFilename)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("listening with HTTPS on %s", ln.Addr())
-	return startServer(ln)
-}
-
-func startServer(ln net.Listener) (net.Listener, error) {
-	state := NewState()
-	go state.ExpireSessions()
-	server := &http.Server{
-		Handler: state,
-	}
-	go func() {
-		defer ln.Close()
-		err := server.Serve(ln)
-		if err != nil {
-			log.Printf("Error in Serve: %s", err)
-		}
-	}()
-	return ln, nil
+	err = fmt.Errorf("decodePayloadJSON: no useful fields in '%s'", string(j))
+	return
 }
 
 func main() {
-	var disableTLS bool
-	var certFilename, keyFilename string
+	var serverPrivateKeyFilename string
+	var serverPrivateKey [32]byte
 	var logFilename string
+	var obfuscationKeyword string
 	var port int
 
-	flag.BoolVar(&disableTLS, "disable-tls", false, "don't use HTTPS")
-	flag.StringVar(&certFilename, "cert", "", "TLS certificate file (required without --disable-tls)")
-	flag.StringVar(&keyFilename, "key", "", "TLS private key file (required without --disable-tls)")
 	flag.StringVar(&logFilename, "log", "", "name of log file")
 	flag.IntVar(&port, "port", 0, "port to listen on")
+	flag.StringVar(&obfuscationKeyword, "obfskey", "", "obfuscation keyword")
+	flag.StringVar(&serverPrivateKeyFilename, "sprivkey", "", "server private key file required to decrypt payload")
 	flag.Parse()
 
 	if logFilename != "" {
@@ -272,79 +228,36 @@ func main() {
 		log.SetOutput(f)
 	}
 
-	if disableTLS {
-		if certFilename != "" || keyFilename != "" {
-			log.Fatalf("The --cert and --key options are not allowed with --disable-tls.\n")
-		}
+	if serverPrivateKeyFilename == "" {
+		log.Fatalf("sprivkey is required, exiting now")
 	} else {
-		if certFilename == "" || keyFilename == "" {
-			log.Fatalf("The --cert and --key options are required.\n")
+		var err error
+		var read []byte
+		read, err = ioutil.ReadFile(serverPrivateKeyFilename)
+		if err != nil {
+			log.Fatalf("error reading serverPrivateKeyFilename: %s", err)
 		}
+		copy(serverPrivateKey[:], read)
 	}
 
-	var err error
-	ptInfo, err = pt.ServerSetup([]string{ptMethodName})
-	if err != nil {
-		log.Fatalf("error in ServerSetup: %s", err)
+	if port == 0 {
+		port = HTTP_DEFAULT_PORT
 	}
 
-	log.Printf("starting")
-	listeners := make([]net.Listener, 0)
-	for _, bindaddr := range ptInfo.Bindaddrs {
-		if port != 0 {
-			bindaddr.Addr.Port = port
-		}
-		switch bindaddr.MethodName {
-		case ptMethodName:
-			var ln net.Listener
-			if disableTLS {
-				ln, err = startListener("tcp", bindaddr.Addr)
-			} else {
-				ln, err = startListenerTLS("tcp", bindaddr.Addr, certFilename, keyFilename)
-			}
-			if err != nil {
-				pt.SmethodError(bindaddr.MethodName, err.Error())
-				break
-			}
-			pt.Smethod(bindaddr.MethodName, ln.Addr())
-			listeners = append(listeners, ln)
-		default:
-			pt.SmethodError(bindaddr.MethodName, "no such method")
-		}
-	}
-	pt.SmethodsDone()
+	var dummyKey [32]byte
+	cr := crypto.New(obfuscationKeyword, dummyKey, serverPrivateKey)
 
-	var numHandlers int = 0
-	var sig os.Signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	dispatcher := NewDispatcher()
+	dispatcher.crypto = cr
 
-	// wait for first signal
-	sig = nil
-	for sig == nil {
-		select {
-		case n := <-handlerChan:
-			numHandlers += n
-		case sig = <-sigChan:
-		}
-	}
-	for _, ln := range listeners {
-		ln.Close()
+	s := &http.Server{
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      dispatcher,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
-	if sig == syscall.SIGTERM {
-		return
-	}
+	go dispatcher.ExpireSessions()
 
-	// wait for second signal or no more handlers
-	sig = nil
-	for sig == nil && numHandlers != 0 {
-		select {
-		case n := <-handlerChan:
-			numHandlers += n
-		case sig = <-sigChan:
-		}
-	}
-
-	log.Printf("done")
+	log.Fatal(s.ListenAndServe())
 }
