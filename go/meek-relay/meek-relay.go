@@ -38,6 +38,7 @@ type Relay struct {
 	sessionMap map[string]*Session
 	lock       sync.RWMutex
 	crypto     *crypto.Crypto
+        obfuscationKeyword string
 	listenTLS  bool
 }
 
@@ -106,9 +107,10 @@ func (relay *Relay) buildRequest(r *http.Request, session *Session) (*http.Reque
 	return cReq, nil
 }
 
-func (relay *Relay) buildServerPayload(r *http.Request, psiphonServer string) (string, error) {
+func (relay *Relay) buildServerPayload(r *http.Request, psiphonServer,sshSessionId string) (string, error) {
 	payload := make(map[string]string)
 	payload["p"] = psiphonServer
+	payload["s"] = sshSessionId
 
 	//we do not trust any injected headers in plain HTTP
 	if !relay.listenTLS {
@@ -173,20 +175,27 @@ func (relay *Relay) GetSession(r *http.Request, payload string) (*Session, error
 	session, ok := relay.sessionMap[payload]
 
 	if !ok {
-		encrypted, err := base64.StdEncoding.DecodeString(payload)
-		if err != nil {
-			return nil, err
-		}
-		jsondata, err := relay.crypto.Decrypt(encrypted)
+		obfuscated, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
 			return nil, err
 		}
 
-		m, p, err := decodeClientJSON(jsondata)
+		encrypted, err := relay.crypto.Deobfuscate(obfuscated, relay.obfuscationKeyword)
 		if err != nil {
 			return nil, err
 		}
-		sPayload, err := relay.buildServerPayload(r, p)
+
+		jsondata, err := relay.crypto.Decrypt(encrypted)
+
+		if err != nil {
+			return nil, err
+		}
+
+		m, p, s, err := decodeClientJSON(jsondata)
+		if err != nil {
+			return nil, err
+		}
+		sPayload, err := relay.buildServerPayload(r, p, s)
 		if err != nil {
 			return nil, err
 		}
@@ -229,7 +238,7 @@ func NewRelay() *Relay {
 	return relay
 }
 
-func decodeClientJSON(j []byte) (meekServer, psiphonServer string, err error) {
+func decodeClientJSON(j []byte) (meekServer, psiphonServer, sshSessionId string, err error) {
 	var f interface{}
 
 	err = json.Unmarshal(j, &f)
@@ -246,10 +255,13 @@ func decodeClientJSON(j []byte) (meekServer, psiphonServer string, err error) {
 		if k == "p" {
 			psiphonServer = v.(string)
 		}
+		if k == "s" {
+			sshSessionId = v.(string)
+		}
 	}
 
-	if len(meekServer) == 0 || len(psiphonServer) == 0 {
-		err = fmt.Errorf("decodeClientJSON error decoding '%s'", string(j))
+	if len(meekServer) == 0 || len(psiphonServer) == 0 || len(sshSessionId) == 0 {
+            err = fmt.Errorf("decodeClientJSON: error decoding '%s'", string(j))
 		return
 	}
 
@@ -323,8 +335,9 @@ func main() {
 	}
 
 	relay := NewRelay()
-	cr := crypto.New(obfuscationKeyword, serverPublicKey, clientPrivateKey)
+	cr := crypto.New(serverPublicKey, clientPrivateKey)
 	relay.crypto = cr
+        relay.obfuscationKeyword = obfuscationKeyword
 
 	s := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
