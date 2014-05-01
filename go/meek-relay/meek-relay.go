@@ -38,6 +38,7 @@ type Relay struct {
 	sessionMap map[string]*Session
 	lock       sync.RWMutex
 	crypto     *crypto.Crypto
+        obfuscationKeyword string
 	listenTLS  bool
 }
 
@@ -174,11 +175,18 @@ func (relay *Relay) GetSession(r *http.Request, payload string) (*Session, error
 	session, ok := relay.sessionMap[payload]
 
 	if !ok {
-		encrypted, err := base64.StdEncoding.DecodeString(payload)
+		obfuscated, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
 			return nil, err
 		}
+
+		encrypted, err := relay.crypto.Deobfuscate(obfuscated, relay.obfuscationKeyword)
+		if err != nil {
+			return nil, err
+		}
+
 		jsondata, err := relay.crypto.Decrypt(encrypted)
+
 		if err != nil {
 			return nil, err
 		}
@@ -327,8 +335,9 @@ func main() {
 	}
 
 	relay := NewRelay()
-	cr := crypto.New(obfuscationKeyword, serverPublicKey, clientPrivateKey)
+	cr := crypto.New(serverPublicKey, clientPrivateKey)
 	relay.crypto = cr
+        relay.obfuscationKeyword = obfuscationKeyword
 
 	s := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
