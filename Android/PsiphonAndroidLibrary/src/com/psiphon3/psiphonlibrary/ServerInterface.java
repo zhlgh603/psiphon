@@ -134,6 +134,9 @@ public class ServerInterface
         public String sshObfuscatedKey;
         public ArrayList<String> capabilities;
         public String regionCode;
+        public boolean hasMeekServer = false;
+        public int meekServerPort;
+        public String meekFrontingDomain;
 
         @Override
         public ServerEntry clone()
@@ -1169,7 +1172,7 @@ public class ServerInterface
         }
     }
 
-    private class ProtectedSSLSocketFactory extends SSLSocketFactory
+    public static class ProtectedSSLSocketFactory extends SSLSocketFactory
     {
         Tun2Socks.IProtectSocket protectSocket;
 
@@ -1229,6 +1232,48 @@ public class ServerInterface
         }
     }
     
+    public static class ProtectedPlainSocketFactory extends PlainSocketFactory
+    {
+        Tun2Socks.IProtectSocket protectSocket;
+
+        ProtectedPlainSocketFactory(Tun2Socks.IProtectSocket protectSocket)
+        {
+            super();
+            
+            this.protectSocket = protectSocket;
+        }
+
+        // NOTE:
+        // See comment block in ProtectedSSLSocketFactory
+        
+        @Override
+        public Socket createSocket(HttpParams params)
+        {
+            Socket socket = null;
+            try
+            {
+                socket = SocketChannel.open().socket();
+                if (this.protectSocket != null)
+                {
+                    this.protectSocket.doVpnProtect(socket);
+                }
+            } catch (IOException e)
+            {
+                // TODO: log?
+            }
+
+            return socket;
+        }
+
+        @Override
+        public Socket createSocket()
+        {
+            // Deprecated - our code will not call this
+            assert(false);
+            return null;
+        }
+    }
+    
     public interface IResumableDownload
     {
         long getResumeOffset();
@@ -1263,7 +1308,7 @@ public class ServerInterface
             }
             else
             {
-                PsiphonData.SystemProxySettings proxySettings = PsiphonData.getPsiphonData().getSystemProxySettings(this.ownerContext);
+                PsiphonData.ProxySettings proxySettings = PsiphonData.getPsiphonData().getProxySettings(this.ownerContext);
                 if (proxySettings != null)
                 {
                     httpproxy = new HttpHost(proxySettings.proxyHost, proxySettings.proxyPort);
@@ -1573,6 +1618,26 @@ public class ServerInterface
         else
         {
             newEntry.regionCode = "";            
+        }
+
+        if (obj.has("meekServerPort"))
+        {
+            newEntry.hasMeekServer = true;
+            newEntry.meekServerPort = obj.getInt("meekServerPort");
+        }
+        else
+        {
+            newEntry.hasMeekServer = false;
+            newEntry.meekServerPort = -1;            
+        }
+        
+        if (obj.has("meekFrontingDomain"))
+        {
+            newEntry.meekFrontingDomain = obj.getString("meekFrontingDomain");
+        }
+        else
+        {
+            newEntry.meekFrontingDomain = null;
         }
         
         return newEntry;
