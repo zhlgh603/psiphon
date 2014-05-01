@@ -202,7 +202,7 @@ func decodePayloadJSON(j []byte) (psiphonServer, userIP string, geoData *GeoData
 		}
 		return
 	}
-	err = fmt.Errorf("decodePayloadJSON: no useful fields in '%s'", string(j))
+	err = fmt.Errorf("decodePayloadJSON: no geo fields in '%s'", string(j))
 	return
 }
 
@@ -210,12 +210,10 @@ func main() {
 	var serverPrivateKeyFilename string
 	var serverPrivateKey [32]byte
 	var logFilename string
-	var obfuscationKeyword string
 	var port int
 
 	flag.StringVar(&logFilename, "log", "", "name of log file")
 	flag.IntVar(&port, "port", 0, "port to listen on")
-	flag.StringVar(&obfuscationKeyword, "obfskey", "", "obfuscation keyword")
 	flag.StringVar(&serverPrivateKeyFilename, "sprivkey", "", "server private key file required to decrypt payload")
 	flag.Parse()
 
@@ -245,7 +243,7 @@ func main() {
 	}
 
 	var dummyKey [32]byte
-	cr := crypto.New(obfuscationKeyword, dummyKey, serverPrivateKey)
+	cr := crypto.New(dummyKey, serverPrivateKey)
 
 	dispatcher := NewDispatcher()
 	dispatcher.crypto = cr

@@ -19,36 +19,9 @@ const OBFUSCATE_MAX_PADDING = 32
 const CLIENT_TO_SERVER_IV = "client_to_server"
 
 type Crypto struct {
-	obfuscationKeyword string
 	publicKey          [32]byte
 	privateKey         [32]byte
 	nonce              [24]byte
-}
-
-func (cr *Crypto) Decrypt(data []byte) ([]byte, error) {
-	cipherdata, err := cr.deobfuscateData(data)
-	if err != nil {
-		return nil, err
-	}
-
-	obfuscated, err := cr.decryptNaClData(cipherdata)
-	if err != nil {
-		return nil, err
-	}
-	return obfuscated, nil
-}
-
-func (cr *Crypto) Encrypt(data []byte) ([]byte, error) {
-	cipherdata, err := cr.encryptDataWithNaCl(data)
-	if err != nil {
-		return nil, err
-	}
-
-	obfuscated, err := cr.obfuscateData(cipherdata)
-	if err != nil {
-		return nil, err
-	}
-	return obfuscated, nil
 }
 
 func (cr *Crypto) generateKey(seed []byte, keyword []byte, iv []byte) ([]byte, error) {
@@ -72,14 +45,14 @@ func (cr *Crypto) generateKey(seed []byte, keyword []byte, iv []byte) ([]byte, e
 	return digest, nil
 }
 
-func (cr *Crypto) obfuscateData(data []byte) ([]byte, error) {
+func (cr *Crypto) Obfuscate(data []byte, obfuscationKeyword string) ([]byte, error) {
 	seed := make([]byte, OBFUSCATE_SEED_LENGTH)
 	_, err := rand.Read(seed)
 	if err != nil {
 		return nil, err
 	}
 
-	key, err := cr.generateKey(seed, []byte(cr.obfuscationKeyword), []byte(CLIENT_TO_SERVER_IV))
+	key, err := cr.generateKey(seed, []byte(obfuscationKeyword), []byte(CLIENT_TO_SERVER_IV))
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +85,7 @@ func (cr *Crypto) obfuscateData(data []byte) ([]byte, error) {
 
 	cipher, err := rc4.NewCipher(key)
 	if err != nil {
-		return nil, errors.New("obfuscateData: couldn't init new RC4")
+		return nil, errors.New("Obfuscate: couldn't init new RC4")
 	}
 
 	cipher.XORKeyStream(output[OBFUSCATE_SEED_LENGTH:], output[OBFUSCATE_SEED_LENGTH:])
@@ -120,19 +93,19 @@ func (cr *Crypto) obfuscateData(data []byte) ([]byte, error) {
 
 }
 
-func (cr *Crypto) deobfuscateData(data []byte) ([]byte, error) {
+func (cr *Crypto) Deobfuscate(data []byte, obfuscationKeyword string) ([]byte, error) {
 	if len(data) < OBFUSCATE_SEED_LENGTH {
-		return nil, errors.New("deobfuscateData: payload is too short")
+		return nil, errors.New("Deobfuscate: payload is too short")
 	}
 
-	key, err := cr.generateKey(data[0:OBFUSCATE_SEED_LENGTH], []byte(cr.obfuscationKeyword), []byte(CLIENT_TO_SERVER_IV))
+	key, err := cr.generateKey(data[0:OBFUSCATE_SEED_LENGTH], []byte(obfuscationKeyword), []byte(CLIENT_TO_SERVER_IV))
 	if err != nil {
 		return nil, err
 	}
 
 	cipher, err := rc4.NewCipher(key)
 	if err != nil {
-		return nil, errors.New("deobfuscateData: couldn't init new RC4")
+		return nil, errors.New("Deobfuscate: couldn't init new RC4")
 	}
 
 	data = data[OBFUSCATE_SEED_LENGTH:]
@@ -140,23 +113,23 @@ func (cr *Crypto) deobfuscateData(data []byte) ([]byte, error) {
 	cipher.XORKeyStream(data, data)
 
 	if len(data) < 4 {
-		return nil, errors.New("deobfuscateData: magic value is less than 4 bytes")
+		return nil, errors.New("Deobfuscate: magic value is less than 4 bytes")
 	}
 
 	if binary.BigEndian.Uint32(data[0:4]) != OBFUSCATE_MAGIC_VALUE {
-		return nil, errors.New("deobfuscateData: magic value mismatch")
+		return nil, errors.New("Deobfuscate: magic value mismatch")
 	}
 
 	data = data[4:]
 	if len(data) < 4 {
-		return nil, errors.New("deobfuscateData: padding length value is less than 4 bytes")
+		return nil, errors.New("Deobfuscate: padding length value is less than 4 bytes")
 	}
 
 	plength := int(binary.BigEndian.Uint32(data[0:4]))
 
 	data = data[4:]
 	if len(data) < plength {
-		return nil, errors.New("deobfuscateData: data length is less than padding length")
+		return nil, errors.New("Deobfuscate: data length is less than padding length")
 	}
 
 	data = data[plength:]
@@ -164,7 +137,7 @@ func (cr *Crypto) deobfuscateData(data []byte) ([]byte, error) {
 	return data, nil
 }
 
-func (cr *Crypto) encryptDataWithNaCl(data []byte) ([]byte, error) {
+func (cr *Crypto) Encrypt(data []byte) ([]byte, error) {
 	ephemeralPublicKey, ephemeralPrivateKey, err := box.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
@@ -178,7 +151,7 @@ func (cr *Crypto) encryptDataWithNaCl(data []byte) ([]byte, error) {
 	return output, nil
 }
 
-func (cr *Crypto) decryptNaClData(data []byte) ([]byte, error) {
+func (cr *Crypto) Decrypt(data []byte) ([]byte, error) {
 	var ephemeralPublicKey [32]byte
 	copy(ephemeralPublicKey[0:32], data[0:32])
 	data = data[32:]
@@ -190,14 +163,13 @@ func (cr *Crypto) decryptNaClData(data []byte) ([]byte, error) {
 	return open, nil
 }
 
-func New(oK string, pubKey, privKey [32]byte) (cr *Crypto) {
+func New(pubKey, privKey [32]byte) (cr *Crypto) {
 	//nonce is filled with 0s: http://golang.org/ref/spec#The_zero_value
 	//we do not need to generate a new nonce b/c a new ephemeral key is
 	//generated for every message
 	var n [24]byte
 
 	return &Crypto{
-		obfuscationKeyword: oK,
 		publicKey:          pubKey,
 		privateKey:         privKey,
 		nonce:              n,
