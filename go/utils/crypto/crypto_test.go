@@ -10,11 +10,12 @@ func TestCrypto(t *testing.T) {
 	obfuscationKeyword := "obfuscate"
 	var dummyKey [32]byte
 	for i := 0; i < 100; i++ {
-		publicKey, privateKey, _ := box.GenerateKey(rand.Reader)
+		senderPublicKey, senderPrivateKey, _ := box.GenerateKey(rand.Reader)
+		recipientPublicKey, recipientPrivateKey, _ := box.GenerateKey(rand.Reader)
 
-		senderCrypto := New(obfuscationKeyword, *publicKey, dummyKey)
-		relayCrypto := New(obfuscationKeyword, *publicKey, *privateKey)
-		recipientCrypto := New(obfuscationKeyword, dummyKey, *privateKey)
+		senderCrypto := New(obfuscationKeyword, *senderPublicKey, dummyKey)
+		relayCrypto := New(obfuscationKeyword, *recipientPublicKey, *senderPrivateKey)
+		recipientCrypto := New(obfuscationKeyword, dummyKey, *recipientPrivateKey)
 
 		payload := make([]byte, mrand.Intn(250))
 		rand.Read(payload)
