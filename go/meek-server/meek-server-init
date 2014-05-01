@@ -10,10 +10,6 @@
 # Default-Stop:      0 1 6
 # Short-Description: Starts the meek-server
 ### END INIT INFO
-export TOR_PT_MANAGED_TRANSPORT_VER=1
-export TOR_PT_SERVER_BINDADDR=meek-198.58.102.248:443
-export TOR_PT_SERVER_TRANSPORTS=meek
-export TOR_PT_ORPORT=127.0.0.1:1010
 
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 DAEMON_ROOT=/opt/Meek
