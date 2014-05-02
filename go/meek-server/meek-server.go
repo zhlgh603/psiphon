@@ -81,38 +81,48 @@ func (d *Dispatcher) GetSession(r *http.Request, payload string) (*Session, erro
 	if len(payload) == 0 {
 		return nil, errors.New("payload is empty")
 	}
+
 	d.lock.Lock()
-	defer d.lock.Unlock()
-
 	session, ok := d.sessionMap[payload]
+	d.lock.Unlock()
 
-	if !ok {
-		encrypted, err := base64.StdEncoding.DecodeString(payload)
-		if err != nil {
-			return nil, err
-		}
-		jsondata, err := d.crypto.Decrypt(encrypted)
-		if err != nil {
-			return nil, err
-		}
-
-		psiphonServer, userIP, geoData, err := decodePayloadJSON(jsondata)
-		if err != nil {
-			return nil, err
-		}
-
-		psiphonServerAddr, err := net.ResolveTCPAddr("tcp", psiphonServer)
-		if err != nil {
-			return nil, err
-		}
-
-		net.DialTCP("tcp", nil, psiphonServerAddr)
-		if err != nil {
-			return nil, err
-		}
-
-		d.doStats(userIP, geoData)
+	if ok {
+		return session, nil
 	}
+
+	encrypted, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return nil, err
+	}
+	jsondata, err := d.crypto.Decrypt(encrypted)
+	if err != nil {
+		return nil, err
+	}
+
+	psiphonServer, userIP, geoData, err := decodePayloadJSON(jsondata)
+	if err != nil {
+		return nil, err
+	}
+
+	psiphonServerAddr, err := net.ResolveTCPAddr("tcp", psiphonServer)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := net.DialTCP("tcp", nil, psiphonServerAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	session = &Session{psiConn:conn}
+	session.Touch()
+
+	d.doStats(userIP, geoData)
+
+	d.lock.Lock()
+	d.sessionMap[payload] = session
+	d.lock.Unlock()
+
 	return session, nil
 }
 
