@@ -2,6 +2,7 @@ package main
 
 import (
 	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,15 +11,29 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 )
 
-const HTTPS_DEFAULT_PORT = 443
-const HTTP_DEFAULT_PORT = 80
 const maxSessionStaleness = 120 * time.Second
+
+var reflectedHeaderFields = []string{
+	"Content-Type",
+}
+
+type Config struct {
+	Port                   int
+	TlsCertificatePEM      string
+	TlsPrivateKeyPEM       string
+	LogFilename            string
+	ClientPrivateKeyBase64 string
+	ServerPublicKeyBase64  string
+	ListenTLS              bool
+	ObfuscationKeyword     string
+}
 
 type Session struct {
 	meekServer    string
@@ -35,11 +50,11 @@ func (session *Session) Expired() bool {
 }
 
 type Relay struct {
-	sessionMap map[string]*Session
-	lock       sync.RWMutex
-	crypto     *crypto.Crypto
-        obfuscationKeyword string
-	listenTLS  bool
+	sessionMap         map[string]*Session
+	lock               sync.RWMutex
+	crypto             *crypto.Crypto
+	obfuscationKeyword string
+	config             *Config
 }
 
 func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -107,13 +122,13 @@ func (relay *Relay) buildRequest(r *http.Request, session *Session) (*http.Reque
 	return cReq, nil
 }
 
-func (relay *Relay) buildServerPayload(r *http.Request, psiphonServer,sshSessionId string) (string, error) {
+func (relay *Relay) buildServerPayload(r *http.Request, psiphonServer, sshSessionId string) (string, error) {
 	payload := make(map[string]string)
 	payload["p"] = psiphonServer
 	payload["s"] = sshSessionId
 
 	//we do not trust any injected headers in plain HTTP
-	if !relay.listenTLS {
+	if !relay.config.ListenTLS {
 		payload["ip"] = r.RemoteAddr
 	} else {
 		//we are most likely in "fronting" mode, relying on
@@ -156,10 +171,20 @@ func (relay *Relay) buildServerPayload(r *http.Request, psiphonServer,sshSession
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-func (relay *Relay) Start(s *http.Server, tls bool, certFilename string, keyFilename string) {
-	relay.listenTLS = tls
-	if relay.listenTLS {
-		log.Fatal(s.ListenAndServeTLS(certFilename, keyFilename))
+func (relay *Relay) Start() {
+	s := &HTTPServer{
+		server: &http.Server{
+			Addr:         fmt.Sprintf(":%d", relay.config.Port),
+			Handler:      relay,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		},
+	}
+
+	go relay.ExpireSessions()
+
+	if relay.config.ListenTLS {
+		log.Fatal(s.ListenAndServeTLS([]byte(relay.config.TlsCertificatePEM), []byte(relay.config.TlsPrivateKeyPEM)))
 	} else {
 		log.Fatal(s.ListenAndServe())
 	}
@@ -232,10 +257,68 @@ func (relay *Relay) ExpireSessions() {
 	}
 }
 
-func NewRelay() *Relay {
-	relay := new(Relay)
+func NewRelay(c *Config) (*Relay, error) {
+	var serverPublicKey, clientPrivateKey [32]byte
+
+	relay := &Relay{config: c}
 	relay.sessionMap = make(map[string]*Session)
-	return relay
+
+	keydata, err := base64.StdEncoding.DecodeString(c.ServerPublicKeyBase64)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding config.ServerPublicKeyBase64: %s", err)
+	}
+	copy(serverPublicKey[:], keydata)
+
+	keydata, err = base64.StdEncoding.DecodeString(c.ClientPrivateKeyBase64)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding config.ClientPrivateKeyBase64: %s", err)
+	}
+	copy(clientPrivateKey[:], keydata)
+
+	cr := crypto.New(serverPublicKey, clientPrivateKey)
+	relay.crypto = cr
+
+	return relay, nil
+}
+
+//http.Server wrapper
+type HTTPServer struct {
+	server *http.Server
+}
+
+func (s *HTTPServer) ListenAndServe() error {
+	return s.server.ListenAndServe()
+}
+
+func (s *HTTPServer) ListenAndServeTLS(certPEMBlock, keyPEMBlock []byte) error {
+
+	srv := s.server
+	addr := srv.Addr
+	if addr == "" {
+		addr = ":https"
+	}
+	config := &tls.Config{}
+	if srv.TLSConfig != nil {
+		*config = *srv.TLSConfig
+	}
+	if config.NextProtos == nil {
+		config.NextProtos = []string{"http/1.1"}
+	}
+
+	var err error
+	config.Certificates = make([]tls.Certificate, 1)
+	config.Certificates[0], err = tls.X509KeyPair(certPEMBlock, keyPEMBlock)
+	if err != nil {
+		return err
+	}
+
+	conn, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	tlsListener := tls.NewListener(conn, config)
+	return srv.Serve(tlsListener)
 }
 
 func decodeClientJSON(j []byte) (meekServer, psiphonServer, sshSessionId string, err error) {
@@ -261,38 +344,67 @@ func decodeClientJSON(j []byte) (meekServer, psiphonServer, sshSessionId string,
 	}
 
 	if len(meekServer) == 0 || len(psiphonServer) == 0 || len(sshSessionId) == 0 {
-            err = fmt.Errorf("decodeClientJSON: error decoding '%s'", string(j))
+		err = fmt.Errorf("decodeClientJSON: error decoding '%s'", string(j))
 		return
 	}
 
 	return
 }
 
-var reflectedHeaderFields = []string{
-	"Content-Type",
+func parseConfigJSON(data []byte) (config *Config, err error) {
+	//populate with default values
+	config = &Config{
+		ListenTLS: false,
+	}
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		return
+	}
+	log.Printf("Parsed config: (%+v)", config)
+	return
 }
 
 func main() {
-	var certFilename, keyFilename string
-	var serverPublicKeyFilename, clientPrivateKeyFilename string
-	var serverPublicKey, clientPrivateKey [32]byte
-	var logFilename string
-	var obfuscationKeyword string
-	var port int
-	var listenTLS bool
+	var configJSONFilename string
+	var config *Config
 
-	flag.BoolVar(&listenTLS, "tls", false, "use HTTPS")
-	flag.StringVar(&certFilename, "cert", "", "TLS certificate file (required with -tls)")
-	flag.StringVar(&keyFilename, "key", "", "TLS private key file (required with -tls)")
-	flag.StringVar(&logFilename, "log", "", "name of log file")
-	flag.IntVar(&port, "port", 0, "port to listen on")
-	flag.StringVar(&obfuscationKeyword, "obfskey", "", "obfuscation keyword")
-	flag.StringVar(&serverPublicKeyFilename, "spubkey", "", "server public key file required to encrypt payload")
-	flag.StringVar(&clientPrivateKeyFilename, "cprivkey", "", "client private key file required to decrypt payload")
+	flag.StringVar(&configJSONFilename, "config", "", "relay JSON config file")
 	flag.Parse()
 
-	if logFilename != "" {
-		f, err := os.OpenFile(logFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if configJSONFilename == "" {
+		log.Fatalf("config file is required, exiting now")
+	} else {
+		var err error
+		var read []byte
+		read, err = ioutil.ReadFile(configJSONFilename)
+		if err != nil {
+			log.Fatalf("error reading configJSONFilename: %s", err)
+		}
+
+		config, err = parseConfigJSON(read)
+		if err != nil {
+			log.Fatalf("error parsing config: %s", err)
+		}
+		if config.Port == 0 {
+			log.Fatalf("server port is missing from the config file, exiting now")
+		}
+
+	}
+
+	if config.Port == 0 {
+		log.Fatalf("server port is missing from the config file, exiting now")
+	}
+
+	if config.ClientPrivateKeyBase64 == "" {
+		log.Fatalf("client private key is missing from the config file, exiting now")
+	}
+
+	if config.ServerPublicKeyBase64 == "" {
+		log.Fatalf("server public key is missing from the config file, exiting now")
+	}
+
+	if config.LogFilename != "" {
+		f, err := os.OpenFile(config.LogFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 		if err != nil {
 			log.Fatalf("error opening log file: %s", err)
 		}
@@ -300,52 +412,19 @@ func main() {
 		log.SetOutput(f)
 	}
 
-	if serverPublicKeyFilename == "" || clientPrivateKeyFilename == "" {
-		log.Fatalf("cprivkey and spubkey are required, exiting now")
-	} else {
-		var err error
-		var read []byte
-		read, err = ioutil.ReadFile(serverPublicKeyFilename)
-		if err != nil {
-			log.Fatalf("error reading serverPublicKeyFilename: %s", err)
+	if config.ListenTLS {
+		if config.TlsPrivateKeyPEM == "" {
+			log.Fatalf("TLS mode: TlsPrivateKeyPEM is missing from the config file, exiting now")
 		}
-		copy(serverPublicKey[:], read)
-
-		read, err = ioutil.ReadFile(clientPrivateKeyFilename)
-		if err != nil {
-			log.Fatalf("error reading clientPrivateKeyFilename: %s", err)
-		}
-		copy(clientPrivateKey[:], read)
-	}
-
-	if listenTLS {
-		if certFilename == "" || keyFilename == "" {
-			log.Fatalf("The -cert and -key options are required with -tls.\n")
-		}
-		if port == 0 {
-			port = HTTPS_DEFAULT_PORT
-		}
-	} else {
-		if certFilename != "" || keyFilename != "" {
-			log.Fatalf("The -cert and -key options are not allowed without -tls.\n")
-		}
-		if port == 0 {
-			port = HTTP_DEFAULT_PORT
+		if config.TlsCertificatePEM == "" {
+			log.Fatalf("TLS mode: TlsCertificatePEM is missing from the config file, exiting now")
 		}
 	}
 
-	relay := NewRelay()
-	cr := crypto.New(serverPublicKey, clientPrivateKey)
-	relay.crypto = cr
-        relay.obfuscationKeyword = obfuscationKeyword
-
-	s := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      relay,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+	relay, err := NewRelay(config)
+	if err != nil {
+		log.Fatalf("Could not init a new relay: %s", err)
 	}
 
-	go relay.ExpireSessions()
-	relay.Start(s, listenTLS, certFilename, keyFilename)
+	relay.Start()
 }
