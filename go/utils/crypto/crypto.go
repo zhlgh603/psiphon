@@ -153,6 +153,11 @@ func (cr *Crypto) Encrypt(data []byte) ([]byte, error) {
 
 func (cr *Crypto) Decrypt(data []byte) ([]byte, error) {
 	var ephemeralPublicKey [32]byte
+
+	if len(data) < 32 {
+		return nil, errors.New("Decrypt: data length < 32")
+	}
+
 	copy(ephemeralPublicKey[0:32], data[0:32])
 	data = data[32:]
 
