@@ -19,7 +19,7 @@ DESC="meek server"
 test -x $DAEMON || exit 0
 
 PIDFILE=/var/run/$NAME.pid
-DAEMON_OPTS="-cert=/opt/Meek/meek-cert.pem -key=/opt/Meek/meek-key.pem -log=/var/log/meek.log"
+DAEMON_OPTS="-config=/opt/Meek/config.json"
 
 set -e
 
