@@ -15,13 +15,37 @@ import (
 	"os"
 	"sync"
 	"time"
+	//"github.com/garyburd/redigo/redis"
 )
-
-const HTTP_DEFAULT_PORT = 80
 
 const maxPayloadLength = 0x10000
 const turnaroundDeadline = 10 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
+
+//default values from Server/psi_config.py
+const DEFAULT_SESSION_DB_HOST = "localhost"
+const DEFAULT_SESSION_DB_PORT = 6379
+const DEFAULT_SESSION_DB_INDEX = 0
+const DEFAULT_SESSION_EXPIRE_SECONDS = 2592000
+
+const DEFAULT_DISCOVERY_DB_HOST = DEFAULT_SESSION_DB_HOST
+const DEFAULT_DISCOVERY_DB_PORT = DEFAULT_SESSION_DB_PORT
+const DEFAULT_DISCOVERY_DB_INDEX = 1
+const DEFAULT_DISCOVERY_EXPIRE_SECONDS = 60 * 5
+
+type Config struct {
+	Port                   int
+	ServerPrivateKeyBase64 string
+	LogFilename            string
+	SessionDbHost          string
+	SessionDbPort          int
+	SessionDbIndex         int
+	SessionExpireSeconds   int
+	DiscoveryDbHost        string
+	DiscoveryDbPort        int
+	DiscoveryDbIndex       int
+	DiscoveryExpireSeconds int
+}
 
 type GeoData struct {
 	region string
@@ -46,6 +70,7 @@ type Dispatcher struct {
 	sessionMap map[string]*Session
 	lock       sync.RWMutex
 	crypto     *crypto.Crypto
+	config     *Config
 }
 
 func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +139,7 @@ func (d *Dispatcher) GetSession(r *http.Request, payload string) (*Session, erro
 		return nil, err
 	}
 
-	session = &Session{psiConn:conn}
+	session = &Session{psiConn: conn}
 	session.Touch()
 
 	d.doStats(userIP, geoData)
@@ -174,10 +199,38 @@ func (d *Dispatcher) dispatch(session *Session, w http.ResponseWriter, req *http
 	return nil
 }
 
-func NewDispatcher() *Dispatcher {
-	d := new(Dispatcher)
-	d.sessionMap = make(map[string]*Session)
-	return d
+func (d *Dispatcher) Start() {
+
+	s := &http.Server{
+		Addr:         fmt.Sprintf(":%d", d.config.Port),
+		Handler:      d,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	go d.ExpireSessions()
+	log.Fatal(s.ListenAndServe())
+}
+
+func NewDispatcher(c *Config) (*Dispatcher, error) {
+
+	var serverPrivateKey, dummyKey [32]byte
+
+	keydata, err := base64.StdEncoding.DecodeString(c.ServerPrivateKeyBase64)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding config.ServerPrivateKeyBase64: %s", err)
+	}
+
+	copy(serverPrivateKey[:], keydata)
+
+	cr := crypto.New(dummyKey, serverPrivateKey)
+
+	d := &Dispatcher{
+		config:     c,
+		crypto:     cr,
+		sessionMap: make(map[string]*Session),
+	}
+	return d, nil
 }
 
 func decodePayloadJSON(j []byte) (psiphonServer, userIP string, geoData *GeoData, err error) {
@@ -216,19 +269,59 @@ func decodePayloadJSON(j []byte) (psiphonServer, userIP string, geoData *GeoData
 	return
 }
 
-func main() {
-	var serverPrivateKeyFilename string
-	var serverPrivateKey [32]byte
-	var logFilename string
-	var port int
+func parseConfigJSON(data []byte) (config *Config, err error) {
 
-	flag.StringVar(&logFilename, "log", "", "name of log file")
-	flag.IntVar(&port, "port", 0, "port to listen on")
-	flag.StringVar(&serverPrivateKeyFilename, "sprivkey", "", "server private key file required to decrypt payload")
+	//populate with default values
+	config = &Config{
+		SessionDbHost:          DEFAULT_SESSION_DB_HOST,
+		SessionDbPort:          DEFAULT_SESSION_DB_PORT,
+		SessionDbIndex:         DEFAULT_SESSION_DB_INDEX,
+		SessionExpireSeconds:   DEFAULT_SESSION_EXPIRE_SECONDS,
+		DiscoveryDbHost:        DEFAULT_DISCOVERY_DB_HOST,
+		DiscoveryDbPort:        DEFAULT_DISCOVERY_DB_PORT,
+		DiscoveryDbIndex:       DEFAULT_DISCOVERY_DB_INDEX,
+		DiscoveryExpireSeconds: DEFAULT_DISCOVERY_EXPIRE_SECONDS,
+	}
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		return
+	}
+	log.Printf("Parsed config: (%+v)", config)
+	return
+}
+
+func main() {
+	var configJSONFilename string
+	var config *Config
+
+	flag.StringVar(&configJSONFilename, "config", "", "JSON config file")
 	flag.Parse()
 
-	if logFilename != "" {
-		f, err := os.OpenFile(logFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if configJSONFilename == "" {
+		log.Fatalf("config file is required, exiting now")
+	} else {
+		var err error
+		var read []byte
+		read, err = ioutil.ReadFile(configJSONFilename)
+		if err != nil {
+			log.Fatalf("error reading configJSONFilename: %s", err)
+		}
+
+		config, err = parseConfigJSON(read)
+		if err != nil {
+			log.Fatalf("error parsing config: %s", err)
+		}
+	}
+
+	if config.Port == 0 {
+		log.Fatalf("server port is missing from the config file, exiting now")
+	}
+	if config.ServerPrivateKeyBase64 == "" {
+		log.Fatalf("server private key is missing from the config file, exiting now")
+	}
+
+	if config.LogFilename != "" {
+		f, err := os.OpenFile(config.LogFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 		if err != nil {
 			log.Fatalf("error opening log file: %s", err)
 		}
@@ -236,36 +329,10 @@ func main() {
 		log.SetOutput(f)
 	}
 
-	if serverPrivateKeyFilename == "" {
-		log.Fatalf("sprivkey is required, exiting now")
-	} else {
-		var err error
-		var read []byte
-		read, err = ioutil.ReadFile(serverPrivateKeyFilename)
-		if err != nil {
-			log.Fatalf("error reading serverPrivateKeyFilename: %s", err)
-		}
-		copy(serverPrivateKey[:], read)
+	dispatcher, err := NewDispatcher(config)
+	if err != nil {
+		log.Fatalf("Could not init a new dispatcher: %s", err)
 	}
 
-	if port == 0 {
-		port = HTTP_DEFAULT_PORT
-	}
-
-	var dummyKey [32]byte
-	cr := crypto.New(dummyKey, serverPrivateKey)
-
-	dispatcher := NewDispatcher()
-	dispatcher.crypto = cr
-
-	s := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      dispatcher,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
-
-	go dispatcher.ExpireSessions()
-
-	log.Fatal(s.ListenAndServe())
+	dispatcher.Start()
 }
