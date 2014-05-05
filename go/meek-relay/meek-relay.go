@@ -53,7 +53,6 @@ type Relay struct {
 	sessionMap         map[string]*Session
 	lock               sync.RWMutex
 	crypto             *crypto.Crypto
-	obfuscationKeyword string
 	config             *Config
 }
 
@@ -205,7 +204,7 @@ func (relay *Relay) GetSession(r *http.Request, payload string) (*Session, error
 			return nil, err
 		}
 
-		encrypted, err := relay.crypto.Deobfuscate(obfuscated, relay.obfuscationKeyword)
+		encrypted, err := relay.crypto.Deobfuscate(obfuscated, relay.config.ObfuscationKeyword)
 		if err != nil {
 			return nil, err
 		}
