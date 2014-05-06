@@ -422,6 +422,11 @@ func main() {
 		}
 	}
 
+	// Allow up to 100 persistent connections to the same meek server (the relay will reuse
+	// the same HTTP client connection [pool] for any client -- which is beneficial -- and we
+	// don't want to create a long, serialized pipeline of requests)
+	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 100
+
 	relay, err := NewRelay(config)
 	if err != nil {
 		log.Fatalf("Could not init a new relay: %s", err)
