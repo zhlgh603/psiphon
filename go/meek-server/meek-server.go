@@ -170,6 +170,7 @@ func (d *Dispatcher) ExpireSessions() {
 		d.lock.Lock()
 		for sessionId, session := range d.sessionMap {
 			if session.Expired() {
+				session.psiConn.Close()
 				delete(d.sessionMap, sessionId)
 			}
 		}
