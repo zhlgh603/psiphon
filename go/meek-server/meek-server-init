@@ -12,14 +12,14 @@
 ### END INIT INFO
 
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-DAEMON_ROOT=/opt/Meek
+DAEMON_ROOT=/opt/PsiphonV/go/meek-server
 DAEMON=$DAEMON_ROOT/meek-server
 NAME=meek-server
 DESC="meek server"
 test -x $DAEMON || exit 0
 
 PIDFILE=/var/run/$NAME.pid
-DAEMON_OPTS="-config=/opt/Meek/config.json"
+DAEMON_OPTS="-config=/etc/meek-server.json"
 
 set -e
 
