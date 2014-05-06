@@ -228,9 +228,11 @@ func (relay *Relay) GetSession(r *http.Request, payload string) (*Session, error
 			meekServer:    m,
 			serverPayload: sPayload,
 		}
-		session.Touch()
 		relay.sessionMap[payload] = session
 	}
+
+	session.Touch()
+
 	return session, nil
 }
 

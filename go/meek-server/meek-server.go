@@ -112,6 +112,7 @@ func (d *Dispatcher) GetSession(r *http.Request, payload string) (*Session, erro
 	d.lock.Unlock()
 
 	if ok {
+		session.Touch()
 		return session, nil
 	}
 
