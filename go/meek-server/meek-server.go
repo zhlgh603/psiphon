@@ -23,14 +23,15 @@ const turnaroundDeadline = 10 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
 
 //default values from Server/psi_config.py
+
 const DEFAULT_SESSION_DB_HOST = "localhost"
 const DEFAULT_SESSION_DB_PORT = 6379
-const DEFAULT_SESSION_DB_INDEX = 0
+const DEFAULT_SESSION_DB_INDEX = 2
 const DEFAULT_SESSION_EXPIRE_SECONDS = 2592000
 
 const DEFAULT_DISCOVERY_DB_HOST = DEFAULT_SESSION_DB_HOST
 const DEFAULT_DISCOVERY_DB_PORT = DEFAULT_SESSION_DB_PORT
-const DEFAULT_DISCOVERY_DB_INDEX = 1
+const DEFAULT_DISCOVERY_DB_INDEX = 3
 const DEFAULT_DISCOVERY_EXPIRE_SECONDS = 60 * 5
 
 type Config struct {
