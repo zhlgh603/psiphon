@@ -1,9 +1,10 @@
 package main
 
 import (
+	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
 	"bytes"
-	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,76 +12,89 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 )
 
-import "git.torproject.org/pluggable-transports/goptlib.git"
-
-const ptMethodName = "meek"
 const sessionIdLength = 32
 const maxPayloadLength = 0x10000
 const initPollInterval = 100 * time.Millisecond
 const maxPollInterval = 5 * time.Second
 const pollIntervalMultiplier = 1.5
 
-var ptInfo pt.ClientInfo
+var gCookiePayload string //base64 encoded encrypted cookie payload
 
-var options struct {
-	URL          string
-	Front        string
-	HTTPProxyURL *url.URL
+var gConfig struct {
+	ClientPublicKeyBase64 string
+	ObfuscationKeyword    string
+	MeekServerAddr        string
+	PsiphonServerAddr     string
+	MeekRelayAddr         string
+	FrontingDomain        string
+	FrontingHostname      string
+	SshSessionID          string
 }
 
-// When a connection handler starts, +1 is written to this channel; when it
-// ends, -1 is written.
-var handlerChan = make(chan int)
+func makeCookie() (string, error) {
+	var clientPublicKey, dummyKey [32]byte
 
-// RequestInfo encapsulates all the configuration used for a request–response
-// roundtrip, including variables that may come from SOCKS args or from the
-// command line.
-type RequestInfo struct {
-	// What to put in the X-Session-ID header.
-	SessionID string
-	// The URL to request.
-	URL *url.URL
-	// The Host header to put in the HTTP request (optional and may be
-	// different from the host name in URL).
-	Host string
-	// URL of an HTTP proxy to use. If nil, the default net/http library's
-	// behavior is used, which is to check the HTTP_PROXY and http_proxy
-	// environment for a proxy URL.
-	HTTPProxyURL *url.URL
-        // Target address from SOCKS
-        // This may be used by the meek server instead of ORPort
-        TargetAddress string
-}
-
-func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
-	tr := http.DefaultTransport
-	if info.HTTPProxyURL != nil {
-		tr = &http.Transport{
-			Proxy: http.ProxyURL(info.HTTPProxyURL),
-		}
+	keydata, err := base64.StdEncoding.DecodeString(gConfig.ClientPublicKeyBase64)
+	if err != nil {
+		return "", fmt.Errorf("error decoding gConfig.ClientPublicKeyBase64: %s", err)
 	}
-	req, err := http.NewRequest("POST", info.URL.String(), bytes.NewReader(buf))
+
+	copy(clientPublicKey[:], keydata)
+	cr := crypto.New(clientPublicKey, dummyKey)
+
+	cookie := make(map[string]string)
+	cookie["m"] = gConfig.MeekServerAddr
+	cookie["p"] = gConfig.PsiphonServerAddr
+	cookie["s"] = gConfig.SshSessionID
+
+	j, err := json.Marshal(cookie)
+	if err != nil {
+		return "", err
+	}
+	encrypted, err := cr.Encrypt(j)
+	if err != nil {
+		return "", err
+	}
+	obfuscated, err := cr.Obfuscate(encrypted, gConfig.ObfuscationKeyword)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(obfuscated), nil
+}
+
+func roundTrip(buf []byte) (*http.Response, error) {
+	tr := http.DefaultTransport
+
+	var URL string
+	bFronting := false
+
+	if gConfig.FrontingDomain != "" {
+		bFronting = true
+		URL = fmt.Sprintf("https://%s/", gConfig.FrontingDomain)
+	} else {
+		URL = fmt.Sprintf("https://%s/", gConfig.MeekRelayAddr)
+	}
+
+	req, err := http.NewRequest("POST", URL, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}
-	if info.Host != "" {
-		req.Host = info.Host
+	if bFronting {
+		req.Host = gConfig.FrontingHostname
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("X-Session-Id", info.SessionID)
-	req.Header.Set("X-Target-Address", info.TargetAddress)
+
+	cookie := &http.Cookie{Name: "key", Value: gCookiePayload}
+	req.AddCookie(cookie)
 	return tr.RoundTrip(req)
 }
 
-func sendRecv(buf []byte, conn net.Conn, info *RequestInfo) (int64, error) {
-	resp, err := roundTrip(buf, info)
+func sendRecv(buf []byte, conn net.Conn) (int64, error) {
+	resp, err := roundTrip(buf)
 	if err != nil {
 		return 0, err
 	}
@@ -93,22 +107,19 @@ func sendRecv(buf []byte, conn net.Conn, info *RequestInfo) (int64, error) {
 	return io.Copy(conn, io.LimitReader(resp.Body, maxPayloadLength))
 }
 
-func copyLoop(conn net.Conn, info *RequestInfo) error {
+func pollingLoop(conn net.Conn) error {
 	buf := make([]byte, maxPayloadLength)
 	var interval time.Duration
 
 	interval = initPollInterval
 	for {
 		conn.SetReadDeadline(time.Now().Add(interval))
-		// log.Printf("next poll %.6f s", interval.Seconds())
 		nr, readErr := conn.Read(buf)
-		// log.Printf("read from local: %q", buf[:nr])
 
-		nw, err := sendRecv(buf[:nr], conn, info)
+		nw, err := sendRecv(buf[:nr], conn)
 		if err != nil {
 			return err
 		}
-		// log.Printf("read from remote: %d", nw)
 
 		if readErr != nil {
 			if e, ok := readErr.(net.Error); !ok || !e.Timeout() {
@@ -129,88 +140,19 @@ func copyLoop(conn net.Conn, info *RequestInfo) error {
 	return nil
 }
 
-func genSessionId() string {
-	buf := make([]byte, sessionIdLength)
-	_, err := rand.Read(buf)
-	if err != nil {
-		panic(err.Error())
-	}
-	return base64.StdEncoding.EncodeToString(buf)
-}
-
-func handler(conn *pt.SocksConn) error {
-	handlerChan <- 1
-	defer func() {
-		handlerChan <- -1
-	}()
-
-	defer conn.Close()
-	err := conn.Grant(&net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: 0})
-	if err != nil {
-		return err
-	}
-
-	var info RequestInfo
-	info.SessionID = genSessionId()
-
-        info.TargetAddress = conn.Req.Target
-
-	// First check url= SOCKS arg, then --url option, then SOCKS target.
-	urlArg, ok := conn.Req.Args.Get("url")
-	if ok {
-	} else if options.URL != "" {
-		urlArg = options.URL
-	} else {
-		urlArg = (&url.URL{
-			Scheme: "http",
-			Host:   conn.Req.Target,
-			Path:   "/",
-		}).String()
-	}
-	info.URL, err = url.Parse(urlArg)
-	if err != nil {
-		return err
-	}
-
-	// First check front= SOCKS arg, then --front option.
-	front, ok := conn.Req.Args.Get("front")
-	if ok {
-	} else if options.Front != "" {
-		front = options.Front
-		ok = true
-	}
-	if ok {
-		info.Host = info.URL.Host
-		info.URL.Host = front
-	}
-
-	// First check http-proxy= SOCKS arg, then --http-proxy option.
-	httpProxy, ok := conn.Req.Args.Get("http-proxy")
-	if ok {
-		info.HTTPProxyURL, err = url.Parse(httpProxy)
-		if err != nil {
-			return err
-		}
-	} else if options.HTTPProxyURL != nil {
-		info.HTTPProxyURL = options.HTTPProxyURL
-	}
-
-	return copyLoop(conn, &info)
-}
-
-func acceptLoop(ln *pt.SocksListener) error {
+func acceptLoop(ln net.Listener) error {
 	defer ln.Close()
 	for {
-		conn, err := ln.AcceptSocks()
+		conn, err := ln.Accept()
 		if err != nil {
-			log.Printf("error in AcceptSocks: %s", err)
+			log.Printf("error in Accept: %s", err)
 			if e, ok := err.(net.Error); ok && !e.Temporary() {
 				return err
 			}
 			continue
 		}
 		go func() {
-			err := handler(conn)
+			err := pollingLoop(conn)
 			if err != nil {
 				log.Printf("error in handling request: %s", err)
 			}
@@ -220,90 +162,45 @@ func acceptLoop(ln *pt.SocksListener) error {
 }
 
 func main() {
-	var httpProxy string
-	var logFilename string
 	var err error
-	
-	os.Setenv("TOR_PT_MANAGED_TRANSPORT_VER", "1")
-	os.Setenv("TOR_PT_CLIENT_TRANSPORTS", "meek")
-
-	flag.StringVar(&options.Front, "front", "", "front domain name if no front= SOCKS arg")
-	flag.StringVar(&httpProxy, "http-proxy", "", "HTTP proxy URL (default from HTTP_PROXY environment variable)")
-	flag.StringVar(&logFilename, "log", "", "name of log file")
-	flag.StringVar(&options.URL, "url", "", "URL to request if no url= SOCKS arg")
+	flag.StringVar(&gConfig.ClientPublicKeyBase64, "cpubkey", "", "Client public key required to encrypt cookie payload")
+	flag.StringVar(&gConfig.ObfuscationKeyword, "obfskeyword", "", "Obfuscation keyword")
+	flag.StringVar(&gConfig.MeekServerAddr, "meekserver", "", "Meek server address(x.x.x.x:n")
+	flag.StringVar(&gConfig.PsiphonServerAddr, "psiphonserver", "", "Psiphon server address(x.x.x.x:n")
+	flag.StringVar(&gConfig.MeekRelayAddr, "meekrelay", "", "Meek relay address(x.x.x.x:n")
+	flag.StringVar(&gConfig.FrontingDomain, "frontdomain", "", "Domain to use for fronting")
+	flag.StringVar(&gConfig.FrontingHostname, "fronthost", "", "Host header to use for fronting")
+	flag.StringVar(&gConfig.SshSessionID, "sessid", "", "Client SSH session id")
 	flag.Parse()
 
-	if logFilename != "" {
-		f, err := os.OpenFile(logFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			log.Fatalf("error opening log file: %s", err)
-		}
-		defer f.Close()
-		log.SetOutput(f)
+	if gConfig.ClientPublicKeyBase64 == "" {
+		log.Fatalf("-cpubkey is a required argument, exiting now")
+	}
+	if gConfig.MeekServerAddr == "" {
+		log.Fatalf("-meekserver is a required argument, exiting now")
+	}
+	if gConfig.PsiphonServerAddr == "" {
+		log.Fatalf("-psiphonserver is a required argument, exiting now")
+	}
+	if gConfig.SshSessionID == "" {
+		log.Fatalf("-sessid is a required argument, exiting now")
+	}
+	if gConfig.MeekRelayAddr == "" && gConfig.FrontingDomain == "" {
+		log.Fatalf("Either -meekrelay or -frontdomain has to be specified, exiting now")
+	}
+	if gConfig.FrontingDomain != "" && gConfig.FrontingHostname == "" {
+		log.Fatalf("-fronthost is required with -frontdomain, exiting now")
 	}
 
-	if httpProxy != "" {
-		options.HTTPProxyURL, err = url.Parse(httpProxy)
-		if err != nil {
-			log.Fatalf("can't parse HTTP proxy URL: %s", err)
-		}
-	}
-
-	ptInfo, err = pt.ClientSetup([]string{ptMethodName})
+	gCookiePayload, err = makeCookie()
 	if err != nil {
-		log.Fatalf("error in ClientSetup: %s", err)
+		log.Fatalf("Couldn't create encrypted payload: %s", err.Error())
 	}
 
-	listeners := make([]net.Listener, 0)
-	for _, methodName := range ptInfo.MethodNames {
-		switch methodName {
-		case ptMethodName:
-			ln, err := pt.ListenSocks("tcp", "127.0.0.1:0")
-			if err != nil {
-				pt.CmethodError(methodName, err.Error())
-				break
-			}
-			go acceptLoop(ln)
-			pt.Cmethod(methodName, ln.Version(), ln.Addr())
-			log.Printf("listening on %s", ln.Addr())
-			listeners = append(listeners, ln)
-		default:
-			pt.CmethodError(methodName, "no such method")
-		}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Fatalf("Couldn't start a server: %s", err.Error())
 	}
-	pt.CmethodsDone()
-
-	var numHandlers int = 0
-	var sig os.Signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// wait for first signal
-	sig = nil
-	for sig == nil {
-		select {
-		case n := <-handlerChan:
-			numHandlers += n
-		case sig = <-sigChan:
-		}
-	}
-	for _, ln := range listeners {
-		ln.Close()
-	}
-
-	if sig == syscall.SIGTERM {
-		return
-	}
-
-	// wait for second signal or no more handlers
-	sig = nil
-	for sig == nil && numHandlers != 0 {
-		select {
-		case n := <-handlerChan:
-			numHandlers += n
-		case sig = <-sigChan:
-		}
-	}
-
-	log.Printf("done")
+	fmt.Fprintln(os.Stdout, "CMETHOD meek", ln.Addr())
+	acceptLoop(ln)
 }
