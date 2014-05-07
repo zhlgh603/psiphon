@@ -2,9 +2,14 @@ package main
 
 import (
 	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +21,7 @@ import (
 	"os"
 	"sync"
 	"time"
+        "math/big"
 )
 
 const maxSessionStaleness = 120 * time.Second
@@ -26,8 +32,6 @@ var reflectedHeaderFields = []string{
 
 type Config struct {
 	Port                   int
-	TlsCertificatePEM      string
-	TlsPrivateKeyPEM       string
 	LogFilename            string
 	ClientPrivateKeyBase64 string
 	ServerPublicKeyBase64  string
@@ -50,10 +54,10 @@ func (session *Session) Expired() bool {
 }
 
 type Relay struct {
-	sessionMap         map[string]*Session
-	lock               sync.RWMutex
-	crypto             *crypto.Crypto
-	config             *Config
+	sessionMap map[string]*Session
+	lock       sync.RWMutex
+	crypto     *crypto.Crypto
+	config     *Config
 }
 
 func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +187,11 @@ func (relay *Relay) Start() {
 	go relay.ExpireSessions()
 
 	if relay.config.ListenTLS {
-		log.Fatal(s.ListenAndServeTLS([]byte(relay.config.TlsCertificatePEM), []byte(relay.config.TlsPrivateKeyPEM)))
+		cert, privkey, err := createTLSConfig("www.example.org")
+		if err != nil {
+			log.Fatalf("createTLSConfig failed to create private key and certificate")
+		}
+		log.Fatal(s.ListenAndServeTLS(cert, privkey))
 	} else {
 		log.Fatal(s.ListenAndServe())
 	}
@@ -365,6 +373,33 @@ func parseConfigJSON(data []byte) (config *Config, err error) {
 	return
 }
 
+func createTLSConfig(host string) (certPEMBlock, keyPEMBlock []byte, err error) {
+	now := time.Now()
+	tpl := x509.Certificate{
+		SerialNumber:          new(big.Int).SetInt64(0),
+		Subject:               pkix.Name{CommonName: host},
+		NotBefore:             now.Add(-24 * time.Hour).UTC(),
+		NotAfter:              now.AddDate(1, 0, 0).UTC(),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		MaxPathLen:            1,
+		IsCA:                  true,
+		SubjectKeyId:          []byte{1, 2, 3, 4},
+		Version:               2,
+	}
+        priv, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		return
+	}
+        der, err := x509.CreateCertificate(rand.Reader, &tpl, &tpl, &priv.PublicKey, priv)
+	if err != nil {
+		return
+	}
+	certPEMBlock = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEMBlock = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+        return
+}
+
 func main() {
 	var configJSONFilename string
 	var config *Config
@@ -413,14 +448,6 @@ func main() {
 		log.SetOutput(f)
 	}
 
-	if config.ListenTLS {
-		if config.TlsPrivateKeyPEM == "" {
-			log.Fatalf("TLS mode: TlsPrivateKeyPEM is missing from the config file, exiting now")
-		}
-		if config.TlsCertificatePEM == "" {
-			log.Fatalf("TLS mode: TlsCertificatePEM is missing from the config file, exiting now")
-		}
-	}
 
 	// Allow up to 100 persistent connections to the same meek server (the relay will reuse
 	// the same HTTP client connection [pool] for any client -- which is beneficial -- and we
