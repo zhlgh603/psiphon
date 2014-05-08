@@ -58,8 +58,8 @@ type Config struct {
 }
 
 type ClientSessionData struct {
-	PsiphonClientSessionId string `json:"psiphonClientSessionId"`
-	PsiphonServerAddress   string `json:"psiphonServerAddress"`
+	PsiphonClientSessionId string `json:"s"`
+	PsiphonServerAddress   string `json:"p"`
 }
 
 type Session struct {
