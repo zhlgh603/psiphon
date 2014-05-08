@@ -1,25 +1,25 @@
 #! /bin/sh
 
 ### BEGIN INIT INFO
-# Provides:          meek-server
+# Provides:          meek-server-combo
 # Required-Start:    $network $syslog $remote_fs
 # Required-Stop:     $network $syslog $remote_fs
 # Should-Start:
 # Should-Stop:
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Starts the meek-server
+# Short-Description: Starts the meek-server-combo
 ### END INIT INFO
 
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 DAEMON_ROOT=/opt/PsiphonV/go/meek-server-combo
-DAEMON=$DAEMON_ROOT/meek-server
-NAME=meek-server
-DESC="meek server"
+DAEMON=$DAEMON_ROOT/meek-server-combo
+NAME=meek-server-combo
+DESC="meek server combo"
 test -x $DAEMON || exit 0
 
 PIDFILE=/var/run/$NAME.pid
-DAEMON_OPTS="-config=/etc/meek-server.json"
+DAEMON_OPTS="-config=/etc/meek-server-combo.json"
 
 set -e
 
