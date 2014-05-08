@@ -218,6 +218,7 @@ func (dispatcher *Dispatcher) CloseSession(sessionId string) {
 	defer dispatcher.lock.Unlock()
 	_, ok := dispatcher.sessionMap[sessionId]
 	if ok {
+		session.psiConn.Close()
 		delete(dispatcher.sessionMap, sessionId)
 	}
 }
@@ -228,8 +229,7 @@ func (dispatcher *Dispatcher) ExpireSessions() {
 		dispatcher.lock.Lock()
 		for sessionId, session := range dispatcher.sessionMap {
 			if session.Expired() {
-				session.psiConn.Close()
-				delete(dispatcher.sessionMap, sessionId)
+				CloseSession(sessionId)
 			}
 		}
 		dispatcher.lock.Unlock()
