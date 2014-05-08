@@ -211,25 +211,32 @@ func handler(conn *pt.SocksConn) error {
 
 	var info RequestInfo
 
-	socksJSON := []byte(conn.Req.Username)
-	err = json.Unmarshal(socksJSON, &info)
+	info.ClientPublicKeyBase64, _ = conn.Req.Args.Get("cpubkey")
+	info.PsiphonServerAddr, _ = conn.Req.Args.Get("pserver")
+	info.MeekServerAddr, _ = conn.Req.Args.Get("mserver")
+	info.FrontingDomain, _ = conn.Req.Args.Get("fdomain")
+	info.FrontingHostname, _ = conn.Req.Args.Get("fhostname")
+	info.SshSessionID, _ = conn.Req.Args.Get("sshid")
+	info.ObfuscationKeyword, _ = conn.Req.Args.Get("sshid")
+
 	if err != nil {
-		return errors.New(fmt.Sprintf("couldn't decode SOCKS JSON payload: %s", err.Error()))
+		return errors.New(fmt.Sprintf("couldn't decode SOCKS payload: %s", err.Error()))
 	}
 
 	if info.ClientPublicKeyBase64 == "" {
-		return errors.New("ClientPublicKeyBase64 is missing from SOCKS JSON payload")
+		return errors.New("ClientPublicKeyBase64 is missing from SOCKS payload")
 	}
 	if info.PsiphonServerAddr == "" {
-		return errors.New("ClientPublicKeyBase64 is missing from SOCKS JSON payload")
+		return errors.New("ClientPublicKeyBase64 is missing from SOCKS payload")
 	}
 
 	if info.MeekServerAddr == "" && info.FrontingDomain == "" {
-		return errors.New("Both MeekServerAddr & FrontingDomain are missing from SOCKS JSON payload")
+		return errors.New("Both MeekServerAddr & FrontingDomain are missing from SOCKS payload")
 	}
 	if info.SshSessionID == "" {
-		return errors.New("SshSessionID is missing from SOCKS JSON payload")
+		return errors.New("SshSessionID is missing from SOCKS payload")
 	}
+
 	info.CookiePayload, err = makeCookie(&info)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Couldn't create encrypted payload: %s", err.Error()))
