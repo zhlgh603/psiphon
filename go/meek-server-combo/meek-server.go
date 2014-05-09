@@ -109,6 +109,13 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		dispatcher.CloseSession(cookie)
 		return
 	}
+
+	notify := responseWriter.(http.CloseNotifier).CloseNotify()
+
+	go func() {
+		<-notify
+		dispatcher.CloseSession(cookie)
+	}()
 }
 
 func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (*Session, error) {
@@ -216,7 +223,7 @@ func (dispatcher *Dispatcher) doGeoStats(request *http.Request, psiphonClientSes
 func (dispatcher *Dispatcher) CloseSession(sessionId string) {
 	dispatcher.lock.Lock()
 	defer dispatcher.lock.Unlock()
-	_, ok := dispatcher.sessionMap[sessionId]
+	session, ok := dispatcher.sessionMap[sessionId]
 	if ok {
 		session.psiConn.Close()
 		delete(dispatcher.sessionMap, sessionId)
@@ -229,7 +236,7 @@ func (dispatcher *Dispatcher) ExpireSessions() {
 		dispatcher.lock.Lock()
 		for sessionId, session := range dispatcher.sessionMap {
 			if session.Expired() {
-				CloseSession(sessionId)
+				dispatcher.CloseSession(sessionId)
 			}
 		}
 		dispatcher.lock.Unlock()
