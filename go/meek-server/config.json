@@ -1,1 +1,1 @@
-{"Port":8080,"ServerPrivateKeyBase64":"dGhpcyBpcyBhIGR1bW15IHN0cmluZw==","LogFilename":""}
+{"Port":443,"ListenTLS":true,"CookiePrivateKeyBase64":"<value>","ObfuscationKeyword":"<value>","LogFilename":""}
