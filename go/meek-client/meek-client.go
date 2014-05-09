@@ -42,9 +42,8 @@ const (
 type RequestInfo struct {
 	ClientPublicKeyBase64 string
 	ObfuscationKeyword    string
-	MeekServerAddr        string
 	PsiphonServerAddr     string
-	FrontingDomain        string
+	TargetAddr            string
 	FrontingHostname      string
 	SshSessionID          string
 	CookiePayload         string
@@ -56,20 +55,18 @@ func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
 	tr := http.DefaultTransport
 
 	var URL string
-	bFronting := false
+	scheme := "http"
 
-	if info.FrontingDomain != "" {
-		bFronting = true
-		URL = fmt.Sprintf("https://%s/", info.FrontingDomain)
-	} else {
-		URL = fmt.Sprintf("http://%s/", info.MeekServerAddr)
+	if info.FrontingHostname != "" {
+		scheme = "https"
 	}
+	URL = fmt.Sprintf("%s://%s/", scheme, info.TargetAddr)
 
 	req, err := http.NewRequest("POST", URL, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}
-	if bFronting {
+	if info.FrontingHostname != "" {
 		req.Host = info.FrontingHostname
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -211,28 +208,25 @@ func handler(conn *pt.SocksConn) error {
 
 	var info RequestInfo
 
+	info.TargetAddr = conn.Req.Target
 	info.ClientPublicKeyBase64, _ = conn.Req.Args.Get("cpubkey")
 	info.PsiphonServerAddr, _ = conn.Req.Args.Get("pserver")
-	info.MeekServerAddr, _ = conn.Req.Args.Get("mserver")
-	info.FrontingDomain, _ = conn.Req.Args.Get("fdomain")
 	info.FrontingHostname, _ = conn.Req.Args.Get("fhostname")
 	info.SshSessionID, _ = conn.Req.Args.Get("sshid")
-	info.ObfuscationKeyword, _ = conn.Req.Args.Get("sshid")
+	info.ObfuscationKeyword, _ = conn.Req.Args.Get("obfskey")
 
-	if err != nil {
-		return errors.New(fmt.Sprintf("couldn't decode SOCKS payload: %s", err.Error()))
+
+	if info.TargetAddr == "" {
+		return errors.New("TargetAddr is missing from SOCKS request")
 	}
 
 	if info.ClientPublicKeyBase64 == "" {
 		return errors.New("ClientPublicKeyBase64 is missing from SOCKS payload")
 	}
 	if info.PsiphonServerAddr == "" {
-		return errors.New("ClientPublicKeyBase64 is missing from SOCKS payload")
+		return errors.New("PsiphonServerAddr is missing from SOCKS payload")
 	}
 
-	if info.MeekServerAddr == "" && info.FrontingDomain == "" {
-		return errors.New("Both MeekServerAddr & FrontingDomain are missing from SOCKS payload")
-	}
 	if info.SshSessionID == "" {
 		return errors.New("SshSessionID is missing from SOCKS payload")
 	}
