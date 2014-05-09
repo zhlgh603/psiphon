@@ -110,12 +110,19 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		return
 	}
 
+	/*
+	NOTE: this code cleans up session resources quickly (when the
+	      peer closes its persistent connection) but isn't
+	      appropriate for the fronted case since the front doesn't
+	      necessarily keep a persistent connection open.
+
 	notify := responseWriter.(http.CloseNotifier).CloseNotify()
 
 	go func() {
 		<-notify
 		dispatcher.CloseSession(cookie)
 	}()
+	*/
 }
 
 func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (*Session, error) {
