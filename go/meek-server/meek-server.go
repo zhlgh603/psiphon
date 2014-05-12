@@ -227,29 +227,6 @@ func (dispatcher *Dispatcher) doGeoStats(request *http.Request, psiphonClientSes
 	}
 }
 
-func (dispatcher *Dispatcher) CloseSession(sessionId string) {
-	dispatcher.lock.Lock()
-	defer dispatcher.lock.Unlock()
-	session, ok := dispatcher.sessionMap[sessionId]
-	if ok {
-		session.psiConn.Close()
-		delete(dispatcher.sessionMap, sessionId)
-	}
-}
-
-func (dispatcher *Dispatcher) ExpireSessions() {
-	for {
-		time.Sleep(maxSessionStaleness / 2)
-		dispatcher.lock.Lock()
-		for sessionId, session := range dispatcher.sessionMap {
-			if session.Expired() {
-				dispatcher.CloseSession(sessionId)
-			}
-		}
-		dispatcher.lock.Unlock()
-	}
-}
-
 func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
 	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
 	_, err := io.Copy(session.psiConn, body)
@@ -272,6 +249,29 @@ func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.Res
 	}
 
 	return nil
+}
+
+func (dispatcher *Dispatcher) CloseSession(sessionId string) {
+	dispatcher.lock.Lock()
+	defer dispatcher.lock.Unlock()
+	session, ok := dispatcher.sessionMap[sessionId]
+	if ok {
+		session.psiConn.Close()
+		delete(dispatcher.sessionMap, sessionId)
+	}
+}
+
+func (dispatcher *Dispatcher) ExpireSessions() {
+	for {
+		time.Sleep(maxSessionStaleness / 2)
+		dispatcher.lock.Lock()
+		for sessionId, session := range dispatcher.sessionMap {
+			if session.Expired() {
+				dispatcher.CloseSession(sessionId)
+			}
+		}
+		dispatcher.lock.Unlock()
+	}
 }
 
 type MeekHTTPServer struct {
@@ -344,8 +344,11 @@ func (dispatcher *Dispatcher) Start() {
 		server: &http.Server {
 			Addr:         fmt.Sprintf(":%d", dispatcher.config.Port),
 			Handler:      dispatcher,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+
+			// TODO: This timeout is actually more like a socket lifetime which closes active persistent connections.
+			// Implement a custom timeout. See link: https://groups.google.com/forum/#!topic/golang-nuts/NX6YzGInRgE
+			ReadTimeout:  600 * time.Second,
+			WriteTimeout: 600 * time.Second,
 		},
 	}
 
