@@ -91,21 +91,21 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 
 	if request.Method != "POST" {
 		log.Printf("Bad HTTP request: %+v", request)
-		http.NotFound(responseWriter, request)
+		dispatcher.terminateConnection(responseWriter, request)
 		return
 	}
 
 	session, err := dispatcher.GetSession(request, cookie)
 	if err != nil {
 		log.Printf("GetSession: %s", err)
-		http.NotFound(responseWriter, request)
+		dispatcher.terminateConnection(responseWriter, request)
 		return
 	}
 
 	err = dispatcher.dispatch(session, responseWriter, request)
 	if err != nil {
 		log.Printf("dispatch: %s", err)
-		http.NotFound(responseWriter, request)
+		dispatcher.terminateConnection(responseWriter, request)
 		dispatcher.CloseSession(cookie)
 		return
 	}
@@ -123,6 +123,24 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		dispatcher.CloseSession(cookie)
 	}()
 	*/
+}
+
+func (dispatcher* Dispatcher) terminateConnection(responseWriter http.ResponseWriter, request *http.Request) {
+	http.NotFound(responseWriter, request)
+
+	// Hijack to close socket (after flushing response).
+	hijack, ok := responseWriter.(http.Hijacker)
+	if !ok {
+		log.Printf("webserver doesn't support hijacking")
+		return
+	}
+	conn, buffer, err := hijack.Hijack()
+	if err != nil {
+		log.Printf("hijack error: %s", err.Error())
+		return
+	}
+	buffer.Flush()
+	conn.Close()
 }
 
 func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (*Session, error) {
@@ -256,6 +274,7 @@ func (dispatcher *Dispatcher) CloseSession(sessionId string) {
 	defer dispatcher.lock.Unlock()
 	session, ok := dispatcher.sessionMap[sessionId]
 	if ok {
+		// TODO: close the persistent HTTP client connection, if one exists
 		session.psiConn.Close()
 		delete(dispatcher.sessionMap, sessionId)
 	}
