@@ -91,21 +91,21 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 
 	if request.Method != "POST" {
 		log.Printf("Bad HTTP request: %+v", request)
-		http.NotFound(responseWriter, request)
+		dispatcher.terminateConnection(responseWriter, request)
 		return
 	}
 
 	session, err := dispatcher.GetSession(request, cookie)
 	if err != nil {
 		log.Printf("GetSession: %s", err)
-		http.NotFound(responseWriter, request)
+		dispatcher.terminateConnection(responseWriter, request)
 		return
 	}
 
 	err = dispatcher.dispatch(session, responseWriter, request)
 	if err != nil {
 		log.Printf("dispatch: %s", err)
-		http.NotFound(responseWriter, request)
+		dispatcher.terminateConnection(responseWriter, request)
 		dispatcher.CloseSession(cookie)
 		return
 	}
@@ -125,14 +125,32 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 	*/
 }
 
+func (dispatcher* Dispatcher) terminateConnection(responseWriter http.ResponseWriter, request *http.Request) {
+	http.NotFound(responseWriter, request)
+
+	// Hijack to close socket (after flushing response).
+	hijack, ok := responseWriter.(http.Hijacker)
+	if !ok {
+		log.Printf("webserver doesn't support hijacking")
+		return
+	}
+	conn, buffer, err := hijack.Hijack()
+	if err != nil {
+		log.Printf("hijack error: %s", err.Error())
+		return
+	}
+	buffer.Flush()
+	conn.Close()
+}
+
 func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (*Session, error) {
 	if len(cookie) == 0 {
 		return nil, errors.New("cookie is empty")
 	}
 
-	dispatcher.lock.Lock()
+	dispatcher.lock.RLock()
 	session, ok := dispatcher.sessionMap[cookie]
-	dispatcher.lock.Unlock()
+	dispatcher.lock.RUnlock()
 	if ok {
 		session.Touch()
 		return session, nil
@@ -227,29 +245,6 @@ func (dispatcher *Dispatcher) doGeoStats(request *http.Request, psiphonClientSes
 	}
 }
 
-func (dispatcher *Dispatcher) CloseSession(sessionId string) {
-	dispatcher.lock.Lock()
-	defer dispatcher.lock.Unlock()
-	session, ok := dispatcher.sessionMap[sessionId]
-	if ok {
-		session.psiConn.Close()
-		delete(dispatcher.sessionMap, sessionId)
-	}
-}
-
-func (dispatcher *Dispatcher) ExpireSessions() {
-	for {
-		time.Sleep(maxSessionStaleness / 2)
-		dispatcher.lock.Lock()
-		for sessionId, session := range dispatcher.sessionMap {
-			if session.Expired() {
-				dispatcher.CloseSession(sessionId)
-			}
-		}
-		dispatcher.lock.Unlock()
-	}
-}
-
 func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
 	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
 	_, err := io.Copy(session.psiConn, body)
@@ -272,6 +267,34 @@ func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.Res
 	}
 
 	return nil
+}
+
+func (dispatcher *Dispatcher) closeSessionHelper(sessionId string, session *Session) {
+	// TODO: close the persistent HTTP client connection, if one exists
+	session.psiConn.Close()
+	delete(dispatcher.sessionMap, sessionId)
+}
+
+func (dispatcher *Dispatcher) CloseSession(sessionId string) {
+	dispatcher.lock.Lock()
+	session, ok := dispatcher.sessionMap[sessionId]
+	if ok {
+		dispatcher.closeSessionHelper(sessionId, session)
+	}
+	dispatcher.lock.Unlock()
+}
+
+func (dispatcher *Dispatcher) ExpireSessions() {
+	for {
+		time.Sleep(maxSessionStaleness / 2)
+		dispatcher.lock.Lock()
+		for sessionId, session := range dispatcher.sessionMap {
+			if session.Expired() {
+				dispatcher.closeSessionHelper(sessionId, session)
+			}
+		}
+		dispatcher.lock.Unlock()
+	}
 }
 
 type MeekHTTPServer struct {
@@ -344,8 +367,11 @@ func (dispatcher *Dispatcher) Start() {
 		server: &http.Server {
 			Addr:         fmt.Sprintf(":%d", dispatcher.config.Port),
 			Handler:      dispatcher,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+
+			// TODO: This timeout is actually more like a socket lifetime which closes active persistent connections.
+			// Implement a custom timeout. See link: https://groups.google.com/forum/#!topic/golang-nuts/NX6YzGInRgE
+			ReadTimeout:  600 * time.Second,
+			WriteTimeout: 600 * time.Second,
 		},
 	}
 
