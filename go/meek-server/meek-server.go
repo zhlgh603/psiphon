@@ -2,7 +2,6 @@ package main
 
 import (
 	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
-	"github.com/fzzy/radix/redis"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -16,15 +15,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/fzzy/radix/redis"
 	"io"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"sync"
 	"time"
-	"math/big"
 )
 
 const maxPayloadLength = 0x10000
@@ -64,8 +64,8 @@ type ClientSessionData struct {
 
 type GeoIpData struct {
 	Region string `json:"region"`
-	City string `json:"city"`
-	Isp string `json:"isp"`
+	City   string `json:"city"`
+	Isp    string `json:"isp"`
 }
 
 type Session struct {
@@ -117,17 +117,17 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 	}
 
 	/*
-	NOTE: this code cleans up session resources quickly (when the
-	      peer closes its persistent connection) but isn't
-	      appropriate for the fronted case since the front doesn't
-	      necessarily keep a persistent connection open.
+		NOTE: this code cleans up session resources quickly (when the
+		      peer closes its persistent connection) but isn't
+		      appropriate for the fronted case since the front doesn't
+		      necessarily keep a persistent connection open.
 
-	notify := responseWriter.(http.CloseNotifier).CloseNotify()
+		notify := responseWriter.(http.CloseNotifier).CloseNotify()
 
-	go func() {
-		<-notify
-		dispatcher.CloseSession(cookie)
-	}()
+		go func() {
+			<-notify
+			dispatcher.CloseSession(cookie)
+		}()
 	*/
 }
 
@@ -155,7 +155,7 @@ func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.Res
 	return nil
 }
 
-func (dispatcher* Dispatcher) terminateConnection(responseWriter http.ResponseWriter, request *http.Request) {
+func (dispatcher *Dispatcher) terminateConnection(responseWriter http.ResponseWriter, request *http.Request) {
 	http.NotFound(responseWriter, request)
 
 	// Hijack to close socket (after flushing response).
@@ -317,7 +317,7 @@ func (dispatcher *Dispatcher) updateRedis(psiphonClientSessionId string, ipAddre
 		return
 	}
 	defer redisClient.Close()
-	
+
 	geoIpDataJson, err := json.Marshal(geoIpData)
 	if err != nil {
 		log.Printf("redis json encode failed: %s", err)
@@ -365,7 +365,7 @@ func (dispatcher *Dispatcher) redisSetExpiringValue(redisClient *redis.Client, d
 	if response.Err != nil {
 		log.Printf("redis expire command failed: %s", response.Err)
 		return
-	}	
+	}
 }
 
 func (dispatcher *Dispatcher) calculateClientIpAddressStrategyValue(ipAddress string) int {
@@ -458,24 +458,24 @@ func createTLSConfig(host string) (certPEMBlock, keyPEMBlock []byte, err error) 
 		SubjectKeyId:          []byte{1, 2, 3, 4},
 		Version:               2,
 	}
-    key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return
 	}
-    der, err := x509.CreateCertificate(rand.Reader, &tpl, &tpl, &key.PublicKey, key)
+	der, err := x509.CreateCertificate(rand.Reader, &tpl, &tpl, &key.PublicKey, key)
 	if err != nil {
 		return
 	}
 	certPEMBlock = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	keyPEMBlock = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-    return
+	return
 }
 
 func (dispatcher *Dispatcher) Start() {
-	server := &MeekHTTPServer {
-		server: &http.Server {
-			Addr:         fmt.Sprintf(":%d", dispatcher.config.Port),
-			Handler:      dispatcher,
+	server := &MeekHTTPServer{
+		server: &http.Server{
+			Addr:    fmt.Sprintf(":%d", dispatcher.config.Port),
+			Handler: dispatcher,
 
 			// TODO: This timeout is actually more like a socket lifetime which closes active persistent connections.
 			// Implement a custom timeout. See link: https://groups.google.com/forum/#!topic/golang-nuts/NX6YzGInRgE
