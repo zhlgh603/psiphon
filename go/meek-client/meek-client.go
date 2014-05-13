@@ -41,7 +41,7 @@ const (
 // command line.
 type RequestInfo struct {
 	ClientPublicKeyBase64 string
-	ObfuscationKeyword    string
+	ObfuscatedKeyword     string
 	PsiphonServerAddr     string
 	TargetAddr            string
 	FrontingHostname      string
@@ -191,7 +191,7 @@ func makeCookie(info *RequestInfo) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	obfuscated, err := cr.Obfuscate(encrypted, info.ObfuscationKeyword)
+	obfuscated, err := cr.Obfuscate(encrypted, info.ObfuscatedKeyword)
 	if err != nil {
 		return "", err
 	}
@@ -213,8 +213,7 @@ func handler(conn *pt.SocksConn) error {
 	info.PsiphonServerAddr, _ = conn.Req.Args.Get("pserver")
 	info.FrontingHostname, _ = conn.Req.Args.Get("fhostname")
 	info.SshSessionID, _ = conn.Req.Args.Get("sshid")
-	info.ObfuscationKeyword, _ = conn.Req.Args.Get("obfskey")
-
+	info.ObfuscatedKeyword, _ = conn.Req.Args.Get("obfskey")
 
 	if info.TargetAddr == "" {
 		return errors.New("TargetAddr is missing from SOCKS request")
