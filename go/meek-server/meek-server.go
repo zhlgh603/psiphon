@@ -148,9 +148,9 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return nil, errors.New("cookie is empty")
 	}
 
-	dispatcher.lock.Lock()
+	dispatcher.lock.RLock()
 	session, ok := dispatcher.sessionMap[cookie]
-	dispatcher.lock.Unlock()
+	dispatcher.lock.RUnlock()
 	if ok {
 		session.Touch()
 		return session, nil
@@ -269,15 +269,19 @@ func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.Res
 	return nil
 }
 
+func (dispatcher *Dispatcher) closeSessionHelper(sessionId string, session *Session) {
+	// TODO: close the persistent HTTP client connection, if one exists
+	session.psiConn.Close()
+	delete(dispatcher.sessionMap, sessionId)
+}
+
 func (dispatcher *Dispatcher) CloseSession(sessionId string) {
 	dispatcher.lock.Lock()
-	defer dispatcher.lock.Unlock()
 	session, ok := dispatcher.sessionMap[sessionId]
 	if ok {
-		// TODO: close the persistent HTTP client connection, if one exists
-		session.psiConn.Close()
-		delete(dispatcher.sessionMap, sessionId)
+		dispatcher.closeSessionHelper(sessionId, session)
 	}
+	dispatcher.lock.Unlock()
 }
 
 func (dispatcher *Dispatcher) ExpireSessions() {
@@ -286,7 +290,7 @@ func (dispatcher *Dispatcher) ExpireSessions() {
 		dispatcher.lock.Lock()
 		for sessionId, session := range dispatcher.sessionMap {
 			if session.Expired() {
-				dispatcher.CloseSession(sessionId)
+				dispatcher.closeSessionHelper(sessionId, session)
 			}
 		}
 		dispatcher.lock.Unlock()
