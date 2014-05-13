@@ -45,7 +45,7 @@ type Config struct {
 	Port                        int
 	ListenTLS                   bool
 	CookiePrivateKeyBase64      string
-	ObfuscationKeyword          string
+	ObfuscatedKeyword          string
 	LogFilename                 string
 	RedisSessionDbHost          string
 	RedisSessionDbPort          int
@@ -161,7 +161,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return nil, err
 	}
 
-	encrypted, err := dispatcher.crypto.Deobfuscate(obfuscated, dispatcher.config.ObfuscationKeyword)
+	encrypted, err := dispatcher.crypto.Deobfuscate(obfuscated, dispatcher.config.ObfuscatedKeyword)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +455,7 @@ func main() {
 		log.Fatalf("cookie private key is missing from the config file, exiting now")
 	}
 
-	if config.ObfuscationKeyword == "" {
+	if config.ObfuscatedKeyword == "" {
 		log.Fatalf("obfuscation keyword is missing from the config file, exiting now")
 	}
 
