@@ -2,8 +2,11 @@ package main
 
 import (
 	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
+	"github.com/fzzy/radix/redis"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -22,44 +25,47 @@ import (
 	"sync"
 	"time"
 	"math/big"
-	//"github.com/garyburd/redigo/redis"
 )
 
 const maxPayloadLength = 0x10000
 const turnaroundDeadline = 10 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
 
-// Default Redis config values from Server/psi_config.py
+// Default config values from Server/psi_config.py
 
-const DEFAULT_REDIS_SESSION_DB_HOST = "localhost"
-const DEFAULT_REDIS_SESSION_DB_PORT = 6379
-const DEFAULT_REDIS_SESSION_DB_INDEX = 2
+const DEFAULT_GEOIP_SERVICE_PORT = 6000
+const DEFAULT_REDIS_DB_HOST = "127.0.0.1"
+const DEFAULT_REDIS_DB_PORT = 6379
+const DEFAULT_REDIS_SESSION_DB_INDEX = 0
 const DEFAULT_REDIS_SESSION_EXPIRE_SECONDS = 2592000
-
-const DEFAULT_REDIS_DISCOVERY_DB_HOST = DEFAULT_REDIS_SESSION_DB_HOST
-const DEFAULT_REDIS_DISCOVERY_DB_PORT = DEFAULT_REDIS_SESSION_DB_PORT
-const DEFAULT_REDIS_DISCOVERY_DB_INDEX = 3
+const DEFAULT_REDIS_DISCOVERY_DB_INDEX = 1
 const DEFAULT_REDIS_DISCOVERY_EXPIRE_SECONDS = 60 * 5
 
 type Config struct {
-	Port                        int
-	ListenTLS                   bool
-	CookiePrivateKeyBase64      string
-	ObfuscatedKeyword          string
-	LogFilename                 string
-	RedisSessionDbHost          string
-	RedisSessionDbPort          int
-	RedisSessionDbIndex         int
-	RedisSessionExpireSeconds   int
-	RedisDiscoveryDbHost        string
-	RedisDiscoveryDbPort        int
-	RedisDiscoveryDbIndex       int
-	RedisDiscoveryExpireSeconds int
+	Port                                int
+	ListenTLS                           bool
+	CookiePrivateKeyBase64              string
+	ObfuscatedKeyword                   string
+	LogFilename                         string
+	GeoIpServicePort                    int
+	RedisDbHost                         string
+	RedisDbPort                         int
+	RedisSessionDbIndex                 int
+	RedisSessionExpireSeconds           int
+	RedisDiscoveryDbIndex               int
+	RedisDiscoveryExpireSeconds         int
+	ClientIpAddressStrategyValueHmacKey string
 }
 
 type ClientSessionData struct {
 	PsiphonClientSessionId string `json:"s"`
 	PsiphonServerAddress   string `json:"p"`
+}
+
+type GeoIpData struct {
+	Region string `json:"region"`
+	City string `json:"city"`
+	Isp string `json:"isp"`
 }
 
 type Session struct {
@@ -123,6 +129,30 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		dispatcher.CloseSession(cookie)
 	}()
 	*/
+}
+
+func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
+	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
+	_, err := io.Copy(session.psiConn, body)
+	if err != nil {
+		return errors.New(fmt.Sprintf("copying body to psiConn: %s", err))
+	}
+
+	buf := make([]byte, maxPayloadLength)
+	session.psiConn.SetReadDeadline(time.Now().Add(turnaroundDeadline))
+	n, err := session.psiConn.Read(buf)
+	if err != nil {
+		if e, ok := err.(net.Error); !ok || !e.Timeout() {
+			return errors.New(fmt.Sprintf("reading from psiConn: %s", err))
+		}
+	}
+
+	n, err = responseWriter.Write(buf[:n])
+	if err != nil {
+		return errors.New(fmt.Sprintf("writing to response: %s", err))
+	}
+
+	return nil
 }
 
 func (dispatcher* Dispatcher) terminateConnection(responseWriter http.ResponseWriter, request *http.Request) {
@@ -189,7 +219,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 	session = &Session{psiConn: conn}
 	session.Touch()
 
-	dispatcher.doGeoStats(request, clientSessionData.PsiphonClientSessionId)
+	dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
 
 	dispatcher.lock.Lock()
 	dispatcher.sessionMap[cookie] = session
@@ -206,73 +236,146 @@ func parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, e
 	return
 }
 
-func (dispatcher *Dispatcher) doGeoStats(request *http.Request, psiphonClientSessionId string) {
+func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessionId string) {
 	// Use Geo info in headers sent by fronts; otherwise use peer IP
-	gotGeoHeaders := false
+	ipAddress := ""
+	var geoIpData *GeoIpData
 
 	// Only use headers when sent through TLS (although we're using
 	// self signed keys in TLS mode, so man-in-the-middle is technically
 	// still possible so "faked stats" is still a risk...?)
 	if dispatcher.config.ListenTLS {
-		if (!gotGeoHeaders) {
+		if geoIpData == nil {
 			// Cloudflare
-			ip := request.Header.Get("Cf-Connecting-Ip")
-			if len(ip) > 0 {
-				// TODO: redis operation
-				log.Printf("Cf-Connecting-Ip: %s", ip)
-				gotGeoHeaders = true
+			ipAddress = request.Header.Get("Cf-Connecting-Ip")
+			if len(ipAddress) > 0 {
+				geoIpData = dispatcher.geoIpRequest(ipAddress)
 			}
 		}
 
-		if (!gotGeoHeaders) {
+		if geoIpData == nil {
 			// Google App Engine
 			country := request.Header.Get("X-Appengine-Country")
 			city := request.Header.Get("X-Appengine-City")
 			if len(country) > 0 || len(city) > 0 {
 				// TODO: redis operation
 				log.Printf("X-Appengine-Country:%s , X-Appengine-City: %s", country, city)
-				gotGeoHeaders = true
+				geoIpData = &GeoIpData{
+					Region: country,
+					City:   city,
+					Isp:    "None",
+				}
 			}
 		}
 	}
 
-	if (!gotGeoHeaders) {
-		ip := request.RemoteAddr
-		if len(ip) > 0 {
-			// TODO: redis operation
-			log.Printf("RemoteAddr: %s", ip)
-		}
+	if geoIpData == nil {
+		ipAddress = request.RemoteAddr
+		geoIpData = dispatcher.geoIpRequest(ipAddress)
+	}
+
+	if geoIpData != nil {
+		dispatcher.updateRedis(psiphonClientSessionId, ipAddress, geoIpData)
 	}
 }
 
-func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
-	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
-	_, err := io.Copy(session.psiConn, body)
-	if err != nil {
-		return errors.New(fmt.Sprintf("copying body to psiConn: %s", err))
+func (dispatcher *Dispatcher) geoIpRequest(ipAddress string) (geoIpData *GeoIpData) {
+	// Default value is used when request fails
+	geoIpData = &GeoIpData{
+		Region: "None",
+		City:   "None",
+		Isp:    "None",
 	}
-
-	buf := make([]byte, maxPayloadLength)
-	session.psiConn.SetReadDeadline(time.Now().Add(turnaroundDeadline))
-	n, err := session.psiConn.Read(buf)
+	response, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/geoip?ip=%s", dispatcher.config.GeoIpServicePort, ipAddress))
 	if err != nil {
-		if e, ok := err.(net.Error); !ok || !e.Timeout() {
-			return errors.New(fmt.Sprintf("reading from psiConn: %s", err))
+		log.Printf("geoIP request failed: %s", err)
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode == 200 {
+		responseBody, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			log.Printf("geoIP response read failed: %s", err)
+			return
+		}
+		err = json.Unmarshal(responseBody, &geoIpData)
+		if err != nil {
+			log.Printf("geoIP response decode failed: %s", err)
+			return
 		}
 	}
-
-	n, err = responseWriter.Write(buf[:n])
-	if err != nil {
-		return errors.New(fmt.Sprintf("writing to response: %s", err))
-	}
-
-	return nil
+	return
 }
 
-func (dispatcher *Dispatcher) closeSessionHelper(sessionId string, session *Session) {
-	// TODO: close the persistent HTTP client connection, if one exists
-	session.psiConn.Close()
-	delete(dispatcher.sessionMap, sessionId)
+func (dispatcher *Dispatcher) updateRedis(psiphonClientSessionId string, ipAddress string, geoIpData *GeoIpData) {
+	redisClient, err := redis.DialTimeout(
+		"tcp",
+		fmt.Sprintf("%s:%d", dispatcher.config.RedisDbHost, dispatcher.config.RedisDbPort),
+		time.Duration(1)*time.Second)
+	if err != nil {
+		log.Printf("connect to redis failed: %s", err)
+		return
+	}
+	defer redisClient.Close()
+	
+	geoIpDataJson, err := json.Marshal(geoIpData)
+	if err != nil {
+		log.Printf("redis json encode failed: %s", err)
+		return
+	}
+
+	dispatcher.redisSetExpiringValue(
+		redisClient,
+		dispatcher.config.RedisSessionDbIndex,
+		psiphonClientSessionId,
+		string(geoIpDataJson),
+		dispatcher.config.RedisSessionExpireSeconds)
+
+	if len(ipAddress) > 0 {
+		clientIpAddressStrategyValue := dispatcher.calculateClientIpAddressStrategyValue(ipAddress)
+		clientIpAddressStrategyValueMap := map[string]int{"client_ip_address_strategy_value": clientIpAddressStrategyValue}
+
+		clientIpAddressStrategyValueJson, err := json.Marshal(clientIpAddressStrategyValueMap)
+		if err != nil {
+			log.Printf("redis json encode failed: %s", err)
+			return
+		}
+
+		dispatcher.redisSetExpiringValue(
+			redisClient,
+			dispatcher.config.RedisDiscoveryDbIndex,
+			psiphonClientSessionId,
+			string(clientIpAddressStrategyValueJson),
+			dispatcher.config.RedisSessionExpireSeconds)
+	}
+}
+
+func (dispatcher *Dispatcher) redisSetExpiringValue(redisClient *redis.Client, dbIndex int, key string, value string, expirySeconds int) {
+	response := redisClient.Cmd("select", dbIndex)
+	if response.Err != nil {
+		log.Printf("redis select command failed: %s", response.Err)
+		return
+	}
+	response = redisClient.Cmd("set", key, value)
+	if response.Err != nil {
+		log.Printf("redis set command failed: %s", response.Err)
+		return
+	}
+	response = redisClient.Cmd("expire", key, expirySeconds)
+	if response.Err != nil {
+		log.Printf("redis expire command failed: %s", response.Err)
+		return
+	}	
+}
+
+func (dispatcher *Dispatcher) calculateClientIpAddressStrategyValue(ipAddress string) int {
+	// From: psi_ops_discovery.calculate_ip_address_strategy_value:
+	//     # Mix bits from all octets of the client IP address to determine the
+	//     # bucket. An HMAC is used to prevent pre-calculation of buckets for IPs.
+	//     return ord(hmac.new(HMAC_KEY, ip_address, hashlib.sha256).digest()[0])
+	mac := hmac.New(sha256.New, []byte(dispatcher.config.ClientIpAddressStrategyValueHmacKey))
+	mac.Write([]byte(ipAddress))
+	return int(mac.Sum(nil)[0])
 }
 
 func (dispatcher *Dispatcher) CloseSession(sessionId string) {
@@ -282,6 +385,12 @@ func (dispatcher *Dispatcher) CloseSession(sessionId string) {
 		dispatcher.closeSessionHelper(sessionId, session)
 	}
 	dispatcher.lock.Unlock()
+}
+
+func (dispatcher *Dispatcher) closeSessionHelper(sessionId string, session *Session) {
+	// TODO: close the persistent HTTP client connection, if one exists
+	session.psiConn.Close()
+	delete(dispatcher.sessionMap, sessionId)
 }
 
 func (dispatcher *Dispatcher) ExpireSessions() {
@@ -407,12 +516,11 @@ func NewDispatcher(config *Config) (*Dispatcher, error) {
 
 func parseConfigJSON(data []byte) (config *Config, err error) {
 	config = &Config{
-		RedisSessionDbHost:          DEFAULT_REDIS_SESSION_DB_HOST,
-		RedisSessionDbPort:          DEFAULT_REDIS_SESSION_DB_PORT,
+		GeoIpServicePort:            DEFAULT_GEOIP_SERVICE_PORT,
+		RedisDbHost:                 DEFAULT_REDIS_DB_HOST,
+		RedisDbPort:                 DEFAULT_REDIS_DB_PORT,
 		RedisSessionDbIndex:         DEFAULT_REDIS_SESSION_DB_INDEX,
 		RedisSessionExpireSeconds:   DEFAULT_REDIS_SESSION_EXPIRE_SECONDS,
-		RedisDiscoveryDbHost:        DEFAULT_REDIS_DISCOVERY_DB_HOST,
-		RedisDiscoveryDbPort:        DEFAULT_REDIS_DISCOVERY_DB_PORT,
 		RedisDiscoveryDbIndex:       DEFAULT_REDIS_DISCOVERY_DB_INDEX,
 		RedisDiscoveryExpireSeconds: DEFAULT_REDIS_DISCOVERY_EXPIRE_SECONDS,
 	}
@@ -457,6 +565,10 @@ func main() {
 
 	if config.ObfuscatedKeyword == "" {
 		log.Fatalf("obfuscation keyword is missing from the config file, exiting now")
+	}
+
+	if config.ClientIpAddressStrategyValueHmacKey == "" {
+		log.Fatalf("client ip address strategy value hmac key is missing from the config file, exiting now")
 	}
 
 	if config.LogFilename != "" {
