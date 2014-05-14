@@ -28,7 +28,7 @@ import (
 )
 
 const maxPayloadLength = 0x10000
-const turnaroundDeadline = 10 * time.Millisecond
+const psiphonServerReadDeadline = 50 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
 
 // Default config values from Server/psi_config.py
@@ -108,7 +108,7 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		return
 	}
 
-	err = dispatcher.dispatch(session, responseWriter, request)
+	err = dispatcher.relayPayload(session, responseWriter, request)
 	if err != nil {
 		log.Printf("dispatch: %s", err)
 		dispatcher.terminateConnection(responseWriter, request)
@@ -131,7 +131,7 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 	*/
 }
 
-func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
+func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
 	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
 	_, err := io.Copy(session.psiConn, body)
 	if err != nil {
@@ -139,7 +139,7 @@ func (dispatcher *Dispatcher) dispatch(session *Session, responseWriter http.Res
 	}
 
 	buf := make([]byte, maxPayloadLength)
-	session.psiConn.SetReadDeadline(time.Now().Add(turnaroundDeadline))
+	session.psiConn.SetReadDeadline(time.Now().Add(psiphonServerReadDeadline))
 	n, err := session.psiConn.Read(buf)
 	if err != nil {
 		if e, ok := err.(net.Error); !ok || !e.Timeout() {
