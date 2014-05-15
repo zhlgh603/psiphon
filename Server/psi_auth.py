@@ -125,11 +125,8 @@ def set_session_region(pam_rhost, session_id):
             port=psi_config.SESSION_DB_PORT,
             db=psi_config.SESSION_DB_INDEX)
 
-    redis_session.set(
-        session_id,
-        json.dumps(geoip),
-        ex=psi_config.SESSION_EXPIRE_SECONDS,
-        nx=True)
+    redis_session.setnx(session_id, json.dumps(geoip))
+    redis_session.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
 
     # Now fill in the discovery database
     # NOTE: We are storing a value derived from the user's IP address
@@ -144,12 +141,8 @@ def set_session_region(pam_rhost, session_id):
                 port=psi_config.DISCOVERY_DB_PORT,
                 db=psi_config.DISCOVERY_DB_INDEX)
 
-        redis_discovery.set(
-            session_id,
-            json.dumps({'client_ip_address_strategy_value' : client_ip_address_strategy_value}),
-            ex=psi_config.DISCOVERY_EXPIRE_SECONDS,
-            nx=True)
-
+        redis_discovery.setnx(session_id, json.dumps({'client_ip_address_strategy_value' : client_ip_address_strategy_value}))
+        redis_discovery.expire(session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
     except socket.error:
         pass
 
