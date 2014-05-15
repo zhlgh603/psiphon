@@ -19,6 +19,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"log/syslog"
 	"math/big"
 	"net"
 	"net/http"
@@ -578,6 +579,12 @@ func main() {
 		}
 		defer f.Close()
 		log.SetOutput(f)
+	} else {
+		syslogWriter, err := syslog.New(syslog.LOG_ERR|syslog.LOG_USER, "meek-server")
+		if err != nil {
+			log.Fatalf("error opening syslog: %s", err)
+		}
+		log.SetOutput(syslogWriter)
 	}
 
 	dispatcher, err := NewDispatcher(config)
