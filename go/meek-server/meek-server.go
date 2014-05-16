@@ -347,7 +347,7 @@ func (dispatcher *Dispatcher) updateRedis(psiphonClientSessionId string, ipAddre
 			dispatcher.config.RedisDiscoveryDbIndex,
 			psiphonClientSessionId,
 			string(clientIpAddressStrategyValueJson),
-			dispatcher.config.RedisSessionExpireSeconds)
+			dispatcher.config.RedisDiscoveryExpireSeconds)
 	}
 }
 
