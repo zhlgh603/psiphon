@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -271,7 +272,7 @@ func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessio
 	}
 
 	if geoIpData == nil {
-		ipAddress = request.RemoteAddr
+		ipAddress = strings.Split(request.RemoteAddr, ":")[0]
 		geoIpData = dispatcher.geoIpRequest(ipAddress)
 	}
 
