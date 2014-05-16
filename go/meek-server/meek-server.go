@@ -97,7 +97,7 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 	}
 
 	if request.Method != "POST" {
-		log.Printf("Bad HTTP request: %+v", request)
+		log.Printf("unexpected request type: %s", request.Method)
 		dispatcher.terminateConnection(responseWriter, request)
 		return
 	}
