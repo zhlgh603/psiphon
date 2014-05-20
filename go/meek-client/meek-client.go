@@ -59,7 +59,7 @@ func randInt(min int, max int) int {
 
 // Do an HTTP roundtrip using the payload data in buf and the request metadata
 // in info.
-func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
+func roundTrip(buf []byte, info *RequestInfo) (response *http.Response, err error) {
 	tr := http.DefaultTransport
 	req, err := http.NewRequest("POST", info.URL, bytes.NewReader(buf))
 	if err != nil {
@@ -71,7 +71,21 @@ func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
 	req.Header.Set("Content-Type", "application/octet-stream")
 
 	req.AddCookie(info.PayloadCookie)
-	return tr.RoundTrip(req)
+
+	// Retry loop, which assumes entire request failed (underlying
+	// transport protocol such as SSH will fail if extra bytes are
+	// replayed in either direction due to partial request success
+	// followed by retry).
+	// This retry mitigates intermittent failures between the client
+	// and front/server.
+	for i := 0; i <= 1; i++ {
+		response, err = tr.RoundTrip(req)
+		if err == nil {
+			return
+		}
+		fmt.Printf("RoundTrip error: %s", err);
+	}
+	return
 }
 
 // Send the data in buf to the remote URL, wait for a reply, and feed the reply
