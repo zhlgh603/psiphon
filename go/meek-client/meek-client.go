@@ -83,7 +83,7 @@ func roundTrip(buf []byte, info *RequestInfo) (response *http.Response, err erro
 		if err == nil {
 			return
 		}
-		fmt.Printf("RoundTrip error: %s", err);
+		log.Printf("RoundTrip error: %s", err);
 	}
 	return
 }
