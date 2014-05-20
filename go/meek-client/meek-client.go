@@ -52,6 +52,11 @@ type RequestInfo struct {
 	URL                   string
 }
 
+func randInt(min int, max int) int {
+    rand.Seed(time.Now().UTC().UnixNano())
+    return min + rand.Intn(max-min)
+}
+
 // Do an HTTP roundtrip using the payload data in buf and the request metadata
 // in info.
 func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
