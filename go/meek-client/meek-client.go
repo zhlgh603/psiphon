@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -47,22 +49,14 @@ type RequestInfo struct {
 	FrontingHostname      string
 	SshSessionID          string
 	CookiePayload         string
+	URL                   string
 }
 
 // Do an HTTP roundtrip using the payload data in buf and the request metadata
 // in info.
 func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
 	tr := http.DefaultTransport
-
-	var URL string
-	scheme := "http"
-
-	if info.FrontingHostname != "" {
-		scheme = "https"
-	}
-	URL = fmt.Sprintf("%s://%s/", scheme, info.TargetAddr)
-
-	req, err := http.NewRequest("POST", URL, bytes.NewReader(buf))
+	req, err := http.NewRequest("POST", info.URL, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +65,9 @@ func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	cookie := &http.Cookie{Name: "key", Value: info.CookiePayload}
+	rand.Seed(time.Now().UTC().UnixNano())
+	cookieName := string(byte(randInt(65, 90)))
+	cookie := &http.Cookie{Name: cookieName, Value: info.CookiePayload}
 	req.AddCookie(cookie)
 	return tr.RoundTrip(req)
 }
@@ -234,6 +230,17 @@ func handler(conn *pt.SocksConn) error {
 	if err != nil {
 		return errors.New(fmt.Sprintf("Couldn't create encrypted payload: %s", err.Error()))
 	}
+	scheme := "http"
+
+	if info.FrontingHostname != "" {
+		scheme = "https"
+	}
+
+	info.URL = (&url.URL{
+		Scheme: scheme,
+		Host:   info.TargetAddr,
+		Path:   "/",
+	}).String()
 
 	return copyLoop(conn, &info)
 }
