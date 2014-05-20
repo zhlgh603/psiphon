@@ -70,7 +70,6 @@ func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	rand.Seed(time.Now().UTC().UnixNano())
 	cookieName := string(byte(randInt(65, 90)))
 	cookie := &http.Cookie{Name: cookieName, Value: info.CookiePayload}
 	req.AddCookie(cookie)
