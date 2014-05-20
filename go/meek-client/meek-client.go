@@ -48,13 +48,13 @@ type RequestInfo struct {
 	TargetAddr            string
 	FrontingHostname      string
 	SshSessionID          string
-	CookiePayload         string
+	PayloadCookie         *http.Cookie
 	URL                   string
 }
 
 func randInt(min int, max int) int {
-    rand.Seed(time.Now().UTC().UnixNano())
-    return min + rand.Intn(max-min)
+	rand.Seed(time.Now().UTC().UnixNano())
+	return min + rand.Intn(max-min)
 }
 
 // Do an HTTP roundtrip using the payload data in buf and the request metadata
@@ -70,9 +70,7 @@ func roundTrip(buf []byte, info *RequestInfo) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	cookieName := string(byte(randInt(65, 90)))
-	cookie := &http.Cookie{Name: cookieName, Value: info.CookiePayload}
-	req.AddCookie(cookie)
+	req.AddCookie(info.PayloadCookie)
 	return tr.RoundTrip(req)
 }
 
@@ -168,12 +166,12 @@ loop:
 	return nil
 }
 
-func makeCookie(info *RequestInfo) (string, error) {
+func makeCookie(info *RequestInfo) (*http.Cookie, error) {
 	var clientPublicKey, dummyKey [32]byte
 
 	keydata, err := base64.StdEncoding.DecodeString(info.ClientPublicKeyBase64)
 	if err != nil {
-		return "", fmt.Errorf("error decoding info.ClientPublicKeyBase64: %s", err)
+		return nil, fmt.Errorf("error decoding info.ClientPublicKeyBase64: %s", err)
 	}
 
 	copy(clientPublicKey[:], keydata)
@@ -185,17 +183,19 @@ func makeCookie(info *RequestInfo) (string, error) {
 
 	j, err := json.Marshal(cookie)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	encrypted, err := cr.Encrypt(j)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	obfuscated, err := cr.Obfuscate(encrypted, info.ObfuscatedKeyword)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return base64.StdEncoding.EncodeToString(obfuscated), nil
+	cookieValue := base64.StdEncoding.EncodeToString(obfuscated)
+	cookieName := string(byte(randInt(65, 90)))
+	return &http.Cookie{Name: cookieName, Value: cookieValue}, nil
 }
 
 // Callback for new SOCKS requests.
@@ -230,7 +230,7 @@ func handler(conn *pt.SocksConn) error {
 		return errors.New("SshSessionID is missing from SOCKS payload")
 	}
 
-	info.CookiePayload, err = makeCookie(&info)
+	info.PayloadCookie, err = makeCookie(&info)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Couldn't create encrypted payload: %s", err.Error()))
 	}
