@@ -40,6 +40,7 @@ Android/zirco-browser/bin
 Android/zirco-browser/gen
 Android/PsiphonAndroidLibrary/bin
 Android/PsiphonAndroidLibrary/gen
+Android/PsiphonAndroidLibrary/obj
 Android/PsiphonProxiedWebApp/bin
 Android/PsiphonProxiedWebApp/gen
 
