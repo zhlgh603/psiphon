@@ -592,13 +592,24 @@ void ServerEntry::FromString(const string& str)
         if(HasCapability("FRONTED-MEEK") ||  HasCapability("UNFRONTED-MEEK"))
         {
             meekServerPort = json_entry.get("meekServerPort", 0).asInt();
-            meekObfuscatedKey = json_entry.get("meekObfuscatedKey", "").asString();
+            //TODO: Change back to meekObfuscatedKey!
+            meekObfuscatedKey = json_entry.get("meekObfuscationKey", "").asString();
+        }
+        else
+        {
+            meekServerPort = -1;
+            meekObfuscatedKey = "";
         }
 
         if(HasCapability("FRONTED-MEEK"))
         {
             meekFrontingDomain = json_entry.get("meekFrontingDomain", "").asString();
             meekFrontingHost  = json_entry.get("meekFrontingHost", "").asString();
+        }
+        else
+        {
+            meekFrontingDomain = "";
+            meekFrontingHost  = "";
         }
     }
     catch (exception& e)
