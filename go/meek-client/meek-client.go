@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"syscall"
 	"time"
 )
 
@@ -83,7 +84,7 @@ func roundTrip(buf []byte, info *RequestInfo) (response *http.Response, err erro
 		if err == nil {
 			return
 		}
-		log.Printf("RoundTrip error: %s", err);
+		log.Printf("RoundTrip error: %s", err)
 	}
 	return
 }
@@ -150,6 +151,19 @@ loop:
 
 		nw, err := sendRecv(buf, conn, info)
 		if err != nil {
+			//Ignore peer disconnect
+			operr, ok := err.(*net.OpError)
+			if !ok {
+				return err
+			}
+			errno, ok := operr.Err.(syscall.Errno)
+			if !ok {
+				return err
+			}
+			switch errno {
+			case syscall.ERROR_NETNAME_DELETED, syscall.WSAECONNRESET:
+				return nil
+			}
 			return err
 		}
 		/*
