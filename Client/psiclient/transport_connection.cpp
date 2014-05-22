@@ -28,9 +28,7 @@
 
 TransportConnection::TransportConnection()
     : m_transport(0),
-      m_localProxy(0),
-	  m_meekClient(0)
-
+      m_localProxy(0)
 {
 }
 
@@ -60,7 +58,6 @@ void TransportConnection::Connect(
 {
     assert(m_transport == 0);
     assert(m_localProxy == 0); 
-	assert(m_meekClient == 0);
 
 
     assert(transport);
@@ -78,23 +75,8 @@ void TransportConnection::Connect(
 
         m_workerThreadSynch.Reset();
 
-		//Start meek client and get its listening port
-
-		m_meekClient = new Meek();
-
-		if (!m_meekClient->Start(stopInfo, &m_workerThreadSynch))
-        {
-            throw IWorkerThread::Error("Meek::Start failed");
-        }
-
-		if(!m_meekClient->WaitForCmethodLine())
-		{
-			throw IWorkerThread::Error("Meek::CMETHOD not available");
-		}
-
         // Connect with the transport. Will throw on error.
 		m_transport->Connect(
-					m_meekClient->GetListenPort(),
                     &m_systemProxySettings,
                     stopInfo,
                     &m_workerThreadSynch,
@@ -159,8 +141,7 @@ void TransportConnection::Connect(
 void TransportConnection::WaitForDisconnect()
 {
     HANDLE waitHandles[] = { m_transport->GetStoppedEvent(), 
-                             m_localProxy->GetStoppedEvent(),
-                             m_meekClient->GetStoppedEvent()};
+                             m_localProxy->GetStoppedEvent()};
     size_t waitHandlesCount = sizeof(waitHandles)/sizeof(HANDLE);
 
     DWORD result = WaitForMultipleObjects(
@@ -168,9 +149,6 @@ void TransportConnection::WaitForDisconnect()
                     waitHandles, 
                     FALSE, // wait for any event
                     INFINITE);
-
-    // One of the transport or the local proxy has stopped. 
-    m_meekClient->Stop();
 
     Cleanup();
 
@@ -201,7 +179,4 @@ void TransportConnection::Cleanup()
         m_transport->Stop();
         m_transport->Cleanup();
     }
-
-	if(m_meekClient) delete m_meekClient;
-	m_meekClient = 0;
 }
