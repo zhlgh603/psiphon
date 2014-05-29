@@ -85,7 +85,7 @@ EMPTY_VALUE = '(NONE)'
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH', EMPTY_VALUE]
+    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-OSSH', EMPTY_VALUE]
 
 
 is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})\.(?P<fraction>[0-9]+)(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
