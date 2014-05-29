@@ -2,6 +2,7 @@ package main
 
 import (
 	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
+	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/http"
 	"bufio"
 	"bytes"
 	"encoding/base64"
@@ -12,7 +13,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"net/http"
 	"net/url"
 	"syscall"
 	"time"
