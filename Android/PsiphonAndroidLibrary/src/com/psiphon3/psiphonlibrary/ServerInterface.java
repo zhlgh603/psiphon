@@ -6,12 +6,12 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
@@ -42,13 +42,23 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.xbill.DNS.Address;
+import org.xbill.DNS.PsiphonState;
+
+import android.content.Context;
+import android.os.SystemClock;
+import android.util.Pair;
+import android.webkit.URLUtil;
 import ch.boye.httpclientandroidlib.HttpEntity;
 import ch.boye.httpclientandroidlib.HttpHost;
 import ch.boye.httpclientandroidlib.HttpResponse;
@@ -73,20 +83,8 @@ import ch.boye.httpclientandroidlib.params.BasicHttpParams;
 import ch.boye.httpclientandroidlib.params.HttpConnectionParams;
 import ch.boye.httpclientandroidlib.params.HttpParams;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-import org.xbill.DNS.Address;
-import org.xbill.DNS.PsiphonState;
-
 import com.psiphon3.psiphonlibrary.AuthenticatedDataPackage.AuthenticatedDataPackageException;
-import com.psiphon3.psiphonlibrary.R;
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
-
-import android.content.Context;
-import android.os.SystemClock;
-import android.util.Pair;
-import android.webkit.URLUtil;
 
 
 public class ServerInterface
@@ -97,12 +95,12 @@ public class ServerInterface
     public static class PsiphonServerInterfaceException extends Exception
     {
         private static final long serialVersionUID = 1L;
-        
+
         public PsiphonServerInterfaceException()
         {
             super();
         }
-        
+
         public PsiphonServerInterfaceException(String message)
         {
             super(message);
@@ -118,7 +116,7 @@ public class ServerInterface
             super(cause);
         }
     }
-    
+
     public class ServerEntry implements Cloneable
     {
         public String encodedEntry;
@@ -134,6 +132,15 @@ public class ServerInterface
         public String sshObfuscatedKey;
         public ArrayList<String> capabilities;
         public String regionCode;
+        public int meekServerPort;
+        public String meekCookieEncryptionPublicKey;
+        public String meekObfuscatedKey;
+        public String meekFrontingDomain;
+        public String meekFrontingHost;
+
+        // These are determined while connecting.
+        public String connType; // Set to one of PsiphonConstants.RELAY_PROTOCOL_*
+        public String front;
 
         @Override
         public ServerEntry clone()
@@ -147,27 +154,38 @@ public class ServerInterface
                 throw new AssertionError();
             }
         }
-        
+
         public static final String CAPABILITY_HANDSHAKE = "handshake";
         public static final String CAPABILITY_VPN = "VPN";
         public static final String CAPABILITY_OSSH = "OSSH";
         public static final String CAPABILITY_SSH = "SSH";
-        
+        public static final String CAPABILITY_FRONTED_MEEK = "FRONTED-MEEK";
+        public static final String CAPABILITY_UNFRONTED_MEEK = "UNFRONTED-MEEK";
+
         public static final String REGION_CODE_ANY = "";
-        
-        boolean hasCapability(String capability)
+
+        public boolean hasCapability(String capability)
         {
             return this.capabilities.contains(capability);
         }
 
-        boolean hasCapabilities(List<String> capabilities)
+        public boolean hasOneOfTheseCapabilities(List<String> capabilities)
         {
-            return this.capabilities.containsAll(capabilities);
+            for (String capability : capabilities)
+            {
+                if (hasCapability(capability))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
-        int getPreferredReachablityTestPort()
+        public int getPreferredReachablityTestPort()
         {
-            if (hasCapability(CAPABILITY_OSSH))
+            if (hasCapability(CAPABILITY_OSSH) ||
+                hasCapability(CAPABILITY_FRONTED_MEEK) ||
+                hasCapability(CAPABILITY_UNFRONTED_MEEK))
             {
                 return this.sshObfuscatedPort;
             }
@@ -183,7 +201,7 @@ public class ServerInterface
             return -1;
         }
 
-        boolean inRegion(String regionCode)
+        public boolean inRegion(String regionCode)
         {
             if (regionCode.equals(REGION_CODE_ANY))
             {
@@ -193,19 +211,19 @@ public class ServerInterface
             return regionCode.equals(this.regionCode);
         }
     }
-    
-    private Context ownerContext;
-    private ArrayList<ServerEntry> serverEntries = new ArrayList<ServerEntry>();
+
+    private final Context ownerContext;
+    private final ArrayList<ServerEntry> serverEntries = new ArrayList<ServerEntry>();
     private String upgradeClientVersion;
     private String serverSessionID;
     private int preemptiveReconnectLifetime = 0;
     private ServerEntry currentServerEntry;
-    
+
     /** Array of all outstanding/ongoing requests. Anything in this array will
      * be aborted when {@link#stop()} is called. */
-    private List<HttpRequestBase> outstandingRequests = new ArrayList<HttpRequestBase>();
-    
-    /** This flag is set to true when {@link#stop()} is called, and set back to 
+    private final List<HttpRequestBase> outstandingRequests = new ArrayList<HttpRequestBase>();
+
+    /** This flag is set to true when {@link#stop()} is called, and set back to
      * false when {@link#start()} is called. */
     private boolean stopped = false;
 
@@ -214,7 +232,7 @@ public class ServerInterface
         this.ownerContext = context;
 
         // Load persistent server entries, then add embedded entries
-        
+
         synchronized(PsiphonData.getPsiphonData().serverEntryFileLock)
         {
             try
@@ -233,11 +251,13 @@ public class ServerInterface
                 file.close();
                 JSONObject obj = new JSONObject(json.toString());
                 JSONArray jsonServerEntries = obj.getJSONArray("serverEntries");
-        
+
                 for (int i = 0; i < jsonServerEntries.length(); i++)
                 {
                     // NOTE: No shuffling, as we're restoring a previously arranged list
-                    appendServerEntry(jsonServerEntries.getString(i));
+                    if (!EmbeddedValues.IGNORE_NON_EMBEDDED_SERVER_ENTRIES) {
+                        appendServerEntry(jsonServerEntries.getString(i));
+                    }
                 }
             }
             catch (FileNotFoundException e)
@@ -248,26 +268,26 @@ public class ServerInterface
             {
                 MyLog.w(R.string.ServerInterface_FailedToReadStoredServerEntries, MyLog.Sensitivity.NOT_SENSITIVE, e);
                 // skip loading persistent server entries
-            } 
+            }
             catch (JSONException e)
             {
                 MyLog.w(R.string.ServerInterface_FailedToParseStoredServerEntries, MyLog.Sensitivity.NOT_SENSITIVE, e);
                 // skip loading persistent server entries
             }
         }
-        
+
         try
         {
             shuffleAndAddServerEntries(
                 EmbeddedValues.EMBEDDED_SERVER_LIST, true);
             saveServerEntries();
-        } 
+        }
         catch (JSONException e)
         {
             MyLog.w(R.string.ServerInterface_FailedToParseEmbeddedServerEntries, MyLog.Sensitivity.NOT_SENSITIVE, e);
         }
     }
-    
+
     /**
      * Indicates that ServerInterface should transition back into an operational
      * state.
@@ -284,24 +304,25 @@ public class ServerInterface
      */
     public void stop()
     {
-        
+
         this.stopped = true;
-        
+
         // NOTE: can't clear this here, as some requests are done after stop() is called in stopTunnel()
         //this.currentServerEntry = null;
-        
-        // This may be called from the app main thread, so it must not make 
+
+        // This may be called from the app main thread, so it must not make
         // network requests directly (because that's disallowed in Android).
         // request.abort() counts as "network activity", so it has to be done
         // in a separate thread.
         Thread thread = new Thread(
             new Runnable()
             {
+                @Override
                 public void run()
                 {
                     synchronized(outstandingRequests)
                     {
-                        for (HttpRequestBase request : outstandingRequests) 
+                        for (HttpRequestBase request : outstandingRequests)
                         {
                             if (!request.isAborted()) request.abort();
                         }
@@ -313,13 +334,13 @@ public class ServerInterface
         try
         {
             thread.join();
-        } 
+        }
         catch (InterruptedException e)
         {
             Thread.currentThread().interrupt();
         }
     }
-    
+
     public boolean isStopped()
     {
         return this.stopped;
@@ -328,7 +349,7 @@ public class ServerInterface
     public synchronized ServerEntry setCurrentServerEntry()
     {
         // Saves selected currentServerEntry for future reference (e.g., used by getRequestURL calls)
-        
+
         if (this.serverEntries.size() > 0)
         {
             this.currentServerEntry = this.serverEntries.get(0).clone();
@@ -337,17 +358,17 @@ public class ServerInterface
 
         return null;
     }
-    
+
     synchronized ServerEntry getCurrentServerEntry()
     {
         if (this.currentServerEntry == null)
         {
             return null;
         }
-        
+
         return this.currentServerEntry.clone();
     }
-    
+
     synchronized ArrayList<ServerEntry> getServerEntries()
     {
         ArrayList<ServerEntry> serverEntries = new ArrayList<ServerEntry>();
@@ -357,22 +378,22 @@ public class ServerInterface
             serverEntries.add(serverEntry.clone());
         }
 
-        return serverEntries;        
+        return serverEntries;
     }
 
-    synchronized boolean serverWithCapabilitiesExists(List<String> capabilities)
+    synchronized boolean serverWithOneOfTheseCapabilitiesExists(List<String> capabilities)
     {
         for (ServerEntry entry: this.serverEntries)
         {
-            if (entry.hasCapabilities(capabilities))
+            if (entry.hasOneOfTheseCapabilities(capabilities))
             {
                 return true;
             }
         }
-        
+
         return false;
     }
-    
+
     synchronized boolean serverInRegionExists(String regionCode)
     {
         for (ServerEntry entry: this.serverEntries)
@@ -382,10 +403,10 @@ public class ServerInterface
                 return true;
             }
         }
-        
+
         return false;
     }
-    
+
     synchronized void markCurrentServerFailed()
     {
         if (this.currentServerEntry != null)
@@ -399,47 +420,47 @@ public class ServerInterface
                     break;
                 }
             }
-            
+
             // Save the new server order
             saveServerEntries();
         }
     }
-    
+
     synchronized public void generateNewCurrentClientSessionID()
     {
         byte[] clientSessionIdBytes = Utils.generateInsecureRandomBytes(PsiphonConstants.CLIENT_SESSION_ID_SIZE_IN_BYTES);
         PsiphonData.getPsiphonData().setClientSessionID(Utils.byteArrayToHexString(clientSessionIdBytes));
     }
-    
+
     synchronized public String getCurrentClientSessionID()
     {
         String clientSessionID = PsiphonData.getPsiphonData().getClientSessionID();
         assert(clientSessionID != null);
         return clientSessionID;
     }
-    
+
     synchronized public String getCurrentServerSessionID()
     {
         if (this.serverSessionID != null)
         {
             return this.serverSessionID;
         }
-        
+
         return "";
     }
-    
+
     synchronized public int getPreemptiveReconnectLifetime()
     {
         return this.preemptiveReconnectLifetime;
     }
-    
+
     /**
      * Makes the handshake request to the server. The client thereby obtains
      * session info from the server such as what homepages should be shown and
-     * whether there is an upgrade available. 
+     * whether there is an upgrade available.
      * @throws PsiphonServerInterfaceException
      */
-    synchronized public void doHandshakeRequest() 
+    synchronized public void doHandshakeRequest()
         throws PsiphonServerInterfaceException
     {
         boolean configProcessed = false;
@@ -450,9 +471,9 @@ public class ServerInterface
             {
                 extraParams.add(Pair.create("known_server", entry.ipAddress));
             }
-            
+
             String url = getRequestURL("handshake", extraParams);
-            
+
             byte[] response = makeAbortableProxiedPsiphonRequest(PsiphonConstants.HTTPS_REQUEST_LONG_TIMEOUT, url);
 
             final String JSON_CONFIG_PREFIX = "Config: ";
@@ -461,13 +482,13 @@ public class ServerInterface
                 if (line.indexOf(JSON_CONFIG_PREFIX) == 0)
                 {
                     configProcessed = true;
-                    
+
                     JSONObject obj = new JSONObject(line.substring(JSON_CONFIG_PREFIX.length()));
 
                     JSONArray homepages = obj.getJSONArray("homepages");
-                    
+
                     ArrayList<String> sessionHomePages = new ArrayList<String>();
-                    
+
                     for (int i = 0; i < homepages.length(); i++)
                     {
                         sessionHomePages.add(homepages.getString(i));
@@ -475,7 +496,7 @@ public class ServerInterface
                     PsiphonData.getPsiphonData().setHomePages(sessionHomePages);
 
                     this.upgradeClientVersion = obj.getString("upgrade_client_version");
-                    
+
                     // Fix for null/"null" JSONLib issue
                     if (this.upgradeClientVersion.compareTo("null") == 0)
                     {
@@ -487,9 +508,9 @@ public class ServerInterface
                     for (int i = 0; i < jsonPageViewRegexes.length(); i++)
                     {
                         JSONObject regexReplace = jsonPageViewRegexes.getJSONObject(i);
-                        
+
                         pageViewRegexes.add(Pair.create(
-                                Pattern.compile(regexReplace.getString("regex"), Pattern.CASE_INSENSITIVE), 
+                                Pattern.compile(regexReplace.getString("regex"), Pattern.CASE_INSENSITIVE),
                                 regexReplace.getString("replace")));
                     }
 
@@ -498,13 +519,13 @@ public class ServerInterface
                     for (int i = 0; i < jsonHttpsRequestRegexes.length(); i++)
                     {
                         JSONObject regexReplace = jsonHttpsRequestRegexes.getJSONObject(i);
-                        
+
                         httpsRequestRegexes.add(Pair.create(
-                                Pattern.compile(regexReplace.getString("regex"), Pattern.CASE_INSENSITIVE), 
+                                Pattern.compile(regexReplace.getString("regex"), Pattern.CASE_INSENSITIVE),
                                 regexReplace.getString("replace")));
                     }
-                    
-                    // Set the regexes directly in the stats object rather than 
+
+                    // Set the regexes directly in the stats object rather than
                     // storing them in this class.
                     PsiphonData.ReportedStats reportedStats = PsiphonData.getPsiphonData().getReportedStats();
                     if (reportedStats != null)
@@ -520,13 +541,15 @@ public class ServerInterface
                     }
                     if (encoded_server_list.length() > 0)
                     {
-                        shuffleAndAddServerEntries(entries, false);
-                        saveServerEntries();
+                        if (!EmbeddedValues.IGNORE_NON_EMBEDDED_SERVER_ENTRIES) {
+                            shuffleAndAddServerEntries(entries, false);
+                            saveServerEntries();
+                        }
                     }
-                    
+
                     // We only support SSH, so this is our server session ID.
                     this.serverSessionID = obj.getString("ssh_session_id");
-                    
+
                     this.preemptiveReconnectLifetime = 0;
                     if (obj.has("preemptive_reconnect_lifetime_milliseconds"))
                     {
@@ -540,19 +563,19 @@ public class ServerInterface
             MyLog.w(R.string.ServerInterface_FailedToParseHandshake, MyLog.Sensitivity.NOT_SENSITIVE, e);
             throw new PsiphonServerInterfaceException(e);
         }
-        
+
         if (!configProcessed)
         {
             MyLog.w(R.string.ServerInterface_FailedToParseHandshake, MyLog.Sensitivity.NOT_SENSITIVE);
             throw new PsiphonServerInterfaceException();
         }
     }
-    
+
     /**
-     * Make the 'connected' request to the server. 
+     * Make the 'connected' request to the server.
      * @throws PsiphonServerInterfaceException
      */
-    synchronized public void doConnectedRequest() 
+    synchronized public void doConnectedRequest()
         throws PsiphonServerInterfaceException
     {
         String lastConnected = "None";
@@ -577,14 +600,14 @@ public class ServerInterface
         {
             MyLog.w(R.string.ServerInterface_FailedToReadLastConnected, MyLog.Sensitivity.NOT_SENSITIVE, e);
             // skip loading persistent server entries
-        }         
-        
+        }
+
         List<Pair<String,String>> extraParams = new ArrayList<Pair<String,String>>();
         extraParams.add(Pair.create("session_id", this.serverSessionID));
         extraParams.add(Pair.create("last_connected", lastConnected));
-        
+
         String url = getRequestURL("connected", extraParams);
-        
+
         byte[] response = makeAbortableProxiedPsiphonRequest(PsiphonConstants.HTTPS_REQUEST_SHORT_TIMEOUT, url);
 
         try
@@ -615,29 +638,33 @@ public class ServerInterface
      */
     synchronized public void doStatusRequest(
             Tun2Socks.IProtectSocket protectSocket,
-            boolean hasTunnel, 
-            boolean finalCall, 
-            Map<String, Integer> pageViewEntries, 
+            boolean hasTunnel,
+            boolean finalCall,
+            Map<String, Integer> pageViewEntries,
             Map<String, Integer> httpsRequestEntries,
-            Number bytesTransferred) 
+            Number bytesTransferred)
         throws PsiphonServerInterfaceException
     {
         byte[] requestBody = null;
-        
+
         try
         {
             JSONObject stats = new JSONObject();
-            
+
+            // Stats traffic analysis mitigation: [non-cryptographic] pseudorandom padding to ensure the size of status requests is not constant.
+            // Padding size is JSON field overhead + 0-255 bytes + 33% base64 encoding overhead
+            stats.put("padding", Utils.Base64.encode(Utils.generateInsecureRandomBytes(Utils.insecureRandRange(0, 255))));
+
             stats.put("bytes_transferred", bytesTransferred);
             MyLog.d("BYTES: " + bytesTransferred);
-            
+
             JSONArray pageViews = new JSONArray();
             for (Map.Entry<String, Integer> pageViewEntry : pageViewEntries.entrySet())
             {
                 JSONObject entry = new JSONObject();
                 entry.put("page", pageViewEntry.getKey());
                 entry.put("count", pageViewEntry.getValue());
-    
+
                 pageViews.put(entry);
 
                 MyLog.d("PAGEVIEW: " + entry.toString());
@@ -650,7 +677,7 @@ public class ServerInterface
                 JSONObject entry = new JSONObject();
                 entry.put("domain", httpsRequestEntry.getKey());
                 entry.put("count", httpsRequestEntry.getValue());
-    
+
                 httpsRequests.put(entry);
 
                 MyLog.d("HTTPSREQUEST: " + entry.toString());
@@ -658,20 +685,20 @@ public class ServerInterface
             stats.put("https_requests", httpsRequests);
 
             requestBody = stats.toString().getBytes();
-        } 
+        }
         catch (JSONException e)
         {
             // We will log and allow the request (and application) to continue.
             MyLog.d("Stats JSON failed", e);
-        }        
-        
+        }
+
         List<Pair<String,String>> extraParams = new ArrayList<Pair<String,String>>();
         extraParams.add(Pair.create("session_id", this.serverSessionID));
         extraParams.add(Pair.create("connected", finalCall ? "0" : "1"));
 
         List<Pair<String,String>> additionalHeaders = new ArrayList<Pair<String,String>>();
         additionalHeaders.add(Pair.create("Content-Type", "application/json"));
-        
+
         if (!finalCall)
         {
             assert(protectSocket == null);
@@ -679,7 +706,7 @@ public class ServerInterface
 
             String url = getRequestURL("status", extraParams);
             makeAbortableProxiedPsiphonRequest(
-                    PsiphonConstants.HTTPS_REQUEST_SHORT_TIMEOUT, url, additionalHeaders, requestBody, null);            
+                    PsiphonConstants.HTTPS_REQUEST_SHORT_TIMEOUT, url, additionalHeaders, requestBody, null);
         }
         else
         {
@@ -691,14 +718,14 @@ public class ServerInterface
             // also be holding VpnService tun routing open. When there's no
             // tunnel, don't make a tunneled request. When the routing is
             // in place, protect the (direct) request socket.
-            
+
             String urls[] = getRequestURLsWithFailover("status", extraParams);
             makePsiphonRequestWithFailover(
                     protectSocket, PsiphonConstants.HTTPS_REQUEST_LONG_TIMEOUT, hasTunnel, urls, additionalHeaders, requestBody, null);
         }
     }
 
-    synchronized public void doSpeedRequest(String operation, String info, Integer milliseconds, Integer size) 
+    synchronized public void doSpeedRequest(String operation, String info, Integer milliseconds, Integer size)
         throws PsiphonServerInterfaceException
     {
         List<Pair<String,String>> extraParams = new ArrayList<Pair<String,String>>();
@@ -707,17 +734,17 @@ public class ServerInterface
         extraParams.add(Pair.create("info", info));
         extraParams.add(Pair.create("milliseconds", milliseconds.toString()));
         extraParams.add(Pair.create("size", size.toString()));
-        
+
         String url = getRequestURL("speed", extraParams);
-        
+
         makeAbortableProxiedPsiphonRequest(PsiphonConstants.HTTPS_REQUEST_SHORT_TIMEOUT, url);
     }
 
     /**
-     * Make the 'upgrade' request. 
+     * Make the 'upgrade' request.
      * @throws PsiphonServerInterfaceException
      */
-    public void doUpgradeDownloadRequest(IResumableDownload resumableDownload) 
+    public void doUpgradeDownloadRequest(IResumableDownload resumableDownload)
         throws PsiphonServerInterfaceException
     {
         // NOTE: This call is not 'synchronized'. This allows it to run in parallel
@@ -726,10 +753,10 @@ public class ServerInterface
 
         // TODO: Other network requests should be changed to not hold a lock and/or
         // have fine-grained locking
-        
+
         boolean canAbort = true;
         boolean useLocalProxy = true;
-        
+
         makeRequest(
                 null,
                 PsiphonConstants.HTTPS_REQUEST_LONG_TIMEOUT,
@@ -741,23 +768,23 @@ public class ServerInterface
                 null,
                 resumableDownload);
     }
-    
-    synchronized public void doFailedRequest(String error) 
+
+    synchronized public void doFailedRequest(String error)
         throws PsiphonServerInterfaceException
     {
         List<Pair<String,String>> extraParams = new ArrayList<Pair<String,String>>();
         extraParams.add(Pair.create("error_code", error));
-        
+
         String url = getRequestURL("failed", extraParams);
-        
+
         makeAbortableProxiedPsiphonRequest(PsiphonConstants.HTTPS_REQUEST_SHORT_TIMEOUT, url);
     }
 
     /**
-     * Make the 'feedback' request to the server. 
+     * Make the 'feedback' request to the server.
      * @throws PsiphonServerInterfaceException
      */
-    synchronized public void doFeedbackRequest(String feedbackData) 
+    synchronized public void doFeedbackRequest(String feedbackData)
         throws PsiphonServerInterfaceException
     {
         if(getCurrentServerEntry() == null)
@@ -807,10 +834,10 @@ public class ServerInterface
             {
                 return;
             }
-            
+
             // TODO: move to makeDirectWebRequest? All non-tunneled requests
             // could/should check and wait for network connectivity. However, in this
-            // case we want the network connectivity check to happen before the 
+            // case we want the network connectivity check to happen before the
             // setNextFetchRemoteServerList value is calculated.
             boolean printedWaitingMessage = false;
             while (!Utils.hasNetworkConnectivity(ownerContext))
@@ -838,35 +865,37 @@ public class ServerInterface
 
             // Update resolvers to match underlying network interface
             Utils.updateDnsResolvers(ownerContext);
-            
+
             PsiphonData.getPsiphonData().setNextFetchRemoteServerList(
                     SystemClock.elapsedRealtime() + 1000 * PsiphonConstants.SECONDS_BETWEEN_UNSUCCESSFUL_REMOTE_SERVER_LIST_FETCH);
-            
+
             try
             {
                 // TODO: failure is logged by the caller; right now the caller can't log
                 // the attempt since the caller doesn't know that/when a fetch will happen.
                 MyLog.v(R.string.fetch_remote_server_list, MyLog.Sensitivity.NOT_SENSITIVE);
-                
+
                 // We may need to except this connection from the VpnService tun interface
                 byte[] response = makeDirectWebRequest(protectSocket, PsiphonConstants.HTTPS_REQUEST_LONG_TIMEOUT, EmbeddedValues.REMOTE_SERVER_LIST_URL);
-    
+
                 PsiphonData.getPsiphonData().setNextFetchRemoteServerList(
                         SystemClock.elapsedRealtime() + 1000 * PsiphonConstants.SECONDS_BETWEEN_SUCCESSFUL_REMOTE_SERVER_LIST_FETCH);
-                
+
                 String serverList = AuthenticatedDataPackage.extractAndVerifyData(
                                         EmbeddedValues.REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY,
                                         false, // "data" is not Base64
                                         new String(response));
-    
-                shuffleAndAddServerEntries(serverList.split("\n"), false);
-                saveServerEntries();
+
+                if (!EmbeddedValues.IGNORE_NON_EMBEDDED_SERVER_ENTRIES) {
+                    shuffleAndAddServerEntries(serverList.split("\n"), false);
+                    saveServerEntries();
+                }
             }
             catch (AuthenticatedDataPackageException e)
             {
                 MyLog.w(R.string.ServerInterface_InvalidRemoteServerList, MyLog.Sensitivity.NOT_SENSITIVE, e);
                 throw new PsiphonServerInterfaceException(e);
-            } 
+            }
             catch (JSONException e)
             {
                 MyLog.w(R.string.ServerInterface_InvalidRemoteServerList, MyLog.Sensitivity.NOT_SENSITIVE, e);
@@ -874,17 +903,17 @@ public class ServerInterface
             }
         }
     }
-    
+
     /**
      * Helper function for constructing request URLs. The request parameters it
-     * supplies are: client_session_id, propagation_channel_id, sponsor_id, 
+     * supplies are: client_session_id, propagation_channel_id, sponsor_id,
      * client_version, server_secret.
      * Any additional parameters must be provided in extraParams.
-     * @param path  The path for the request; this is typically the name of the 
+     * @param path  The path for the request; this is typically the name of the
      *              request command; e.g. "connected". Do not use a leading slash.
-     * @param extraParams  Additional parameters that should be included in the 
+     * @param extraParams  Additional parameters that should be included in the
      *                     request. Can be null. The parameters values *must not*
-     *                     be already URL-encoded. Note that this is a List of 
+     *                     be already URL-encoded. Note that this is a List of
      *                     Pairs rather than a Map because there may be entries
      *                     with duplicate "keys".
      * @return  The full URL for the request.
@@ -898,16 +927,16 @@ public class ServerInterface
 
     /**
      * Helper function for constructing request URLs. The request parameters it
-     * supplies are: client_session_id, propagation_channel_id, sponsor_id, 
+     * supplies are: client_session_id, propagation_channel_id, sponsor_id,
      * client_version, server_secret.
      * Any additional parameters must be provided in extraParams.
-     * @param webServerPort  -1: use server entry port 
+     * @param webServerPort  -1: use server entry port
      *              other value: use specified value
-     * @param path  The path for the request; this is typically the name of the 
+     * @param path  The path for the request; this is typically the name of the
      *              request command; e.g. "connected". Do not use a leading slash.
-     * @param extraParams  Additional parameters that should be included in the 
+     * @param extraParams  Additional parameters that should be included in the
      *                     request. Can be null. The parameters values *must not*
-     *                     be already URL-encoded. Note that this is a List of 
+     *                     be already URL-encoded. Note that this is a List of
      *                     Pairs rather than a Map because there may be entries
      *                     with duplicate "keys".
      * @return  The full URL for the request.
@@ -919,22 +948,22 @@ public class ServerInterface
     {
         ServerEntry serverEntry = getCurrentServerEntry();
         String clientSessionID = getCurrentClientSessionID();
-        
+
         StringBuilder url = new StringBuilder();
         String clientPlatform = PsiphonConstants.PLATFORM;
-        
+
         // Detect if device is rooted and append to the client_platform string
         if (Utils.isRooted())
         {
             clientPlatform += PsiphonConstants.ROOTED;
         }
-        
+
         // Detect if this is a Play Store build
         if (EmbeddedValues.IS_PLAY_STORE_BUILD)
         {
             clientPlatform += PsiphonConstants.PLAY_STORE_BUILD;
         }
-        
+
         url.append("https://").append(serverEntry.ipAddress)
            .append(":").append(webServerPort == -1 ? serverEntry.webServerPort : webServerPort)
            .append("/").append(path)
@@ -949,7 +978,7 @@ public class ServerInterface
 
         if (extraParams != null)
         {
-            for (Pair<String,String> param : extraParams) 
+            for (Pair<String,String> param : extraParams)
             {
                 String paramKey = param.first;
                 String paramValue = param.second;
@@ -977,20 +1006,20 @@ public class ServerInterface
             String[] urls,
             List<Pair<String,String>> additionalHeaders,
             byte[] body,
-            IResumableDownload resumableDownload) 
+            IResumableDownload resumableDownload)
         throws PsiphonServerInterfaceException
     {
         // This request won't abort and will fail over to direct requests,
-        // to multiple ports, when tunnel is down            
+        // to multiple ports, when tunnel is down
 
         PsiphonServerInterfaceException lastError = new PsiphonServerInterfaceException();
-        
+
         if (hasTunnel)
         {
             try
             {
                 // Try tunneled request on first port (first url)
-                
+
                 return makeProxiedPsiphonRequest(
                         timeout,
                         false,
@@ -1010,14 +1039,14 @@ public class ServerInterface
         if (getCurrentServerEntry().hasCapability(ServerEntry.CAPABILITY_HANDSHAKE))
         {
             // Try direct non-tunnel requests
-    
+
             for (String url : urls)
             {
                 try
                 {
                     // Psiphon web request: authenticate the web server using the embedded certificate.
                     String psiphonServerCertificate = getCurrentServerEntry().webServerCertificate;
-    
+
                     return makeRequest(
                             protectSocket,
                             timeout,
@@ -1032,21 +1061,21 @@ public class ServerInterface
                 catch (PsiphonServerInterfaceException e2)
                 {
                     lastError = e2;
-    
+
                     // Try next port/url...
                 }
             }
         }
-        
+
         throw lastError;
     }
-    
+
     private byte[] makeAbortableProxiedPsiphonRequest(int timeout, String url)
             throws PsiphonServerInterfaceException
     {
         return makeAbortableProxiedPsiphonRequest(timeout, url, null, null, null);
     }
-    
+
     private byte[] makeAbortableProxiedPsiphonRequest(
             int timeout,
             String url,
@@ -1064,12 +1093,12 @@ public class ServerInterface
             String url,
             List<Pair<String,String>> additionalHeaders,
             byte[] body,
-            IResumableDownload resumableDownload) 
+            IResumableDownload resumableDownload)
         throws PsiphonServerInterfaceException
     {
         // Psiphon web request: authenticate the web server using the embedded certificate.
         String psiphonServerCertificate = getCurrentServerEntry().webServerCertificate;
-        
+
         // Psiphon web request: go through the tunnel to ensure this request is
         // transmitted even in the case where SSL protocol is blocked.
         boolean useLocalProxy = true;
@@ -1094,8 +1123,8 @@ public class ServerInterface
 
     private class FixedCertTrustManager implements X509TrustManager
     {
-        private X509Certificate expectedServerCertificate;
-        
+        private final X509Certificate expectedServerCertificate;
+
         // TODO: pre-validate cert in addServerEntry so this won't throw?
         FixedCertTrustManager(String serverCertificate) throws CertificateException
         {
@@ -1130,8 +1159,8 @@ public class ServerInterface
             return null;
         }
     }
-    
-    private class ProtectedDnsResolver implements DnsResolver
+
+    public static class ProtectedDnsResolver implements DnsResolver
     {
         Tun2Socks.IProtectSocket protectSocket;
         ServerInterface serverInterface;
@@ -1156,16 +1185,71 @@ public class ServerInterface
             //   a tunnel stop is commanded.
             // - DNS resolvers are updated in runTunnelOnce() and should be set to the correct resolvers for
             //   the active underlying (non-VPN) network.
-            
+
             PsiphonState.getPsiphonState().setState(protectSocket, serverInterface);
             InetAddress[] result = Address.getAllByName(hostname);
-            PsiphonState.getPsiphonState().setState(null, null);
+
+            // HACK: now we're using ProtectedDnsResolver in meek, which may perform many
+            // lookups in a short time period. To avoid clobbering, we're no longed clearing
+            // the shared global state -- but this is only safe because the entire session has
+            // a single IProtectSocket and [main] ServerInterface.
+
+            // PsiphonState.getPsiphonState().setState(null, null);
 
             return result;
         }
     }
 
-    private class ProtectedSSLSocketFactory extends SSLSocketFactory
+    public static class CustomDnsResolver implements DnsResolver
+    {
+        CustomDnsResolver()
+        {
+        }
+
+        @Override
+        public InetAddress[] resolve(String hostname) throws UnknownHostException
+        {
+            return Address.getAllByName(hostname);
+        }
+    }
+    
+    public static DnsResolver getDnsResolver(Tun2Socks.IProtectSocket protectSocket, ServerInterface serverInterface)
+    {
+        if (protectSocket != null)
+        {
+            return new ProtectedDnsResolver(protectSocket, serverInterface);
+        }
+        // NOTE: It's important to use the SystemDefaultDnsResolver in the other case not
+        // simply because protect() is not required, but also because the hidden API
+        // used in getActiveNetworkDnsResolvers() isn't available on Android < 4.0.
+        // So we only use the custom resolver when protectSocket is called for, which
+        // only happens on Android > 4.0 in VpnService mode, which is exactly the mode
+        // where we need the custom resolver. Other modes (browser-only and root on
+        // any version of Android) don't require a custom resolver (browser-only because
+        // DNS isn't tunneled; root because Psiphon pid DNS isn't routed through the
+        // tunnel).
+        // NEW: It turns out that on Android > 4.0, using the SystemDefaultDnsResolver
+        // results in DNS requests being made by a different process. So in rooted WDM
+        // these requests aren't excluded by transparent proxy routing, which is required.
+        // The CustomDnsResolver ensures that DNS requests are made by this process,
+        // so that they can be excluded from transparent proxy routing,
+        // so that they succeed in WDM when the tunnel is down.
+        // NOTE that the CustomDnsResolver relies on a hidden API only available on
+        // Android > 4.0.
+        // NOTE also that the SystemDefaultDnsResolver makes requests from the Psiphon
+        // process on Android < 4.0.
+        else if (PsiphonData.getPsiphonData().getTunnelWholeDevice() &&
+                Utils.hasVpnService())
+        {
+            return new CustomDnsResolver();
+        }
+        else
+        {
+            return new SystemDefaultDnsResolver();
+        }
+    }
+
+    public static class ProtectedSSLSocketFactory extends SSLSocketFactory
     {
         Tun2Socks.IProtectSocket protectSocket;
 
@@ -1175,7 +1259,7 @@ public class ServerInterface
                 X509HostnameVerifier verifier)
         {
             super(sslContext, verifier);
-            
+
             this.protectSocket = protectSocket;
         }
 
@@ -1192,7 +1276,7 @@ public class ServerInterface
         // - Socket.close() closes the channel: http://docs.oracle.com/javase/6/docs/api/java/net/Socket.html#close%28%29
         // - CreateLayeredSocket not overridden: in our usage of it, this will be invoked with
         //   the proxy set to localhost and protect() is not required.
-        
+
         @Override
         public Socket createSocket(HttpParams params)
                 throws IOException
@@ -1224,7 +1308,49 @@ public class ServerInterface
             return null;
         }
     }
-    
+
+    public static class ProtectedPlainSocketFactory extends PlainSocketFactory
+    {
+        Tun2Socks.IProtectSocket protectSocket;
+
+        ProtectedPlainSocketFactory(Tun2Socks.IProtectSocket protectSocket)
+        {
+            super();
+
+            this.protectSocket = protectSocket;
+        }
+
+        // NOTE:
+        // See comment block in ProtectedSSLSocketFactory
+
+        @Override
+        public Socket createSocket(HttpParams params)
+        {
+            Socket socket = null;
+            try
+            {
+                socket = SocketChannel.open().socket();
+                if (this.protectSocket != null)
+                {
+                    this.protectSocket.doVpnProtect(socket);
+                }
+            } catch (IOException e)
+            {
+                // TODO: log?
+            }
+
+            return socket;
+        }
+
+        @Override
+        public Socket createSocket()
+        {
+            // Deprecated - our code will not call this
+            assert(false);
+            return null;
+        }
+    }
+
     public interface IResumableDownload
     {
         long getResumeOffset();
@@ -1240,17 +1366,17 @@ public class ServerInterface
             String url,
             List<Pair<String,String>> additionalHeaders,
             byte[] body,
-            IResumableDownload resumableDownload) 
+            IResumableDownload resumableDownload)
         throws PsiphonServerInterfaceException
-    {    
+    {
         HttpRequestBase request = null;
-        
+
         try
         {
             HttpParams params = new BasicHttpParams();
             HttpConnectionParams.setConnectionTimeout(params, timeout);
             HttpConnectionParams.setSoTimeout(params, timeout);
-            
+
             HttpHost httpproxy;
             if (useLocalProxy)
             {
@@ -1277,7 +1403,7 @@ public class ServerInterface
                 // exactly that certificate.
 
                 trustManager = new TrustManager[] { new FixedCertTrustManager(serverCertificate) };
-                sslContext.init(null, trustManager, new SecureRandom()); 
+                sslContext.init(null, trustManager, new SecureRandom());
                 sslSocketFactory = new ProtectedSSLSocketFactory(
                                         protectSocket,
                                         sslContext,
@@ -1287,7 +1413,7 @@ public class ServerInterface
             {
                 // Otherwise, accept a server certificate signed by a CA in
                 // the default trust manager.
-                
+
                 sslContext.init(null,  null,  null);
                 sslSocketFactory = new ProtectedSSLSocketFactory(
                                         protectSocket,
@@ -1299,28 +1425,11 @@ public class ServerInterface
             registry.register(new Scheme("http", 80, PlainSocketFactory.getSocketFactory()));
             registry.register(new Scheme("https", 443, sslSocketFactory));
 
-            DnsResolver dnsResolver;            
-            if (protectSocket != null)
-            {
-                dnsResolver = new ProtectedDnsResolver(protectSocket, this);
-            }
-            else            
-            {
-                // NOTE: It's important to use the SystemDefaultDnsResolver in this case not
-                // simply because protect() is not required, but also because the hidden API
-                // used in getActiveNetworkDnsResolvers() isn't available on Android < 4.0.
-                // So we only use the custom resolver when protectSocket is called for, which
-                // only happens on Android > 4.0 in VpnService mode, which is exactly the mode
-                // where we need the custom resolver. Other modes (browser-only and root on
-                // any version of Android) don't require a custom resolver (browser-only because
-                // DNS isn't tunneled; root because Psiphon pid DNS isn't routed through the
-                // tunnel).
-                dnsResolver = new SystemDefaultDnsResolver();
-            }
+            DnsResolver dnsResolver = getDnsResolver(protectSocket, this);
 
-            ClientConnectionManager connManager = new PoolingClientConnectionManager(registry, dnsResolver);            
+            ClientConnectionManager connManager = new PoolingClientConnectionManager(registry, dnsResolver);
             DefaultHttpClient client = new DefaultHttpClient(connManager, params);
-            
+
             if (body != null)
             {
                 HttpPost post = new HttpPost(url);
@@ -1331,7 +1440,7 @@ public class ServerInterface
             {
                 request = new HttpGet(url);
             }
-            
+
             if (canAbort)
             {
                 synchronized(this.outstandingRequests)
@@ -1339,7 +1448,7 @@ public class ServerInterface
                     this.outstandingRequests.add(request);
                 }
             }
-            
+
             if (additionalHeaders != null)
             {
                 for (Pair<String,String> header : additionalHeaders)
@@ -1347,7 +1456,7 @@ public class ServerInterface
                     request.addHeader(header.first, header.second);
                 }
             }
-            
+
             if (resumableDownload != null)
             {
                 // Add a Range header to request the resumable download starting offset
@@ -1356,7 +1465,7 @@ public class ServerInterface
             }
 
             HttpResponse response = client.execute(request);
-            
+
             int statusCode = response.getStatusLine().getStatusCode();
 
             if (resumableDownload != null)
@@ -1372,18 +1481,18 @@ public class ServerInterface
                 }
             }
             else
-            {                
+            {
                 if (statusCode != HttpStatus.SC_OK)
                 {
                     throw new PsiphonServerInterfaceException(
                             this.ownerContext.getString(R.string.ServerInterface_HTTPSRequestFailed) + statusCode);
                 }
             }
-            
+
             HttpEntity responseEntity = response.getEntity();
-            
+
             ByteArrayOutputStream responseBody = new ByteArrayOutputStream();
-            
+
             if (responseEntity != null)
             {
                 InputStream instream = responseEntity.getContent();
@@ -1391,12 +1500,12 @@ public class ServerInterface
                 int len = -1;
                 while ((len = instream.read(buffer)) != -1)
                 {
-                    if (this.stopped) 
+                    if (this.stopped)
                     {
                         throw new PsiphonServerInterfaceException(
                                 this.ownerContext.getString(R.string.ServerInterface_StopRequested));
                     }
-                    
+
                     if (resumableDownload == null)
                     {
                         responseBody.write(buffer, 0, len);
@@ -1407,13 +1516,13 @@ public class ServerInterface
                     }
                 }
             }
-            
+
             return responseBody.toByteArray();
-        } 
+        }
         catch (ClientProtocolException e)
         {
             throw new PsiphonServerInterfaceException(e);
-        } 
+        }
         catch (IOException e)
         {
             throw new PsiphonServerInterfaceException(e);
@@ -1433,7 +1542,7 @@ public class ServerInterface
         catch (IllegalArgumentException e)
         {
             /* In some cases we have found the http client.execute method to throw a IllegalArgumentException after
-               the tunnel has gone away: 
+               the tunnel has gone away:
                 E/AndroidRuntime(25874): FATAL EXCEPTION: Thread-2193
                 E/AndroidRuntime(25874): java.lang.IllegalArgumentException: Socket is closed.
                 E/AndroidRuntime(25874):        at org.apache.http.conn.ssl.SSLSocketFactory.isSecure(SSLSocketFactory.java:360)
@@ -1452,7 +1561,7 @@ public class ServerInterface
         catch (IllegalStateException e)
         {
             /* In some cases we have found the http client.execute method to throw a IllegalStateException after
-               the tunnel has gone away: 
+               the tunnel has gone away:
                 E/AndroidRuntime( 7013): FATAL EXCEPTION: Thread-35792
                 E/AndroidRuntime( 7013): java.lang.IllegalStateException: Connection is not open
                 E/AndroidRuntime( 7013):        at ch.boye.httpclientandroidlib.impl.SocketHttpClientConnection.assertOpen(SocketHttpClientConnection.java:84)
@@ -1471,7 +1580,7 @@ public class ServerInterface
         catch (NullPointerException e)
         {
             /* In some cases we have found the http client.execute method to throw a NullPointerException after
-               the tunnel has gone away: 
+               the tunnel has gone away:
                 E/AndroidRuntime(23042): FATAL EXCEPTION: Thread-2246
                 E/AndroidRuntime(23042): java.lang.NullPointerException
                 E/AndroidRuntime(23042):        at org.apache.http.impl.conn.AbstractPoolEntry.layerProtocol(AbstractPoolEntry.java:305)
@@ -1493,7 +1602,7 @@ public class ServerInterface
                     // Harmless if the request was successful. Necessary clean-up if
                     // the request was interrupted.
                     if (!request.isAborted()) request.abort();
-                    
+
                     this.outstandingRequests.remove(request);
                 }
             }
@@ -1507,7 +1616,7 @@ public class ServerInterface
     {
         // Shuffling assists in load balancing when there
         // are multiple embedded/discovery servers at once
-        
+
         List<String> encodedEntryList = Arrays.asList(encodedServerEntries);
         // NOTE: this changes the order of the input array, encodedServerEntries
         Collections.shuffle(encodedEntryList);
@@ -1516,7 +1625,7 @@ public class ServerInterface
             insertServerEntry(entry, isEmbedded);
         }
     }
-    
+
     private ServerEntry decodeServerEntry(String encodedServerEntry)
             throws JSONException
     {
@@ -1542,8 +1651,8 @@ public class ServerInterface
         newEntry.sshHostKey = obj.getString("sshHostKey");
         newEntry.sshObfuscatedPort = obj.getInt("sshObfuscatedPort");
         newEntry.sshObfuscatedKey = obj.getString("sshObfuscatedKey");
-        
-        newEntry.capabilities = new ArrayList<String>(); 
+
+        newEntry.capabilities = new ArrayList<String>();
         if (obj.has("capabilities"))
         {
             JSONArray caps = obj.getJSONArray("capabilities");
@@ -1561,24 +1670,48 @@ public class ServerInterface
             newEntry.capabilities.add(ServerEntry.CAPABILITY_VPN);
             newEntry.capabilities.add(ServerEntry.CAPABILITY_HANDSHAKE);
         }
-        
+
         if (obj.has("region"))
         {
             newEntry.regionCode = obj.getString("region");
         }
         else
         {
-            newEntry.regionCode = "";            
+            newEntry.regionCode = "";
         }
-        
+
+        if (newEntry.hasCapability(ServerEntry.CAPABILITY_UNFRONTED_MEEK) ||
+                newEntry.hasCapability(ServerEntry.CAPABILITY_FRONTED_MEEK))
+        {
+            newEntry.meekServerPort = obj.getInt("meekServerPort");
+            newEntry.meekCookieEncryptionPublicKey = obj.getString("meekCookieEncryptionPublicKey");
+            newEntry.meekObfuscatedKey = obj.getString("meekObfuscatedKey");
+        }
+        else
+        {
+            newEntry.meekServerPort = -1;
+            newEntry.meekObfuscatedKey = "";
+        }
+
+        if (newEntry.hasCapability(ServerEntry.CAPABILITY_FRONTED_MEEK))
+        {
+            newEntry.meekFrontingDomain = obj.getString("meekFrontingDomain");
+            newEntry.meekFrontingHost = obj.getString("meekFrontingHost");
+        }
+        else
+        {
+            newEntry.meekFrontingDomain = "";
+            newEntry.meekFrontingHost = "";
+        }
+
         return newEntry;
     }
-    
-    private void appendServerEntry(String encodedServerEntry) 
+
+    private void appendServerEntry(String encodedServerEntry)
         throws JSONException
     {
         // Simply append server entry at end
-        
+
         ServerEntry newEntry = decodeServerEntry(encodedServerEntry);
 
         // Check if there's already an entry for this server
@@ -1591,10 +1724,10 @@ public class ServerInterface
                 break;
             }
         }
-        
+
         this.serverEntries.add(newEntry);
 
-        RegionAdapter.setServerExists(this.ownerContext, newEntry.regionCode, false);        
+        RegionAdapter.setServerExists(this.ownerContext, newEntry.regionCode, false);
     }
 
     private void insertServerEntry(String encodedServerEntry, boolean isEmbedded)
@@ -1614,7 +1747,7 @@ public class ServerInterface
                 break;
             }
         }
-        
+
         if (existingIndex != -1)
         {
             // Only replace existing entries in the discovery case
@@ -1625,7 +1758,7 @@ public class ServerInterface
             boolean overwriteEmbedded =
                     this.serverEntries.get(existingIndex).regionCode.length() == 0
                     && newEntry.regionCode.length() > 0;
-            
+
             if (!isEmbedded || overwriteEmbedded)
             {
                 this.serverEntries.remove(existingIndex);
@@ -1645,7 +1778,7 @@ public class ServerInterface
             RegionAdapter.setServerExists(this.ownerContext, newEntry.regionCode, false);
         }
     }
-    
+
     private void saveServerEntries()
     {
         synchronized(PsiphonData.getPsiphonData().serverEntryFileLock)
@@ -1668,7 +1801,7 @@ public class ServerInterface
             {
                 MyLog.w(R.string.ServerInterface_FailedToCreateServerEntries, MyLog.Sensitivity.NOT_SENSITIVE, e);
                 // Proceed, even if file saving fails
-            } 
+            }
             catch (IOException e)
             {
                 MyLog.w(R.string.ServerInterface_FailedToStoreServerEntries, MyLog.Sensitivity.NOT_SENSITIVE, e);
@@ -1721,7 +1854,7 @@ public class ServerInterface
 
         saveServerEntries();
     }
-    
+
     private final long DEFAULT_STATS_SEND_INTERVAL_MS = 5*60*1000; // 5 mins
     private long statsSendInterval = DEFAULT_STATS_SEND_INTERVAL_MS;
     private long lastStatusSendTimeMS = 0;
@@ -1734,7 +1867,7 @@ public class ServerInterface
         this.lastStatusSendTimeMS = 0;
         this.sendMaxEntries = this.DEFAULT_SEND_MAX_ENTRIES;
     }
-    
+
     /**
      * Call to let the interface to any periodic work or checks that it needs to.
      * The primary example of this "work" is to send stats to the server when
@@ -1748,82 +1881,85 @@ public class ServerInterface
             boolean finalCall)
     {
         long now = SystemClock.uptimeMillis();
-        
+
         if (finalCall && PsiphonData.getPsiphonData().getDisplayDataTransferStats())
         {
             PsiphonData.DataTransferStats dataTransferStats = PsiphonData.getPsiphonData().getDataTransferStats();
-            
+
             long bytesSent = dataTransferStats.getSessionBytesSent();
             double sentCompressionRatio = dataTransferStats.getSessionSentCompressionRatio();
             long bytesReceived = dataTransferStats.getSessionBytesReceived();
             double receivedCompressionRatio = dataTransferStats.getSessionReceivedCompressionRatio();
             long elapsedTime = dataTransferStats.getElapsedTime();
-                
+
             MyLog.v(
                     R.string.data_transfer_bytes_sent,
                     MyLog.Sensitivity.NOT_SENSITIVE,
                     Utils.byteCountToDisplaySize(bytesSent, false),
                     sentCompressionRatio);
-        
+
             MyLog.v(
                     R.string.data_transfer_bytes_received,
                     MyLog.Sensitivity.NOT_SENSITIVE,
                     Utils.byteCountToDisplaySize(bytesReceived, false),
                     receivedCompressionRatio);
-        
+
             MyLog.v(
                     R.string.data_transfer_elapsed_time,
                     MyLog.Sensitivity.NOT_SENSITIVE,
-                    Utils.elapsedTimeToDisplay(elapsedTime));        
+                    Utils.elapsedTimeToDisplay(elapsedTime));
         }
-        
+
         PsiphonData.ReportedStats reportedStats = PsiphonData.getPsiphonData().getReportedStats();
 
         if (reportedStats != null)
         {
             // On the very first call, this.lastStatusSendTimeMS will be 0, but we
             // don't want to send immediately. So...
-            if (this.lastStatusSendTimeMS == 0) this.lastStatusSendTimeMS = now; 
-            
-            // SystemClock.uptimeMillis() "may get reset occasionally (before it 
+            if (this.lastStatusSendTimeMS == 0) this.lastStatusSendTimeMS = now;
+
+            // SystemClock.uptimeMillis() "may get reset occasionally (before it
             // would otherwise wrap around)".
             if (now < this.lastStatusSendTimeMS) this.lastStatusSendTimeMS = 0;
-            
-            // If the time or size thresholds have been exceeded, or if we're being 
+
+            // If the time or size thresholds have been exceeded, or if we're being
             // forced to, send the stats.
             if (finalCall
                 || (this.lastStatusSendTimeMS + this.statsSendInterval) < now
                 || reportedStats.getCount() >= this.sendMaxEntries)
             {
                 MyLog.d("Sending stats"+(finalCall?" (final)":""));
-                
+
                 try
                 {
                     doStatusRequest(
                             protectSocket,
                             hasTunnel,
-                            finalCall, 
-                            reportedStats.getPageViewEntries(), 
-                            reportedStats.getHttpsRequestEntries(), 
+                            finalCall,
+                            reportedStats.getPageViewEntries(),
+                            reportedStats.getHttpsRequestEntries(),
                             reportedStats.getBytesTransferred());
-                    
+
                     // Reset thresholds
                     this.lastStatusSendTimeMS = now;
                     this.statsSendInterval = DEFAULT_STATS_SEND_INTERVAL_MS;
                     this.sendMaxEntries = DEFAULT_SEND_MAX_ENTRIES;
-                    
+
+                    // Stats traffic analysis mitigation: add some [non-cryptographic] pseudorandom jitter to the time interval
+                    this.statsSendInterval += Utils.insecureRandRange(0, (int)DEFAULT_STATS_SEND_INTERVAL_MS);
+
                     // Reset stats
                     reportedStats.clear();
-                } 
+                }
                 catch (PsiphonServerInterfaceException e)
                 {
-                    // Status request failed. This is fairly common. 
+                    // Status request failed. This is fairly common.
                     // We'll back off the thresholds and try again later.
                     this.statsSendInterval += DEFAULT_STATS_SEND_INTERVAL_MS;
                     this.sendMaxEntries += DEFAULT_SEND_MAX_ENTRIES;
-                    
+
                     MyLog.d("Sending stats FAILED"+(finalCall?" (final)":""));
-                    
+
                     if (finalCall)
                     {
                         MyLog.w(R.string.final_status_request_failed, MyLog.Sensitivity.NOT_SENSITIVE, e);
@@ -1846,7 +1982,7 @@ public class ServerInterface
         }
         catch (NumberFormatException e)
         {
-        }        
+        }
         return 0;
     }
 }
