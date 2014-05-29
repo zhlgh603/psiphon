@@ -501,25 +501,46 @@ func (t *Transport) dialConn(cm *connectMethod) (*persistConn, error) {
 	if cm.targetScheme == "https" {
 		// Initiate TLS and check remote host name against certificate.
 		cfg := t.TLSClientConfig
-		if cfg == nil || cfg.ServerName == "" {
-			host := cm.tlsHost()
-			if cfg == nil {
-				cfg = &tls.Config{ServerName: host}
-			} else {
-				clone := *cfg // shallow clone
-				clone.ServerName = host
-				cfg = &clone
+		/*
+			if cfg == nil || cfg.ServerName == "" {
+				host := cm.tlsHost()
+				if cfg == nil {
+					cfg = &tls.Config{ServerName: host}
+				} else {
+					clone := *cfg // shallow clone
+					clone.ServerName = host
+					cfg = &clone
+				}
 			}
+			conn = tls.Client(conn, cfg)
+			if err = conn.(*tls.Conn).Handshake(); err != nil {
+				return nil, err
+			}
+			if !cfg.InsecureSkipVerify {
+				if err = conn.(*tls.Conn).VerifyHostname(cfg.ServerName); err != nil {
+					return nil, err
+				}
+			}
+		*/
+		/*
+		   // PSIPHON: Do not set ServerName in the TLSClientConfig to avoid
+		   // sending SNI in the TLS Client Hello, use cm.tlsHost() instead
+		   // for hostname verification
+		*/
+
+		if cfg == nil {
+			cfg = &tls.Config{}
 		}
 		conn = tls.Client(conn, cfg)
 		if err = conn.(*tls.Conn).Handshake(); err != nil {
 			return nil, err
 		}
 		if !cfg.InsecureSkipVerify {
-			if err = conn.(*tls.Conn).VerifyHostname(cfg.ServerName); err != nil {
+			if err = conn.(*tls.Conn).VerifyHostname(cm.tlsHost()); err != nil {
 				return nil, err
 			}
 		}
+
 		pconn.conn = conn
 	}
 
