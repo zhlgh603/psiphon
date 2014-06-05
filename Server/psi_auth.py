@@ -125,9 +125,10 @@ def set_session_region(pam_rhost, session_id):
             port=psi_config.SESSION_DB_PORT,
             db=psi_config.SESSION_DB_INDEX)
 
-    redis_session.set(session_id, json.dumps(geoip))
-    redis_session.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
-    
+    if redis_session.get(session_id) == None:
+        redis_session.set(session_id, json.dumps(geoip))
+        redis_session.expire(session_id, psi_config.SESSION_EXPIRE_SECONDS)
+
     # Now fill in the discovery database
     # NOTE: We are storing a value derived from the user's IP address
     # to be used by the discovery algorithm done in handshake when
@@ -140,8 +141,10 @@ def set_session_region(pam_rhost, session_id):
                 host=psi_config.DISCOVERY_DB_HOST,
                 port=psi_config.DISCOVERY_DB_PORT,
                 db=psi_config.DISCOVERY_DB_INDEX)
-        redis_discovery.set(session_id, json.dumps({'client_ip_address_strategy_value' : client_ip_address_strategy_value}))
-        redis_discovery.expire(session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
+
+        if redis_discovery.get(session_id) == None:
+            redis_discovery.set(session_id, json.dumps({'client_ip_address_strategy_value' : client_ip_address_strategy_value}))
+            redis_discovery.expire(session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
     except socket.error:
         pass
 
