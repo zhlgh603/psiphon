@@ -55,7 +55,11 @@ public class PsiphonConstants
     
     public final static int SESSION_ESTABLISHMENT_TIMEOUT_MILLISECONDS = 20000;
     
-    public final static String RELAY_PROTOCOL = "OSSH";
+    public final static String RELAY_PROTOCOL_OSSH = "OSSH";
+    
+    public final static String RELAY_PROTOCOL_FRONTED_MEEK_OSSH = "FRONTED-MEEK-OSSH";
+    
+    public final static String RELAY_PROTOCOL_UNFRONTED_MEEK_OSSH = "UNFRONTED-MEEK-OSSH";
     
     // The character restrictions are dictated by the server.
     public final static String PLATFORM = ("Android_" + Build.VERSION.RELEASE).replaceAll("[^\\w\\-\\.]", "_");
@@ -72,7 +76,11 @@ public class PsiphonConstants
     
     public final static String PLAY_STORE_BUILD = "_playstore";
 
-    public final static ArrayList<String> REQUIRED_CAPABILITIES_FOR_TUNNEL = new ArrayList<String>(){{ add(PsiphonConstants.RELAY_PROTOCOL); }};
+    // Only one of these capabilities are needed
+    public final static ArrayList<String> SUFFICIENT_CAPABILITIES_FOR_TUNNEL = new ArrayList<String>() {{
+        add(ServerInterface.ServerEntry.CAPABILITY_OSSH);
+        add(ServerInterface.ServerEntry.CAPABILITY_FRONTED_MEEK);
+        add(ServerInterface.ServerEntry.CAPABILITY_UNFRONTED_MEEK);}};
     
     public final static String FEEDBACK_ATTACHMENT_FILENAME = "psiphon-android-feedback.txt";
 

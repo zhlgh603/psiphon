@@ -6,12 +6,12 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
@@ -36,7 +36,6 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -45,20 +44,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import android.content.Context;
 import android.os.Build;
 import android.os.SystemClock;
-
 import ch.ethz.ssh2.HTTPProxyException;
 import ch.ethz.ssh2.crypto.Base64;
 import ch.ethz.ssh2.transport.ClientServerHello;
 import ch.ethz.ssh2.util.StringEncoder;
 
-import com.psiphon3.psiphonlibrary.R;
+import com.psiphon3.psiphonlibrary.MeekClient.IAbortIndicator;
 import com.psiphon3.psiphonlibrary.ServerInterface.PsiphonServerInterfaceException;
 import com.psiphon3.psiphonlibrary.ServerInterface.ServerEntry;
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
 
-public class ServerSelector
+public class ServerSelector implements IAbortIndicator
 {
     private final int NUM_THREADS = 10;
+
     private final int SHUTDOWN_POLL_MILLISECONDS = 50;
     private final int RESULTS_POLL_MILLISECONDS = 100;
     private final int SHUTDOWN_TIMEOUT_MILLISECONDS = 1000;
@@ -68,13 +67,16 @@ public class ServerSelector
     private ServerInterface serverInterface = null;
     private Context context = null;
     private boolean protectSocketsRequired = false;
+    private String clientSessionId = null;
     private Thread thread = null;
     private boolean stopFlag = false;
-    private AtomicBoolean workerPrintedProxyError = new AtomicBoolean(false);
+    private final AtomicBoolean workerPrintedProxyError = new AtomicBoolean(false);
 
+    public MeekClient firstEntryMeekClient = null;
+    public boolean firstEntryUsingHTTPProxy = false;
     public Socket firstEntrySocket = null;
     public String firstEntryIpAddress = null;
-    
+
     ServerSelector(
             Tun2Socks.IProtectSocket protectSocket,
             ServerInterface serverInterface,
@@ -84,9 +86,17 @@ public class ServerSelector
         this.serverInterface = serverInterface;
         this.context = context;
     }
-    
+
+    // MeekClient.IAbortIndicator
+    @Override
+    public boolean shouldAbort() {
+        return this.stopFlag;
+    }
+
     class CheckServerWorker implements Runnable
     {
+        MeekClient meekClient = null;
+        boolean usingHTTPProxy = false;
         ServerEntry entry = null;
         boolean responded = false;
         boolean completed = false;
@@ -97,59 +107,130 @@ public class ServerSelector
         {
             this.entry = entry;
         }
-        
+
+        @Override
         public void run()
         {
             PsiphonData.ProxySettings proxySettings = PsiphonData.getPsiphonData().getProxySettings(context);
             long startTime = SystemClock.elapsedRealtime();
             Selector selector = null;
-            
+
             try
             {
                 this.channel = SocketChannel.open();
-                
-                if (protectSocketsRequired)
-                {
-                    // We may need to except this connection from the VpnService tun interface
-                    protectSocket.doVpnProtect(this.channel.socket());
-                }
-                
+
                 this.channel.configureBlocking(false);
                 selector = Selector.open();
-                
-                List<String> proxyIpAddresses = new ArrayList<String>();
+
+                // TODO: Add HTTP proxy support to MeekClient. Currently, since that support
+                // is lacking, these cases are treated as mutually exclusive.
+
+                // Meek cases:
+                // 1. Create a new meek client with the selected meek configuration. The meek client
+                //    for the selected connection will be managed by TunnelCore. All others will
+                //    be shutdown by ServerSelector.
+                // 2. Start the meek client, which is a localhost server listening on a OS assigned port
+                // 3. The meek client is a static port forward to the selected Psiphon server, so call
+                //    makeSocketChannelConnection with the meek client address in place of the Psiphon server
+                // 4. The meek client accepts local connections instantly, so the meek protocol has been
+                //    tweaked to immediately poll the meek server -- we wait for that round trip to
+                //    complete, via awaitEstablishedFirstServerConnection, and take that to be the
+                //    response time.
+                //    Note that awaitEstablishedFirstServerConnection only works here because there's a new
+                //    MeekClient instance per server candidate; if we started to reuse MeekClient instances
+                //    then we need more sophisticated signaling.
+
+                // Even though the ServerEntry here is a clone, assigning to it
+                // works because ServerSelector merges it back in for the servers
+                // that respond.
 
                 if (proxySettings != null)
                 {
+                    if (protectSocketsRequired)
+                    {
+                        // We may need to except this connection from the VpnService tun interface
+                        protectSocket.doVpnProtect(this.channel.socket());
+                    }
+
+                    this.usingHTTPProxy = true;
+
                     makeSocketChannelConnection(selector, proxySettings.proxyHost, proxySettings.proxyPort);
                     this.channel.finishConnect();
                     selector.close();
                     this.channel.configureBlocking(true);
-                
-                    makeConnectionViaHTTPProxy(null, null);
-                    this.responded = true;
-                }
-                else if (proxyIpAddresses.size() > 0 && Math.random() >= 0.5)
-                {
-                    Collections.shuffle(proxyIpAddresses);
-                	
-                    MyLog.g("EmbeddedInProxy", "forServer", this.entry.ipAddress);
 
-                    makeSocketChannelConnection(selector, proxyIpAddresses.get(0), 3128);
-                    this.channel.finishConnect();
-                    selector.close();
-                    this.channel.configureBlocking(true);
-                
-                    makeConnectionViaHTTPProxy("user", "password");
+                    makeConnectionViaHTTPProxy(null, null);
+
                     this.responded = true;
+
+                    this.entry.connType = PsiphonConstants.RELAY_PROTOCOL_OSSH;
+                }
+                else if (this.entry.hasCapability(ServerEntry.CAPABILITY_FRONTED_MEEK))
+                {
+                    // NOTE: don't call doVpnProtect when using meekClient -- that breaks the localhost connection
+
+                    this.meekClient = new MeekClient(
+                            protectSocketsRequired ? ServerSelector.this.protectSocket : null,
+                            ServerSelector.this.serverInterface,
+                            ServerSelector.this.clientSessionId,
+                            this.entry.ipAddress + ":" + Integer.toString(this.entry.getPreferredReachablityTestPort()),
+                            this.entry.meekCookieEncryptionPublicKey,
+                            this.entry.meekObfuscatedKey,
+                            this.entry.meekFrontingDomain,
+                            this.entry.meekFrontingHost);
+                    this.meekClient.start();
+
+                    makeSocketChannelConnection(selector, "127.0.0.1", this.meekClient.getLocalPort());
+
+                    if (this.channel.finishConnect())
+                    {
+                        this.meekClient.awaitEstablishedFirstServerConnection(ServerSelector.this);
+                        this.responded = true;
+                    }
+
+                    this.entry.connType = PsiphonConstants.RELAY_PROTOCOL_FRONTED_MEEK_OSSH;
+                    this.entry.front = this.entry.meekFrontingDomain;
+                }
+                else if (this.entry.hasCapability(ServerEntry.CAPABILITY_UNFRONTED_MEEK))
+                {
+                    // NOTE: don't call doVpnProtect when using meekClient -- that breaks the localhost connection
+
+                    this.meekClient = new MeekClient(
+                            protectSocketsRequired ? ServerSelector.this.protectSocket : null,
+                            ServerSelector.this.serverInterface,
+                            ServerSelector.this.clientSessionId,
+                            this.entry.ipAddress + ":" + Integer.toString(this.entry.getPreferredReachablityTestPort()),
+                            this.entry.meekCookieEncryptionPublicKey,
+                            this.entry.meekObfuscatedKey,
+                            this.entry.ipAddress,
+                            this.entry.meekServerPort);
+                    this.meekClient.start();
+
+                    makeSocketChannelConnection(selector, "127.0.0.1", this.meekClient.getLocalPort());
+
+                    if (this.channel.finishConnect())
+                    {
+                        this.meekClient.awaitEstablishedFirstServerConnection(ServerSelector.this);
+                        this.responded = true;
+                    }
+
+                    this.entry.connType = PsiphonConstants.RELAY_PROTOCOL_UNFRONTED_MEEK_OSSH;
                 }
                 else
                 {
+                    if (protectSocketsRequired)
+                    {
+                        // We may need to except this connection from the VpnService tun interface
+                        protectSocket.doVpnProtect(this.channel.socket());
+                    }
+
                     makeSocketChannelConnection(selector,
                             this.entry.ipAddress,
                             this.entry.getPreferredReachablityTestPort());
-                    
+
                     this.responded = this.channel.finishConnect();
+
+                    this.entry.connType = PsiphonConstants.RELAY_PROTOCOL_OSSH;
                 }
             }
             catch (ClosedByInterruptException e) {}
@@ -157,7 +238,7 @@ public class ServerSelector
             catch (IllegalArgumentException e)
             {
                 // Avoid printing the same message multiple times in the case of a network proxy error
-                if (proxySettings != null && 
+                if (proxySettings != null &&
                         workerPrintedProxyError.compareAndSet(false, true))
                 {
                     MyLog.e(R.string.network_proxy_connect_exception, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, e.getLocalizedMessage());
@@ -166,7 +247,7 @@ public class ServerSelector
             catch (ConnectException e)
             {
                 // Avoid printing the same message multiple times in the case of a network proxy error
-                if (proxySettings != null && 
+                if (proxySettings != null &&
                         workerPrintedProxyError.compareAndSet(false, true))
                 {
                     MyLog.e(R.string.network_proxy_connect_exception, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, e.getLocalizedMessage());
@@ -175,7 +256,7 @@ public class ServerSelector
             catch (SocketException e)
             {
                 // Avoid printing the same message multiple times in the case of a network proxy error
-                if (proxySettings != null && 
+                if (proxySettings != null &&
                         workerPrintedProxyError.compareAndSet(false, true))
                 {
                     MyLog.e(R.string.network_proxy_connect_exception, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, e.getLocalizedMessage());
@@ -187,6 +268,10 @@ public class ServerSelector
                 {
                     MyLog.w(R.string.network_proxy_connect_exception, MyLog.Sensitivity.NOT_SENSITIVE, e.getLocalizedMessage());
                 }
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
             }
             finally
             {
@@ -202,6 +287,12 @@ public class ServerSelector
                 {
                     if (!this.responded)
                     {
+                        if (this.meekClient != null)
+                        {
+                            this.meekClient.stop();
+                            this.meekClient = null;
+                        }
+
                         try
                         {
                             this.channel.close();
@@ -219,16 +310,16 @@ public class ServerSelector
                     }
                 }
             }
-            
+
             this.responseTime = SystemClock.elapsedRealtime() - startTime;
             this.completed = true;
         }
-        
+
         private void makeSocketChannelConnection(Selector selector, String ipAddress, int port) throws IOException
         {
             this.channel.connect(new InetSocketAddress(ipAddress, port));
             this.channel.register(selector, SelectionKey.OP_CONNECT);
-            
+
             while (selector.select(SHUTDOWN_POLL_MILLISECONDS) == 0)
             {
                 if (stopFlag)
@@ -237,25 +328,25 @@ public class ServerSelector
                 }
             }
         }
-        
+
         private void makeConnectionViaHTTPProxy(String proxyUsername, String proxyPassword) throws IOException
         {
             Socket sock = this.channel.socket();
-            
+
             // The following is mostly copied from ch.ethz.ssh2.transport.TransportManager.establishConnection()
 
             sock.setSoTimeout(0);
-    
+
             /* OK, now tell the proxy where we actually want to connect to */
-    
+
             StringBuffer sb = new StringBuffer();
-    
+
             sb.append("CONNECT ");
             sb.append(this.entry.ipAddress);
             sb.append(':');
             sb.append(this.entry.getPreferredReachablityTestPort());
             sb.append(" HTTP/1.0\r\n");
-            
+
             if ((proxyUsername != null) && (proxyPassword != null))
             {
                 String credentials = proxyUsername + ":" + proxyPassword;
@@ -266,35 +357,35 @@ public class ServerSelector
             }
 
             sb.append("\r\n");
-    
+
             OutputStream out = sock.getOutputStream();
-    
+
             out.write(StringEncoder.GetBytes(sb.toString()));
             out.flush();
-    
+
             /* Now parse the HTTP response */
-    
+
             byte[] buffer = new byte[1024];
             InputStream in = sock.getInputStream();
-    
+
             int len = ClientServerHello.readLineRN(in, buffer);
-    
+
             String httpResponse = StringEncoder.GetString(buffer, 0, len);
-    
+
             if (httpResponse.startsWith("HTTP/") == false)
             {
                 throw new IOException("The proxy did not send back a valid HTTP response.");
             }
-    
+
             /* "HTTP/1.X XYZ X" => 14 characters minimum */
-    
+
             if ((httpResponse.length() < 14) || (httpResponse.charAt(8) != ' ') || (httpResponse.charAt(12) != ' '))
             {
                 throw new IOException("The proxy did not send back a valid HTTP response.");
             }
-    
+
             int errorCode = 0;
-    
+
             try
             {
                 errorCode = Integer.parseInt(httpResponse.substring(9, 12));
@@ -303,19 +394,19 @@ public class ServerSelector
             {
                 throw new IOException("The proxy did not send back a valid HTTP response.");
             }
-    
+
             if ((errorCode < 0) || (errorCode > 999))
             {
                 throw new IOException("The proxy did not send back a valid HTTP response.");
             }
-    
+
             if (errorCode != 200)
             {
                 throw new HTTPProxyException(httpResponse.substring(13), errorCode);
             }
-    
+
             /* OK, read until empty line */
-    
+
             while (true)
             {
                 len = ClientServerHello.readLineRN(in, buffer);
@@ -327,9 +418,10 @@ public class ServerSelector
             return;
         }
     }
-    
+
     class Coordinator implements Runnable
-    {        
+    {
+        @Override
         public void run()
         {
             // Run until we have results (> 0) or abort requested.
@@ -339,7 +431,7 @@ public class ServerSelector
             while (!stopFlag)
             {
                 MyLog.v(R.string.selecting_server, MyLog.Sensitivity.NOT_SENSITIVE);
-                
+
                 if (runOnce())
                 {
                     // We have a server
@@ -372,7 +464,7 @@ public class ServerSelector
                 }
             }
         }
-        
+
         private boolean runOnce()
         {
             boolean printedWaitingMessage = false;
@@ -401,13 +493,13 @@ public class ServerSelector
 
             // Update resolvers to match underlying network interface
             Utils.updateDnsResolvers(context);
-            
+
             // Adapted from Psiphon Windows client module server_list_reordering.cpp; see comments there.
             // Revision: https://bitbucket.org/psiphon/psiphon-circumvention-system/src/881d32d09e3a/Client/psiclient/server_list_reordering.cpp
 
             ArrayList<ServerEntry> serverEntries = serverInterface.getServerEntries();
             ArrayList<CheckServerWorker> workers = new ArrayList<CheckServerWorker>();
-            
+
             // Remember the original first entry
             ServerEntry originalFirstEntry = null;
             if (serverEntries.size() > 0)
@@ -422,25 +514,25 @@ public class ServerSelector
             // priority is FIFO.
             // NEW: Don't prioritize the first few servers any more, to give equal waiting
             // to older servers and to newer servers.
-            
+
             if (serverEntries.size() > NUM_THREADS)
             {
                 Collections.shuffle(serverEntries.subList(1, serverEntries.size()));
             }
-            
+
             ExecutorService threadPool = Executors.newFixedThreadPool(NUM_THREADS);
-            
+
             String egressRegion = PsiphonData.getPsiphonData().getEgressRegion();
-        
+
             MyLog.g("SelectedRegion", "regionCode", egressRegion);
-            
+
             PsiphonData.ProxySettings proxySettings = PsiphonData.getPsiphonData().getProxySettings(context);
-            MyLog.g("ProxyChaining", "enabled", 
+            MyLog.g("ProxyChaining", "enabled",
                     proxySettings == null ? "False" : "True");
             // Note that workers will still call getSystemProxySettings().  This is in case the
             // system proxy settings actually do change while the pool is running, and the log
             // above will not reflect that change.
-            
+
             if (proxySettings != null)
             {
                 MyLog.i(R.string.network_proxy_connect_information, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS,
@@ -449,11 +541,11 @@ public class ServerSelector
 
             // Reset this flag before running the workers.
             workerPrintedProxyError.set(false);
-            
+
             for (ServerEntry entry : serverEntries)
             {
                 if (-1 != entry.getPreferredReachablityTestPort() &&
-                        entry.hasCapabilities(PsiphonConstants.REQUIRED_CAPABILITIES_FOR_TUNNEL) &&
+                        entry.hasOneOfTheseCapabilities(PsiphonConstants.SUFFICIENT_CAPABILITIES_FOR_TUNNEL) &&
                         entry.inRegion(egressRegion))
                 {
                     CheckServerWorker worker = new CheckServerWorker(entry);
@@ -461,7 +553,7 @@ public class ServerSelector
                     workers.add(worker);
                 }
             }
-            
+
             try
             {
                 // Wait for either all tasks to complete, an abort request, or the
@@ -472,7 +564,7 @@ public class ServerSelector
                 // world data will contain clusters of multiple results (good for load
                 // balancing). This early exit allows us to wait for some results
                 // before starting the tunnel for the first time.
-                
+
                 for (int wait = 0;
                      !threadPool.awaitTermination(0, TimeUnit.MILLISECONDS) &&
                      !stopFlag &&
@@ -521,22 +613,24 @@ public class ServerSelector
                 MyLog.g(
                     "ServerResponseCheck",
                     "ipAddress", worker.entry.ipAddress,
+                    "connType", worker.entry.connType,
+                    "front", worker.entry.front,
                     "responded", worker.responded,
                     "responseTime", worker.responseTime,
                     "regionCode", worker.entry.regionCode);
-                
+
                 MyLog.d(
                     String.format("server: %s, responded: %s, response time: %d",
                             worker.entry.ipAddress, worker.responded ? "Yes" : "No", worker.responseTime));
             }
-        
+
             // Build a list of all servers that responded. We randomly shuffle the
             // resulting list for some client-side load balancing. Any server
             // that responded within the last RESULTS_POLL_MILLISECONDS is considered
             // equally qualified for any position towards the top of the list.
-        
+
             ArrayList<ServerEntry> respondingServers = new ArrayList<ServerEntry>();
-        
+
             for (CheckServerWorker worker : workers)
             {
                 // NOTE: used to filter by worker.responseTime <= fastestResponseTime*RESPONSE_TIME_THRESHOLD_FACTOR,
@@ -547,9 +641,9 @@ public class ServerSelector
                     respondingServers.add(worker.entry);
                 }
             }
-        
+
             Collections.shuffle(respondingServers);
-            
+
             // If the original first entry is a faster responder, keep it as the first entry.
             // This is to increase the chance that users have a "consistent" outbound IP address,
             // while also taking performance and load balancing into consideration (this is
@@ -568,18 +662,18 @@ public class ServerSelector
                     }
                 }
             }
-        
+
             // Merge back into server entry list. MoveEntriesToFront will move
             // these servers to the top of the list in the order submitted. Any
             // other servers, including non-responders and new servers discovered
             // while this process ran will remain in position after the move-to-front
             // list. By using the ConnectionManager's ServerList object we ensure
             // there's no conflict while reading/writing the persistent server list.
-        
+
             if (respondingServers.size() > 0)
             {
                 serverInterface.moveEntriesToFront(respondingServers);
-        
+
                 MyLog.v(R.string.preferred_servers, MyLog.Sensitivity.NOT_SENSITIVE, respondingServers.size());
 
                 // Keep open (and return) the socket to the new #1 server; close the others.
@@ -593,11 +687,18 @@ public class ServerSelector
                         if (worker.entry.ipAddress.equals(firstEntry.ipAddress))
                         {
                             // TODO: getters with mutex?
+                            firstEntryMeekClient = worker.meekClient;
+                            firstEntryUsingHTTPProxy = worker.usingHTTPProxy;
                             firstEntrySocket = worker.channel.socket();
                             firstEntryIpAddress = worker.entry.ipAddress;
                         }
                         else
                         {
+                            if (worker.meekClient != null)
+                            {
+                                worker.meekClient.stop();
+                                worker.meekClient = null;
+                            }
                             try
                             {
                                 worker.channel.close();
@@ -607,7 +708,7 @@ public class ServerSelector
                     }
                 }
             }
-            
+
             return (respondingServers.size() > 0);
         }
     }
@@ -633,10 +734,12 @@ public class ServerSelector
         return false;
     }
 
-    public void Run(boolean protectSocketsRequired)
+    public void Run(
+            boolean protectSocketsRequired,
+            String clientSessionId)
     {
         Abort();
-        
+
         // Android 2.2 bug workaround
         // See http://code.google.com/p/android/issues/detail?id=9431
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.FROYO &&
@@ -644,8 +747,9 @@ public class ServerSelector
         {
             System.setProperty("java.net.preferIPv6Addresses", "false");
         }
-        
+
         this.protectSocketsRequired = protectSocketsRequired;
+        this.clientSessionId = clientSessionId;
 
         this.thread = new Thread(new Coordinator());
         this.thread.start();
@@ -660,14 +764,14 @@ public class ServerSelector
         this.thread = null;
         this.stopFlag = false;
     }
-    
+
     public void Abort()
     {
         if (this.thread != null)
         {
             try
             {
-                this.stopFlag = true;                
+                this.stopFlag = true;
                 this.thread.join();
             }
             catch (InterruptedException e)
@@ -675,7 +779,7 @@ public class ServerSelector
                 Thread.currentThread().interrupt();
             }
         }
-        
+
         this.thread = null;
         this.stopFlag = false;
     }
