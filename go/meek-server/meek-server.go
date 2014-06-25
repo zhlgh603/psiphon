@@ -29,7 +29,8 @@ import (
 )
 
 const maxPayloadLength = 0x10000
-const psiphonServerReadDeadline = 50 * time.Millisecond
+const turnAroundTimeout = 50 * time.Millisecond
+const extendedTurnAroundTimeout = 200 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
 
 const MEEK_PROTOCOL_VERSION = 1
@@ -144,13 +145,13 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 	}
 
 	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION {
-		n, err := copyWithTimeout(responseWriter, session.psiConn)
+		_, err := copyWithTimeout(responseWriter, session.psiConn)
 		if err != nil {
 			return errors.New(fmt.Sprintf("reading payload from psiConn: %s", err))
 		}
 	} else {
 		buf := make([]byte, maxPayloadLength)
-		session.psiConn.SetReadDeadline(time.Now().Add(psiphonServerReadDeadline))
+		session.psiConn.SetReadDeadline(time.Now().Add(turnAroundTimeout))
 		n, err := session.psiConn.Read(buf)
 		if err != nil {
 			if e, ok := err.(net.Error); !ok || !e.Timeout() {
@@ -171,20 +172,16 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 Relays bytes (e.g., from the remote socket (sshd) to the HTTP response payload)
 Uses chunked transfer encoding. The relay is run for a max time period, so as
 to not block subsequent requests from being sent (assuming non-HTTP-pipelining).
-Also, each read from the source has a short timeout, so that if no data is
-available we quickly return.
+Also, each read from the source uses the standard turnaround timeout, so that if
+no data is available we return no slower than the non-chunked mode.
 
 Adapted from Copy: http://golang.org/src/pkg/io/io.go
 */
 func copyWithTimeout(dst io.Writer, src *net.TCPConn) (written int64, err error) {
-	const singleReadTimeout = 50 * time.Millisecond
-	const maxElapsedTime = 200 * time.Millisecond
-	const bufferSize = 64 * 1024
-
 	startTime := time.Now()
-	buffer := make([]byte, bufferSize)
+	buffer := make([]byte, 64*1024)
 	for {
-		src.SetReadDeadline(time.Now().Add(singleReadTimeout))
+		src.SetReadDeadline(time.Now().Add(turnAroundTimeout))
 		bytesRead, errRead := src.Read(buffer)
 		if bytesRead > 0 {
 			bytesWritten, errWrite := dst.Write(buffer[0:bytesRead])
@@ -211,7 +208,7 @@ func copyWithTimeout(dst io.Writer, src *net.TCPConn) (written int64, err error)
 			break
 		}
 		totalElapsedTime := time.Now().Sub(startTime) / time.Millisecond
-		if totalElapsedTime >= maxElapsedTime {
+		if totalElapsedTime >= extendedTurnAroundTimeout {
 			break
 		}
 	}
