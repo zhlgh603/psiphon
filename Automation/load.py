@@ -59,7 +59,7 @@ def check_load_on_hosts(psinet, hosts):
     cur_users = 0
     loads = {}
     unreachable_hosts = 0
-    
+
     pool = ThreadPool(25)
     global g_psinet
     g_psinet = psinet
@@ -76,7 +76,7 @@ def check_load_on_hosts(psinet, hosts):
                 unreachable_hosts += 1
         cur_users += result[1]
         loads[result[0]] = result[1:]
-    loads = sorted(loads.iteritems(), key=operator.itemgetter(1))
+    loads = sorted(loads.iteritems(), key=operator.itemgetter(1), reverse=True)
     pprint.pprint(loads)
     return cur_users, unreachable_hosts, loads
 
@@ -112,7 +112,7 @@ def log_diagnostics(line):
 
 def send_mail(record):
     template_filename = 'psi_mail_hosts_load.mako'
-    template_lookup = TemplateLookup(directories=[os.path.dirname(os.path.abspath('__file__'))]) 
+    template_lookup = TemplateLookup(directories=[os.path.dirname(os.path.abspath('__file__'))])
     # SECURITY IMPORTANT: `'h'` in the `default_filters` list causes HTML
     # escaping to be applied to all expression tags (${...}) in this
     # template. Because we're output untrusted user-supplied data, this is
@@ -170,7 +170,7 @@ def dump_host_reports(fresh_hosts_only=True):
                 if not hostname in host_files:
                     fname = os.path.join(DATA_DIR, hostname + REPORT_EXT)
                     host_files[hostname] = [open(fname, 'w'), fname, None]
-                                            
+
                 host_file = host_files[hostname]
                 host_file[0].write('%s,%s\n' % (end_time.replace(' ', 'T'), host_load))
                 host_file[2] = max(end_time, host_file[2])

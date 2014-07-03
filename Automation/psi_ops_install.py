@@ -550,7 +550,7 @@ def install_host(host, servers, existing_server_ids, plugins):
     ssh.exec_command('easy_install hiredis')
     ssh.exec_command('easy_install redis')
     ssh.exec_command('easy_install iso8601')
-    ssh.exec_command('apt-get install redis-server')
+    ssh.exec_command('apt-get install -y redis-server mercurial git')
 
     install_geoip_database(ssh)
     
@@ -591,7 +591,7 @@ def install_host(host, servers, existing_server_ids, plugins):
     # NOTE: call psi_ops_deploy.deploy_host() to complete the install process
 
     
-def install_firewall_rules(host, servers, plugins):
+def install_firewall_rules(host, servers, plugins, do_blacklist=True):
 
     iptables_rules_path = '/etc/iptables.rules'
     iptables_rules_contents = '''
@@ -599,6 +599,11 @@ def install_firewall_rules(host, servers, plugins):
     -A INPUT -i lo -p tcp -m tcp --dport 7300 -j ACCEPT
     -A INPUT -i lo -p tcp -m tcp --dport 6379 -j ACCEPT
     -A INPUT -i lo -p tcp -m tcp --dport 6000 -j ACCEPT''' + ''.join(
+    # tunneled OSSH
+    ['''
+    -A INPUT -i lo -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -j ACCEPT'''.format(
+            str(s.internal_ip_address), str(s.ssh_obfuscated_port)) for s in servers
+                if (s.capabilities['FRONTED-MEEK'] or s.capabilities['UNFRONTED-MEEK']) and s.ssh_obfuscated_port]) + ''.join(                
     # tunneled web requests
     ['''
     -A INPUT -i lo -d %s -p tcp -m state --state NEW -m tcp --dport %s -j ACCEPT'''
@@ -606,6 +611,11 @@ def install_firewall_rules(host, servers, plugins):
     -A INPUT -d 127.0.0.0/8 ! -i lo -j DROP
     -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
     -A INPUT -p tcp -m state --state NEW -m tcp --dport %s -j ACCEPT''' % (host.ssh_port,) + ''.join(
+    # meek server
+    ['''
+    -A INPUT -d %s -p tcp -m state --state NEW -m tcp --dport %s -m limit --limit 100/sec -j ACCEPT'''
+            % (str(s.internal_ip_address), str(host.meek_server_port)) for s in servers
+                if (s.capabilities['FRONTED-MEEK'] or s.capabilities['UNFRONTED-MEEK']) and host.meek_server_port]) + ''.join(
     # web servers
     ['''
     -A INPUT -d %s -p tcp -m state --state NEW -m tcp --dport %s -j ACCEPT'''
@@ -613,17 +623,19 @@ def install_firewall_rules(host, servers, plugins):
                 if s.capabilities['handshake']]) + ''.join(
     # SSH
     ['''
-    -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -m recent --set
-    -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -m recent --update --seconds 60 --hitcount 3 -j DROP
+    -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -m recent --set --name {2}
+    -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -m recent --update --name {2} --seconds 60 --hitcount 3 -j DROP
     -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -j ACCEPT'''.format(
-            str(s.internal_ip_address), str(s.ssh_port)) for s in servers
+            str(s.internal_ip_address), str(s.ssh_port),
+            'LIMIT-' + str(s.internal_ip_address).replace('.', '-') + '-' + str(s.ssh_port)) for s in servers
                 if s.capabilities['SSH']]) + ''.join(
     # OSSH
     ['''
-    -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -m recent --set
-    -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -m recent --update --seconds 60 --hitcount 3 -j DROP
+    -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -m recent --set --name {2}
+    -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -m recent --update --name {2} --seconds 60 --hitcount 3 -j DROP
     -A INPUT -d {0} -p tcp -m state --state NEW -m tcp --dport {1} -j ACCEPT'''.format(
-            str(s.internal_ip_address), str(s.ssh_obfuscated_port)) for s in servers
+            str(s.internal_ip_address), str(s.ssh_obfuscated_port),
+            'LIMIT-' + str(s.internal_ip_address).replace('.', '-') + '-' + str(s.ssh_obfuscated_port)) for s in servers
                 if s.capabilities['OSSH']]) + ''.join(
     # VPN
     ['''
@@ -640,12 +652,20 @@ def install_firewall_rules(host, servers, plugins):
     -A FORWARD -s 10.0.0.0/8 -p udp -m multiport --dports 80,443,465,554,587,993,995,1935,5190,7070,8000,8001,6971:6999 -j ACCEPT
     -A FORWARD -s 10.0.0.0/8 -p tcp -m multiport --dports 5242,4244 -j ACCEPT
     -A FORWARD -s 10.0.0.0/8 -p udp -m multiport --dports 5243,7985,9785 -j ACCEPT
+    -A FORWARD -s 10.0.0.0/8 -p tcp -m multiport --dports 110,143,2560,9180,25565 -j ACCEPT
+    -A FORWARD -s 10.0.0.0/8 -p udp -m multiport --dports 110,143,2560,9180,25565 -j ACCEPT
     -A FORWARD -s 10.0.0.0/8 -d 8.8.8.8 -p tcp --dport 53 -j ACCEPT
     -A FORWARD -s 10.0.0.0/8 -d 8.8.8.8 -p udp --dport 53 -j ACCEPT
     -A FORWARD -s 10.0.0.0/8 -d 8.8.4.4 -p tcp --dport 53 -j ACCEPT
     -A FORWARD -s 10.0.0.0/8 -d 8.8.4.4 -p udp --dport 53 -j ACCEPT
     -A FORWARD -s 10.0.0.0/8 -d 10.0.0.0/8 -j DROP
     -A FORWARD -s 10.0.0.0/8 -j REJECT''' + ''.join(
+    # tunneled ossh requests
+    ['''
+    -A OUTPUT -d {0} -o lo -p tcp -m tcp --dport {1} -j ACCEPT
+    -A OUTPUT -s {0} -o lo -p tcp -m tcp --sport {1} -j ACCEPT'''.format(
+            str(s.internal_ip_address), str(s.ssh_obfuscated_port)) for s in servers
+                if s.ssh_obfuscated_port]) + ''.join(
     # tunneled web requests (always provided, regardless of capabilities)
     ['''
     -A OUTPUT -d {0} -o lo -p tcp -m tcp --dport {1} -j ACCEPT
@@ -665,13 +685,25 @@ def install_firewall_rules(host, servers, plugins):
     -A OUTPUT -p udp -m multiport --dports 5222,5223,5228,5229,5230,14259 -j ACCEPT
     -A OUTPUT -p tcp -m multiport --dports 5242,4244 -j ACCEPT
     -A OUTPUT -p udp -m multiport --dports 5243,7985,9785 -j ACCEPT
+    -A OUTPUT -p tcp -m multiport --dports 110,143,2560,9180,25565 -j ACCEPT
+    -A OUTPUT -p udp -m multiport --dports 110,143,2560,9180,25565 -j ACCEPT
     -A OUTPUT -p udp -m udp --dport 123 -j ACCEPT
     -A OUTPUT -p tcp -m tcp --sport %s -j ACCEPT''' % (host.ssh_port,) + ''.join(
+    # tunneled ossh requests on NATed servers
+    ['''
+    -A OUTPUT -d %s -p tcp -m tcp --dport %s -j ACCEPT'''
+            % (str(s.internal_ip_address), str(s.ssh_obfuscated_port)) for s in servers
+                if s.ssh_obfuscated_port and (s.ip_address != s.internal_ip_address)]) + ''.join(
     # tunneled web requests on NATed servers don't go out lo
     ['''
     -A OUTPUT -d %s -p tcp -m tcp --dport %s -j ACCEPT'''
             % (str(s.internal_ip_address), str(s.web_server_port)) for s in servers
                 if s.ip_address != s.internal_ip_address]) + ''.join(
+    # meek server
+    ['''
+    -A OUTPUT -s %s -p tcp -m tcp --sport %s -j ACCEPT'''
+            % (str(s.internal_ip_address), str(host.meek_server_port)) for s in servers
+                if host.meek_server_port]) + ''.join(
     # web servers
     ['''
     -A OUTPUT -s %s -p tcp -m tcp --sport %s -j ACCEPT'''
@@ -704,10 +736,12 @@ COMMIT
 
 *nat''' + ''.join(
     # Port forward from 443 to web servers
+    # NOTE: exclude for servers with meek capability (or is fronted) and meek_server_port is 443
     ['''
     -A PREROUTING -i eth+ -p tcp -d %s --dport 443 -j DNAT --to-destination :%s'''
             % (str(s.internal_ip_address), str(s.web_server_port)) for s in servers
-                if s.capabilities['handshake']]) + ''.join(
+                if s.capabilities['handshake']
+                and not ((s.capabilities['FRONTED-MEEK'] or s.capabilities['UNFRONTED-MEEK']) and int(host.meek_server_port) == 443)]) + ''.join(
     # Port forward alternate ports
     ['''
     -A PREROUTING -i eth+ -p tcp -d %s --dport %s -j DNAT --to-destination :%s'''
@@ -750,6 +784,14 @@ iptables-restore < %s
         port    = {0}
         '''.format(','.join(ssh_ports)))
         
+    meek_server_egress_ips = set([(str(s.egress_ip_address)) for s in servers
+            if (s.capabilities['FRONTED-MEEK'] or s.capabilities['UNFRONTED-MEEK'])])
+    if meek_server_egress_ips:
+        fail2ban_local_contents = textwrap.dedent('''
+        [DEFAULT]
+        ignoreip = 127.0.0.1/8 {0}
+        '''.format(' '.join(meek_server_egress_ips))) + fail2ban_local_contents
+        
     ssh = psi_ssh.SSH(
             host.ip_address, host.ssh_port,
             host.ssh_username, host.ssh_password,
@@ -762,7 +804,8 @@ iptables-restore < %s
     ssh.exec_command(if_up_script_path)
     ssh.close()
     
-    install_malware_blacklist(host)
+    if do_blacklist:
+        install_malware_blacklist(host)
     
     
 def install_malware_blacklist(host):
@@ -813,9 +856,10 @@ def install_psi_limit_load(host, servers):
             % (str(s.internal_ip_address), str(s.ssh_port)) for s in servers
                 if s.capabilities['SSH']] +
     # OSSH
+    # NOTE: that this also disables new tunneled OSSH connections ie through meek
     [' INPUT -d %s -p tcp -m state --state NEW -m tcp --dport %s -j REJECT --reject-with tcp-reset'
             % (str(s.internal_ip_address), str(s.ssh_obfuscated_port)) for s in servers
-                if s.capabilities['OSSH']] +
+                if s.ssh_obfuscated_port] +
                 
     # VPN
     [' INPUT -d %s -p udp --dport 500 -j DROP'
