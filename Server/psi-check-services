@@ -23,6 +23,10 @@ if ! pgrep redis-server > /dev/null; then
     /etc/init.d/redis-server restart
 fi
 
+if ! pgrep xl2tpd > /dev/null; then
+    /etc/init.d/xl2tpd restart
+fi
+
 process_name_pattern=ipsec/pluto
 cpu_usage_threshold=90
 if ! pgrep -f $process_name_pattern > /dev/null; then

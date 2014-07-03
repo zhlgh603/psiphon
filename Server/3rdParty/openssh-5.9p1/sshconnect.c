@@ -597,13 +597,16 @@ ssh_exchange_identification(int timeout_ms)
 	    compat20 ? PROTOCOL_MINOR_2 : minor1,
 	    SSH_VERSION, compat20 ? "\r\n" : "\n");
 
+        /* copy buffer early because obfuscate_output will destroy it */
+	client_version_string = xstrdup(buf);
+
         sendlen = strlen(buf);
         if(options.obfuscate_handshake)
             obfuscate_output(buf, sendlen);
 
 	if (roaming_atomicio(vwrite, connection_out, buf, sendlen) != sendlen)
 		fatal("write: %.100s", strerror(errno));
-	client_version_string = xstrdup(buf);
+
 	chop(client_version_string);
 	chop(server_version_string);
 	debug("Local version string %.100s", client_version_string);
