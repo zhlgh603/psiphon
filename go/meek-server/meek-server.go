@@ -480,10 +480,35 @@ func createTLSConfig(host string) (certPEMBlock, keyPEMBlock []byte, err error) 
 }
 
 func (dispatcher *Dispatcher) Start() {
+	//EC ciphers in golang TLS are significantly heavier on the server's resources
+	//Since encryption strength is not as important at this point we are going to change order of preference
+	//of the available ciphersuites in favour of non EC ones
+
+	mTLSConfig := &tls.Config{
+		CipherSuites: []uint16{
+			//non EC ones first
+			tls.TLS_RSA_WITH_RC4_128_SHA,
+			tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
+			tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
+		},
+		PreferServerCipherSuites: true,
+	}
+
 	server := &MeekHTTPServer{
 		server: &http.Server{
-			Addr:    fmt.Sprintf(":%d", dispatcher.config.Port),
-			Handler: dispatcher,
+			Addr:      fmt.Sprintf(":%d", dispatcher.config.Port),
+			Handler:   dispatcher,
+			TLSConfig: mTLSConfig,
 
 			// TODO: This timeout is actually more like a socket lifetime which closes active persistent connections.
 			// Implement a custom timeout. See link: https://groups.google.com/forum/#!topic/golang-nuts/NX6YzGInRgE
