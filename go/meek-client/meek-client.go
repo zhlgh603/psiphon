@@ -43,6 +43,7 @@ const (
 // roundtrip, including variables that may come from SOCKS args or from the
 // command line.
 type RequestInfo struct {
+	MeekProtocolVersion   int
 	ClientPublicKeyBase64 string
 	ObfuscatedKeyword     string
 	PsiphonServerAddr     string
@@ -51,6 +52,12 @@ type RequestInfo struct {
 	SshSessionID          string
 	PayloadCookie         *http.Cookie
 	URL                   string
+}
+
+type Cookie struct {
+	PsiphonServerAddr   string `json:"p"`
+	SshSessionID        string `json:"s"`
+	MeekProtocolVersion int    `json:"v"`
 }
 
 func randInt(min int, max int) int {
@@ -102,7 +109,7 @@ func sendRecv(buf []byte, conn net.Conn, info *RequestInfo) (int64, error) {
 		return 0, errors.New(fmt.Sprintf("status code was %d, not %d", resp.StatusCode, http.StatusOK))
 	}
 
-	return io.Copy(conn, io.LimitReader(resp.Body, maxPayloadLength))
+	return io.Copy(conn, resp.Body)
 }
 
 // Repeatedly read from conn, issue HTTP requests, and write the responses back
@@ -205,9 +212,11 @@ func makeCookie(info *RequestInfo) (*http.Cookie, error) {
 	copy(clientPublicKey[:], keydata)
 	cr := crypto.New(clientPublicKey, dummyKey)
 
-	cookie := make(map[string]string)
-	cookie["p"] = info.PsiphonServerAddr
-	cookie["s"] = info.SshSessionID
+	cookie := &Cookie{
+		PsiphonServerAddr:   info.PsiphonServerAddr,
+		SshSessionID:        info.SshSessionID,
+		MeekProtocolVersion: info.MeekProtocolVersion,
+	}
 
 	j, err := json.Marshal(cookie)
 	if err != nil {
@@ -242,6 +251,9 @@ func handler(conn *pt.SocksConn) error {
 	info.FrontingHostname, _ = conn.Req.Args.Get("fhostname")
 	info.SshSessionID, _ = conn.Req.Args.Get("sshid")
 	info.ObfuscatedKeyword, _ = conn.Req.Args.Get("obfskey")
+
+	//Indicates that the client understands chunked responses of arbitrary length
+	info.MeekProtocolVersion = 1
 
 	if info.TargetAddr == "" {
 		return errors.New("TargetAddr is missing from SOCKS request")
