@@ -29,8 +29,11 @@ import (
 )
 
 const maxPayloadLength = 0x10000
-const psiphonServerReadDeadline = 50 * time.Millisecond
+const turnAroundTimeout = 20 * time.Millisecond
+const extendedTurnAroundTimeout = 100 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
+
+const MEEK_PROTOCOL_VERSION = 1
 
 // Default config values from Server/psi_config.py
 
@@ -59,6 +62,7 @@ type Config struct {
 }
 
 type ClientSessionData struct {
+	MeekProtocolVersion    int    `json:"v"`
 	PsiphonClientSessionId string `json:"s"`
 	PsiphonServerAddress   string `json:"p"`
 }
@@ -70,8 +74,9 @@ type GeoIpData struct {
 }
 
 type Session struct {
-	psiConn  *net.TCPConn
-	LastSeen time.Time
+	psiConn             *net.TCPConn
+	meekProtocolVersion int
+	LastSeen            time.Time
 }
 
 func (session *Session) Touch() {
@@ -136,24 +141,78 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
 	_, err := io.Copy(session.psiConn, body)
 	if err != nil {
-		return errors.New(fmt.Sprintf("copying body to psiConn: %s", err))
+		return errors.New(fmt.Sprintf("writing payload to psiConn: %s", err))
 	}
 
-	buf := make([]byte, maxPayloadLength)
-	session.psiConn.SetReadDeadline(time.Now().Add(psiphonServerReadDeadline))
-	n, err := session.psiConn.Read(buf)
-	if err != nil {
-		if e, ok := err.(net.Error); !ok || !e.Timeout() {
-			return errors.New(fmt.Sprintf("reading from psiConn: %s", err))
+	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION {
+		_, err := copyWithTimeout(responseWriter, session.psiConn)
+		if err != nil {
+			return errors.New(fmt.Sprintf("reading payload from psiConn: %s", err))
+		}
+	} else {
+		buf := make([]byte, maxPayloadLength)
+		session.psiConn.SetReadDeadline(time.Now().Add(turnAroundTimeout))
+		n, err := session.psiConn.Read(buf)
+		if err != nil {
+			if e, ok := err.(net.Error); !ok || !e.Timeout() {
+				return errors.New(fmt.Sprintf("reading from psiConn: %s", err))
+			}
+		}
+
+		n, err = responseWriter.Write(buf[:n])
+		if err != nil {
+			return errors.New(fmt.Sprintf("writing to response: %s", err))
 		}
 	}
 
-	n, err = responseWriter.Write(buf[:n])
-	if err != nil {
-		return errors.New(fmt.Sprintf("writing to response: %s", err))
-	}
-
 	return nil
+}
+
+/*
+Relays bytes (e.g., from the remote socket (sshd) to the HTTP response payload)
+Uses chunked transfer encoding. The relay is run for a max time period, so as
+to not block subsequent requests from being sent (assuming non-HTTP-pipelining).
+Also, each read from the source uses the standard turnaround timeout, so that if
+no data is available we return no slower than the non-chunked mode.
+
+Adapted from Copy: http://golang.org/src/pkg/io/io.go
+*/
+func copyWithTimeout(dst io.Writer, src *net.TCPConn) (written int64, err error) {
+	startTime := time.Now()
+	buffer := make([]byte, 64*1024)
+	for {
+		src.SetReadDeadline(time.Now().Add(turnAroundTimeout))
+		bytesRead, errRead := src.Read(buffer)
+		if bytesRead > 0 {
+			bytesWritten, errWrite := dst.Write(buffer[0:bytesRead])
+			if bytesWritten > 0 {
+				written += int64(bytesWritten)
+			}
+			if errWrite != nil {
+				err = errWrite
+				break
+			}
+			if bytesRead != bytesWritten {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if errRead == io.EOF {
+			break
+		}
+		if e, ok := errRead.(net.Error); ok && e.Timeout() {
+			break
+		}
+		if errRead != nil {
+			err = errRead
+			break
+		}
+		totalElapsedTime := time.Now().Sub(startTime) / time.Millisecond
+		if totalElapsedTime >= extendedTurnAroundTimeout {
+			break
+		}
+	}
+	return written, err
 }
 
 func (dispatcher *Dispatcher) terminateConnection(responseWriter http.ResponseWriter, request *http.Request) {
@@ -217,7 +276,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return nil, err
 	}
 
-	session = &Session{psiConn: conn}
+	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion}
 	session.Touch()
 
 	dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
