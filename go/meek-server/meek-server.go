@@ -29,8 +29,8 @@ import (
 )
 
 const maxPayloadLength = 0x10000
-const turnAroundTimeout = 50 * time.Millisecond
-const extendedTurnAroundTimeout = 200 * time.Millisecond
+const turnAroundTimeout = 20 * time.Millisecond
+const extendedTurnAroundTimeout = 100 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
 
 const MEEK_PROTOCOL_VERSION = 1
