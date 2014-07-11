@@ -71,6 +71,10 @@ func roundTrip(buf []byte, info *RequestInfo) (response *http.Response, err erro
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
+	// Don't use the default user agent ("Go 1.1 package http").
+	// For now, just omit the header (net/http/request.go: "may be blank to not send the header").
+	req.Header.Set("User-Agent", "")
+
 	req.AddCookie(info.PayloadCookie)
 
 	// Retry loop, which assumes entire request failed (underlying
