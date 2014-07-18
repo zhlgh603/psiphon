@@ -12,7 +12,7 @@ if [ ! -f /var/lock/psiphonv.stopped ]; then
 fi
 
 process_name_pattern=badvpn-udpgw
-cpu_usage_threshold=90
+cpu_usage_threshold=50
 if ! pgrep -f $process_name_pattern > /dev/null; then
     /etc/init.d/badvpn-udpgw restart
 else
