@@ -446,6 +446,28 @@ sshd_exchange_identification(int sock_in, int sock_out)
         if(use_obfuscation)
             obfuscate_output(server_version_string, sendlen);
 
+    // PSIPHON
+    // Obfuscated SSH adds padding to its client->server message, making that flow's initial packet
+    // sizes less predictable. But the initial server->client packet sizes remain predictable. We're
+    // adding equivalent padding to the first server message, utilizing the "other lines of data"
+    // (http://tools.ietf.org/html/rfc4253#section-4.2) prefix in the version messages, which
+    // SSH clients will ignore.
+    if (use_obfuscation) {
+    	arc4random_stir();
+	    int padding_length = arc4random() % 8192; // OBFUSCATE_MAX_PADDING = 8192
+	    int line_length = padding_length + 2; // + 2 = CRLF
+	    char* line = xmalloc(line_length);
+	    memset(line, ' ', padding_length);
+	    line[line_length - 2] = '\r';
+	    line[line_length - 1] = '\n';
+	    obfuscate_output(line, line_length);
+	    if (roaming_atomicio(vwrite, sock_out, padding_length, line_length) != line_length) {
+	        logit("Could not write padding string to %s", get_remote_ipaddr());
+	        cleanup_exit(255);
+	    }
+	    xfree(line);
+	}
+
 	/* Send our protocol version identification. */
 	if (roaming_atomicio(vwrite, sock_out, server_version_string,
 	    sendlen)
