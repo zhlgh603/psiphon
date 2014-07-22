@@ -66,7 +66,7 @@ SSH_PASSWORD_BYTE_LENGTH = 32 # TODO: common config with psi_ops_install.py
 SESSION_DB_HOST = 'localhost'
 SESSION_DB_PORT = 6379
 SESSION_DB_INDEX = 0
-SESSION_EXPIRE_SECONDS = 60 * 20 # Discard session_ids older than 20 minutes
+SESSION_EXPIRE_SECONDS = 60 * 60 # Discard session_ids older than 60 minutes
 SESSION_ID_BYTE_LENGTH = 16
 SESSION_ID_CHARACTERS = string.hexdigits
 
