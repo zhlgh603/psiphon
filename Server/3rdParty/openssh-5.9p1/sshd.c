@@ -461,7 +461,7 @@ sshd_exchange_identification(int sock_in, int sock_out)
 	    line[line_length - 2] = '\r';
 	    line[line_length - 1] = '\n';
 	    obfuscate_output(line, line_length);
-	    if (roaming_atomicio(vwrite, sock_out, padding_length, line_length) != line_length) {
+	    if (roaming_atomicio(vwrite, sock_out, line, line_length) != line_length) {
 	        logit("Could not write padding string to %s", get_remote_ipaddr());
 	        cleanup_exit(255);
 	    }
