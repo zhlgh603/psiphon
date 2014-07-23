@@ -439,13 +439,6 @@ sshd_exchange_identification(int sock_in, int sock_out)
 		}
 	}
 
-	snprintf(buf, sizeof buf, "SSH-%d.%d-%.100s%s", major, minor,
-	    SSH_VERSION, newline);
-	server_version_string = xstrdup(buf);
-        sendlen = strlen(server_version_string);
-        if(use_obfuscation)
-            obfuscate_output(server_version_string, sendlen);
-
     // PSIPHON
     // Obfuscated SSH adds padding to its client->server message, making that flow's initial packet
     // sizes less predictable. But the initial server->client packet sizes remain predictable. We're
@@ -453,20 +446,27 @@ sshd_exchange_identification(int sock_in, int sock_out)
     // (http://tools.ietf.org/html/rfc4253#section-4.2) prefix in the version messages, which
     // SSH clients will ignore.
     if (use_obfuscation) {
-    	arc4random_stir();
-	    int padding_length = arc4random() % 8192; // OBFUSCATE_MAX_PADDING = 8192
-	    int line_length = padding_length + 2; // + 2 = CRLF
-	    char* line = xmalloc(line_length);
-	    memset(line, ' ', padding_length);
-	    line[line_length - 2] = '\r';
-	    line[line_length - 1] = '\n';
-	    obfuscate_output(line, line_length);
-	    if (roaming_atomicio(vwrite, sock_out, line, line_length) != line_length) {
-	        logit("Could not write padding string to %s", get_remote_ipaddr());
-	        cleanup_exit(255);
-	    }
-	    xfree(line);
-	}
+        arc4random_stir();
+        unsigned int padding_length = arc4random() % 8192; // OBFUSCATE_MAX_PADDING = 8192
+        unsigned int line_length = padding_length + 2; // + 2 = CRLF
+        char* line = xmalloc(line_length);
+        memset(line, ' ', padding_length);
+        line[line_length - 2] = '\r';
+        line[line_length - 1] = '\n';
+        obfuscate_output(line, line_length);
+        if (roaming_atomicio(vwrite, sock_out, line, line_length) != line_length) {
+            logit("Could not write padding string to %s", get_remote_ipaddr());
+            cleanup_exit(255);
+        }
+        xfree(line);
+    }
+
+	snprintf(buf, sizeof buf, "SSH-%d.%d-%.100s%s", major, minor,
+	    SSH_VERSION, newline);
+	server_version_string = xstrdup(buf);
+        sendlen = strlen(server_version_string);
+        if(use_obfuscation)
+            obfuscate_output(server_version_string, sendlen);
 
 	/* Send our protocol version identification. */
 	if (roaming_atomicio(vwrite, sock_out, server_version_string,
