@@ -154,6 +154,8 @@ class ServerInstance(object):
                 return False
             record = self.session_redis.get(client_session_id)
             if record:
+                # Extend the expiry for this record for subsequent requests
+                self.session_redis.expire(client_session_id, psi_config.SESSION_EXPIRE_SECONDS)
                 try:
                     geoip = json.loads(record)
                 except ValueError:
