@@ -47,6 +47,7 @@ import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
+import android.preference.PreferenceManager;
 import android.util.Pair;
 import ch.ethz.ssh2.Connection;
 import ch.ethz.ssh2.ConnectionMonitor;
@@ -206,7 +207,16 @@ public class TunnelCore implements Connection.IStopSignalPending, Tun2Socks.IPro
         
         if (alert)
         {
-            notification.defaults |= Notification.DEFAULT_VIBRATE | Notification.DEFAULT_SOUND;
+            if (PreferenceManager.getDefaultSharedPreferences(m_parentService).getBoolean(
+                    m_parentService.getString(R.string.preferenceNotificationsWithSound), false))
+            {
+                notification.defaults |= Notification.DEFAULT_SOUND;
+            }
+            if (PreferenceManager.getDefaultSharedPreferences(m_parentService).getBoolean(
+                    m_parentService.getString(R.string.preferenceNotificationsWithVibrate), false))
+            {
+                notification.defaults |= Notification.DEFAULT_VIBRATE;
+            }
         }
 
         notification.setLatestEventInfo(
