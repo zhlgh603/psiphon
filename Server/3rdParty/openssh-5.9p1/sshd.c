@@ -448,17 +448,33 @@ sshd_exchange_identification(int sock_in, int sock_out)
 	if (use_obfuscation) {
 		arc4random_stir();
 		unsigned int padding_length = arc4random() % 8192; // OBFUSCATE_MAX_PADDING = 8192
-		unsigned int line_length = padding_length + 2; // + 2 = CRLF
-		char* line = xmalloc(line_length);
-		memset(line, ' ', padding_length);
-		line[line_length - 2] = '\r';
-		line[line_length - 1] = '\n';
-		obfuscate_output(line, line_length);
-		if (roaming_atomicio(vwrite, sock_out, line, line_length) != line_length) {
-			logit("Could not write padding string to %s", get_remote_ipaddr());
-			cleanup_exit(255);
+		// For backwards compatibility with some clients, send no more than 512 characters
+		// per line (including CRLF). To keep the padding distribution between 0 and OBFUSCATE_MAX_PADDING
+		// characters, we send lines that add up to padding_length characters including all CRLFs.
+		unsigned int min_line_length = 2; // 2 = CRLF
+		unsigned int max_line_length = 512;
+		while (padding_length > 0) {
+			unsigned int line_length = padding_length;
+			if (line_length > max_line_length) {
+				line_length = max_line_length;
+			}
+			// Leave enough padding allowance to send a full CRLF on the last line
+			if (padding_length - line_length > 0 &&
+				padding_length - line_length < min_line_length) {
+				line_length -= min_line_length - (padding_length - line_length);
+			}
+			padding_length -= line_length;
+			char* line = xmalloc(line_length);
+			memset(line, ' ', line_length);
+			line[line_length - 2] = '\r';
+			line[line_length - 1] = '\n';
+			obfuscate_output(line, line_length);
+			if (roaming_atomicio(vwrite, sock_out, line, line_length) != line_length) {
+				logit("Could not write padding string to %s", get_remote_ipaddr());
+				cleanup_exit(255);
+			}
+			xfree(line);
 		}
-		xfree(line);
 	}
 
 	snprintf(buf, sizeof buf, "SSH-%d.%d-%.100s%s", major, minor, SSH_VERSION, newline);
