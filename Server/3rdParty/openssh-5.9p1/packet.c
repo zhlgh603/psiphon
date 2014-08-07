@@ -908,7 +908,7 @@ packet_send2_wrapped(void)
 	// Use SSH variable length random padding (http://tools.ietf.org/html/rfc4253#section-6)
 	// in the early stages of the protocol (algorithm negotiation, key exchange) to avoid
 	// a fixed-size packet length sequence.
-	if (active_state->obfuscate && active_state->extra_pad == 0) {
+	if (active_state->obfuscation && active_state->extra_pad == 0) {
 		active_state->extra_pad = arc4random() % (256 - padlen);
 	}
 
@@ -927,7 +927,7 @@ packet_send2_wrapped(void)
 
 	// PSIPHON
 	// Use random padding values when plaintext messages are obfuscated
-	if (active_state->obfuscate || (enc && !active_state->send_context.plaintext)) {
+	if (active_state->obfuscation || (enc && !active_state->send_context.plaintext)) {
 		/* random padding */
 		for (i = 0; i < padlen; i++) {
 			if (i % 4 == 0)
