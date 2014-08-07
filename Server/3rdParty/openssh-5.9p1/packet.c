@@ -909,7 +909,7 @@ packet_send2_wrapped(void)
 	// in the early stages of the protocol (algorithm negotiation, key exchange) to avoid
 	// a fixed-size packet length sequence.
 	if (active_state->obfuscation && active_state->extra_pad == 0) {
-		active_state->extra_pad = arc4random() % (256 - padlen);
+		active_state->extra_pad = arc4random() % 256;
 	}
 
 	if (active_state->extra_pad) {
