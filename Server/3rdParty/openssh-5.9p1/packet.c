@@ -909,7 +909,8 @@ packet_send2_wrapped(void)
 	// in the early stages of the protocol (algorithm negotiation, key exchange) to avoid
 	// a fixed-size packet length sequence.
 	if (active_state->obfuscation && active_state->extra_pad == 0) {
-		active_state->extra_pad = arc4random() % 256;
+		// Uniform distribution of possible padded message sizes (which must be multiple of block size)
+		padlen += block_size * (arc4random() % (256/block_size - ((padlen + block_size - 1)/block_size)));
 	}
 
 	if (active_state->extra_pad) {
