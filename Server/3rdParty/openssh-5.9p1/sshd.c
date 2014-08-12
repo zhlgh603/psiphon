@@ -416,7 +416,7 @@ sshd_exchange_identification(int sock_in, int sock_out)
 	char *s, *newline = "\n";
 	char buf[256];			/* Must not be larger than remote_version. */
 	char remote_version[256];	/* Must be at least as big as buf. */
-        u_int sendlen;
+	u_int sendlen;
 
 	if ((options.protocol & SSH_PROTO_1) &&
 	    (options.protocol & SSH_PROTO_2)) {
@@ -433,23 +433,61 @@ sshd_exchange_identification(int sock_in, int sock_out)
 
 	if (use_obfuscation_prefix) {
 		if (roaming_atomicio(vwrite, sock_out, (char*)prefix, prefix_length)
-		    != prefix_length) {
+			!= prefix_length) {
 			logit("Could not write prefix string to %s", get_remote_ipaddr());
 			cleanup_exit(255);
 		}
 	}
 
-	snprintf(buf, sizeof buf, "SSH-%d.%d-%.100s%s", major, minor,
-	    SSH_VERSION, newline);
+	// PSIPHON
+	// Obfuscated SSH adds padding to its client->server message, making that flow's initial packet
+	// sizes less predictable. But the initial server->client packet sizes remain predictable. We're
+	// adding equivalent padding to the first server message, utilizing the "other lines of data"
+	// (http://tools.ietf.org/html/rfc4253#section-4.2) prefix in the version messages, which
+	// SSH clients will ignore.
+	if (use_obfuscation) {
+		arc4random_stir();
+		unsigned int padding_length = arc4random() % 8192; // OBFUSCATE_MAX_PADDING = 8192
+		// For backwards compatibility with some clients, send no more than 512 characters
+		// per line (including CRLF). To keep the padding distribution between 0 and OBFUSCATE_MAX_PADDING
+		// characters, we send lines that add up to padding_length characters including all CRLFs.
+		unsigned int min_line_length = 2; // 2 = CRLF
+		unsigned int max_line_length = 512;
+		while (padding_length > 0) {
+			unsigned int line_length = padding_length;
+			if (line_length > max_line_length) {
+				line_length = max_line_length;
+			}
+			// Leave enough padding allowance to send a full CRLF on the last line
+			if (padding_length - line_length > 0 &&
+				padding_length - line_length < min_line_length) {
+				line_length -= min_line_length - (padding_length - line_length);
+			}
+			padding_length -= line_length;
+			char* line = xmalloc(line_length);
+			memset(line, ' ', line_length);
+			line[line_length - 2] = '\r';
+			line[line_length - 1] = '\n';
+			obfuscate_output(line, line_length);
+			if (roaming_atomicio(vwrite, sock_out, line, line_length) != line_length) {
+				logit("Could not write padding string to %s", get_remote_ipaddr());
+				cleanup_exit(255);
+			}
+			xfree(line);
+		}
+	}
+
+	snprintf(buf, sizeof buf, "SSH-%d.%d-%.100s%s", major, minor, SSH_VERSION, newline);
 	server_version_string = xstrdup(buf);
-        sendlen = strlen(server_version_string);
-        if(use_obfuscation)
-            obfuscate_output(server_version_string, sendlen);
+	sendlen = strlen(server_version_string);
+	if (use_obfuscation) {
+		obfuscate_output(server_version_string, sendlen);
+	}
 
 	/* Send our protocol version identification. */
 	if (roaming_atomicio(vwrite, sock_out, server_version_string,
-	    sendlen)
-	    != sendlen) {
+		sendlen)
+		!= sendlen) {
 		logit("Could not write ident string to %s", get_remote_ipaddr());
 		cleanup_exit(255);
 	}
