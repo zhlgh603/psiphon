@@ -59,6 +59,9 @@ type Config struct {
 	RedisDiscoveryDbIndex               int
 	RedisDiscoveryExpireSeconds         int
 	ClientIpAddressStrategyValueHmacKey string
+	ThrottleThresholdBytes              int64
+	ThrottleSleepMilliseconds           int
+	ThrottleRegions                     map[string]bool
 }
 
 type ClientSessionData struct {
@@ -77,6 +80,8 @@ type Session struct {
 	psiConn             *net.TCPConn
 	meekProtocolVersion int
 	LastSeen            time.Time
+	BytesTransferred    int64
+	IsThrottled         bool
 }
 
 func (session *Session) Touch() {
@@ -139,30 +144,47 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 
 func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
 	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
-	_, err := io.Copy(session.psiConn, body)
+	requestBodySize, err := io.Copy(session.psiConn, body)
 	if err != nil {
 		return errors.New(fmt.Sprintf("writing payload to psiConn: %s", err))
 	}
 
-	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION {
-		_, err := copyWithTimeout(responseWriter, session.psiConn)
+	session.BytesTransferred += requestBodySize
+
+	throttle := dispatcher.config.ThrottleThresholdBytes > 0 &&
+		session.IsThrottled &&
+		session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes
+
+	if !throttle && session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION {
+		responseSize, err := copyWithTimeout(responseWriter, session.psiConn)
 		if err != nil {
 			return errors.New(fmt.Sprintf("reading payload from psiConn: %s", err))
 		}
+
+		session.BytesTransferred += responseSize
+
 	} else {
+
+		if throttle {
+			time.Sleep(
+				time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
+		}
+
 		buf := make([]byte, maxPayloadLength)
 		session.psiConn.SetReadDeadline(time.Now().Add(turnAroundTimeout))
-		n, err := session.psiConn.Read(buf)
+		responseSize, err := session.psiConn.Read(buf)
 		if err != nil {
 			if e, ok := err.(net.Error); !ok || !e.Timeout() {
 				return errors.New(fmt.Sprintf("reading from psiConn: %s", err))
 			}
 		}
 
-		n, err = responseWriter.Write(buf[:n])
+		responseSize, err = responseWriter.Write(buf[:responseSize])
 		if err != nil {
 			return errors.New(fmt.Sprintf("writing to response: %s", err))
 		}
+
+		session.BytesTransferred += int64(responseSize)
 	}
 
 	return nil
@@ -279,7 +301,12 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion}
 	session.Touch()
 
-	dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
+	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
+
+	if geoIpData != nil {
+		_, ok := dispatcher.config.ThrottleRegions[geoIpData.Region]
+		session.IsThrottled = ok
+	}
 
 	dispatcher.lock.Lock()
 	dispatcher.sessionMap[cookie] = session
@@ -296,7 +323,7 @@ func parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, e
 	return
 }
 
-func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessionId string) {
+func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessionId string) *GeoIpData {
 	// Use Geo info in headers sent by fronts; otherwise use peer IP
 	ipAddress := ""
 	var geoIpData *GeoIpData
@@ -344,6 +371,8 @@ func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessio
 	if geoIpData != nil {
 		dispatcher.updateRedis(psiphonClientSessionId, ipAddress, geoIpData)
 	}
+
+	return geoIpData
 }
 
 func (dispatcher *Dispatcher) geoIpRequest(ipAddress string) (geoIpData *GeoIpData) {
