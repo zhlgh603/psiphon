@@ -61,6 +61,7 @@ type Config struct {
 	ClientIpAddressStrategyValueHmacKey string
 	ThrottleThresholdBytes              int64
 	ThrottleSleepMilliseconds           int
+	ThrottleMaxPayloadSizeMultiple      float64
 	ThrottleRegions                     map[string]bool
 }
 
@@ -165,12 +166,15 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 
 	} else {
 
+		reponseMaxPayloadLength := maxPayloadLength
+
 		if throttle {
 			time.Sleep(
 				time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
+			reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
 		}
 
-		buf := make([]byte, maxPayloadLength)
+		buf := make([]byte, reponseMaxPayloadLength)
 		session.psiConn.SetReadDeadline(time.Now().Add(turnAroundTimeout))
 		responseSize, err := session.psiConn.Read(buf)
 		if err != nil {
