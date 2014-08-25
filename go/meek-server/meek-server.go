@@ -32,6 +32,7 @@ const maxPayloadLength = 0x10000
 const turnAroundTimeout = 20 * time.Millisecond
 const extendedTurnAroundTimeout = 100 * time.Millisecond
 const maxSessionStaleness = 120 * time.Second
+const psiConnDialTimeout = 100 * time.Millisecond
 
 const MEEK_PROTOCOL_VERSION = 1
 
@@ -78,7 +79,7 @@ type GeoIpData struct {
 }
 
 type Session struct {
-	psiConn             *net.TCPConn
+	psiConn             net.Conn
 	meekProtocolVersion int
 	LastSeen            time.Time
 	BytesTransferred    int64
@@ -203,7 +204,7 @@ no data is available we return no slower than the non-chunked mode.
 
 Adapted from Copy: http://golang.org/src/pkg/io/io.go
 */
-func copyWithTimeout(dst io.Writer, src *net.TCPConn) (written int64, err error) {
+func copyWithTimeout(dst io.Writer, src net.Conn) (written int64, err error) {
 	startTime := time.Now()
 	buffer := make([]byte, 64*1024)
 	for {
@@ -292,12 +293,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return nil, err
 	}
 
-	psiphonServer, err := net.ResolveTCPAddr("tcp", clientSessionData.PsiphonServerAddress)
-	if err != nil {
-		return nil, err
-	}
-
-	conn, err := net.DialTCP("tcp", nil, psiphonServer)
+	conn, err := net.DialTimeout("tcp", clientSessionData.PsiphonServerAddress, psiConnDialTimeout)
 	if err != nil {
 		return nil, err
 	}
