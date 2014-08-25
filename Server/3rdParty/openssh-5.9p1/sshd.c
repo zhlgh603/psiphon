@@ -447,7 +447,7 @@ sshd_exchange_identification(int sock_in, int sock_out)
 	// SSH clients will ignore.
 	if (use_obfuscation) {
 		arc4random_stir();
-		unsigned int padding_length = arc4random() % 8192; // OBFUSCATE_MAX_PADDING = 8192
+		unsigned int padding_length = 2 + arc4random() % 8190; // OBFUSCATE_MAX_PADDING = 8192
 		// For backwards compatibility with some clients, send no more than 512 characters
 		// per line (including CRLF). To keep the padding distribution between 0 and OBFUSCATE_MAX_PADDING
 		// characters, we send lines that add up to padding_length characters including all CRLFs.
