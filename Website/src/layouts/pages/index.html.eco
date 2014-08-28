@@ -5,7 +5,7 @@ layout: default
 <div class="row index-splash">
   <div class="col-sm-12">
     <a href="<%= @getPageURL '/download.html' %>">
-      <h1 class="slabtext-container" data-max-font-size="120">
+      <h1 class="slabtext-container" data-max-font-size="120" style="margin-bottom:0">
         <span class="slabtext slab-main">
           <span id="psiphon-psiph">psiph</span><span id="psiphon-on">on</span>
         </span>
