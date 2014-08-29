@@ -31,7 +31,7 @@ import (
 const maxPayloadLength = 0x10000
 const turnAroundTimeout = 20 * time.Millisecond
 const extendedTurnAroundTimeout = 100 * time.Millisecond
-const maxSessionStaleness = 120 * time.Second
+const maxSessionStaleness = 30 * time.Second
 const psiConnDialTimeout = 100 * time.Millisecond
 
 const MEEK_PROTOCOL_VERSION = 1
