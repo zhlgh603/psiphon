@@ -84,6 +84,8 @@ type Session struct {
 	LastSeen            time.Time
 	BytesTransferred    int64
 	IsThrottled         bool
+	Buffer              []byte
+	ThrottleBuffer      []byte
 }
 
 func (session *Session) Touch() {
@@ -158,7 +160,7 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 		session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes
 
 	if !throttle && session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION {
-		responseSize, err := copyWithTimeout(responseWriter, session.psiConn)
+		responseSize, err := copyWithTimeout(responseWriter, session.psiConn, session.Buffer)
 		if err != nil {
 			return errors.New(fmt.Sprintf("reading payload from psiConn: %s", err))
 		}
@@ -167,15 +169,21 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 
 	} else {
 
-		reponseMaxPayloadLength := maxPayloadLength
+		buf := session.Buffer
 
 		if throttle {
 			time.Sleep(
 				time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
-			reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
+
+			if session.ThrottleBuffer == nil {
+				throttledMaxPayloadLength :=
+                    int(float64(maxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
+				session.ThrottleBuffer = make([]byte, throttledMaxPayloadLength)
+			}
+
+			buf = session.ThrottleBuffer
 		}
 
-		buf := make([]byte, reponseMaxPayloadLength)
 		session.psiConn.SetReadDeadline(time.Now().Add(turnAroundTimeout))
 		responseSize, err := session.psiConn.Read(buf)
 		if err != nil {
@@ -204,9 +212,8 @@ no data is available we return no slower than the non-chunked mode.
 
 Adapted from Copy: http://golang.org/src/pkg/io/io.go
 */
-func copyWithTimeout(dst io.Writer, src net.Conn) (written int64, err error) {
+func copyWithTimeout(dst io.Writer, src net.Conn, buffer []byte) (written int64, err error) {
 	startTime := time.Now()
-	buffer := make([]byte, 64*1024)
 	for {
 		src.SetReadDeadline(time.Now().Add(turnAroundTimeout))
 		bytesRead, errRead := src.Read(buffer)
@@ -299,6 +306,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 	}
 
 	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion}
+	session.Buffer = make([]byte, maxPayloadLength)
 	session.Touch()
 
 	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
