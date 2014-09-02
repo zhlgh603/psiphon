@@ -185,7 +185,7 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 			}
 		}
 
-		responseSize, err = responseWriter.Write(buf[:responseSize])
+		responseSize, err = responseWriter.Write(session.PayloadBuffer[:responseSize])
 		if err != nil {
 			return errors.New(fmt.Sprintf("writing to response: %s", err))
 		}
@@ -247,7 +247,7 @@ Copy without allocating a temporary buffer.
 
 Adapted from Copy: http://golang.org/src/pkg/io/io.go
 */
-func copyUsingBuffer(dst io.Writer, src net.Conn, buffer []byte) (written int64, err error) {
+func copyUsingBuffer(dst io.Writer, src io.Reader, buffer []byte) (written int64, err error) {
 	for {
 		bytesRead, errRead := src.Read(buffer)
 		if bytesRead > 0 {
