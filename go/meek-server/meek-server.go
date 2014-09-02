@@ -84,8 +84,7 @@ type Session struct {
 	LastSeen            time.Time
 	BytesTransferred    int64
 	IsThrottled         bool
-	Buffer              []byte
-	ThrottleBuffer      []byte
+	PayloadBuffer       []byte
 }
 
 func (session *Session) Touch() {
@@ -148,7 +147,7 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 
 func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
 	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
-	requestBodySize, err := io.Copy(session.psiConn, body)
+	requestBodySize, err := copyUsingBuffer(session.psiConn, body, session.PayloadBuffer)
 	if err != nil {
 		return errors.New(fmt.Sprintf("writing payload to psiConn: %s", err))
 	}
@@ -159,8 +158,10 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 		session.IsThrottled &&
 		session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes
 
+	readLength := len(session.PayloadBuffer)
+
 	if !throttle && session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION {
-		responseSize, err := copyWithTimeout(responseWriter, session.psiConn, session.Buffer)
+		responseSize, err := copyWithTimeout(responseWriter, session.psiConn, session.PayloadBuffer)
 		if err != nil {
 			return errors.New(fmt.Sprintf("reading payload from psiConn: %s", err))
 		}
@@ -168,24 +169,16 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 		session.BytesTransferred += responseSize
 
 	} else {
-
-		buf := session.Buffer
-
 		if throttle {
-			time.Sleep(
-				time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
-
-			if session.ThrottleBuffer == nil {
-				throttledMaxPayloadLength :=
-                    int(float64(maxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
-				session.ThrottleBuffer = make([]byte, throttledMaxPayloadLength)
+			time.Sleep(time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
+			readLength = int(float64(maxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
+			if readLength > len(session.PayloadBuffer) {
+				session.PayloadBuffer = make([]byte, readLength)
 			}
-
-			buf = session.ThrottleBuffer
 		}
 
 		session.psiConn.SetReadDeadline(time.Now().Add(turnAroundTimeout))
-		responseSize, err := session.psiConn.Read(buf)
+		responseSize, err := session.psiConn.Read(session.PayloadBuffer[:readLength])
 		if err != nil {
 			if e, ok := err.(net.Error); !ok || !e.Timeout() {
 				return errors.New(fmt.Sprintf("reading from psiConn: %s", err))
@@ -249,6 +242,39 @@ func copyWithTimeout(dst io.Writer, src net.Conn, buffer []byte) (written int64,
 	return written, err
 }
 
+/*
+Copy without allocating a temporary buffer.
+
+Adapted from Copy: http://golang.org/src/pkg/io/io.go
+*/
+func copyUsingBuffer(dst io.Writer, src net.Conn, buffer []byte) (written int64, err error) {
+	for {
+		bytesRead, errRead := src.Read(buffer)
+		if bytesRead > 0 {
+			bytesWritten, errWrite := dst.Write(buffer[0:bytesRead])
+			if bytesWritten > 0 {
+				written += int64(bytesWritten)
+			}
+			if errWrite != nil {
+				err = errWrite
+				break
+			}
+			if bytesRead != bytesWritten {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if errRead == io.EOF {
+			break
+		}
+		if errRead != nil {
+			err = errRead
+			break
+		}
+	}
+	return written, err
+}
+
 func (dispatcher *Dispatcher) terminateConnection(responseWriter http.ResponseWriter, request *http.Request) {
 	http.NotFound(responseWriter, request)
 
@@ -306,7 +332,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 	}
 
 	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion}
-	session.Buffer = make([]byte, maxPayloadLength)
+	session.PayloadBuffer = make([]byte, maxPayloadLength)
 	session.Touch()
 
 	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
