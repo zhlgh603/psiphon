@@ -31,7 +31,7 @@ import (
 const MAX_PAYLOAD_LENGTH = 0x10000
 const TURN_AROUND_TIMEOUT = 20 * time.Millisecond
 const EXTENDED_TURN_AROUND_TIMEOUT = 100 * time.Millisecond
-const MAX_SESSION_STALENESS = 120 * time.Second
+const MAX_SESSION_STALENESS = 45 * time.Second
 const PSI_CONN_DIAL_TIMEOUT = 100 * time.Millisecond
 const TCP_KEEP_ALIVE_PERIOD = 3 * time.Minute
 const HTTP_CLIENT_READ_TIMEOUT = 45 * time.Second
