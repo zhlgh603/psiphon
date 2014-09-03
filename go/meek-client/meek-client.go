@@ -2,17 +2,18 @@ package main
 
 import (
 	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
-	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/http"
 	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gopkg.in/getlantern/tlsdialer.v1"
 	"io"
 	"log"
 	"math/rand"
 	"net"
+	"net/http"
 	"net/url"
 	"syscall"
 	"time"
@@ -47,11 +48,10 @@ type RequestInfo struct {
 	ClientPublicKeyBase64 string
 	ObfuscatedKeyword     string
 	PsiphonServerAddr     string
-	TargetAddr            string
-	FrontingHostname      string
 	SshSessionID          string
 	PayloadCookie         *http.Cookie
-	URL                   string
+	RequestURL            string
+	HttpTransport         *http.Transport
 }
 
 type Cookie struct {
@@ -60,6 +60,14 @@ type Cookie struct {
 	MeekProtocolVersion int    `json:"v"`
 }
 
+func DialTLS(tlsaddr string) func(string, string) (net.Conn, error) {
+	//Credits: Ox Cart of the Lantern project
+	//links: https://gist.github.com/oxtoacart/5e78d25a7f9a9cda10cd
+	//https://github.com/getlantern/tlsdialer/tree/v1
+	return func(n, addr string) (net.Conn, error) {
+		return tlsdialer.Dial("tcp", tlsaddr, false, nil)
+	}
+}
 func randInt(min int, max int) int {
 	rand.Seed(time.Now().UTC().UnixNano())
 	return min + rand.Intn(max-min)
@@ -68,13 +76,9 @@ func randInt(min int, max int) int {
 // Do an HTTP roundtrip using the payload data in buf and the request metadata
 // in info.
 func roundTrip(buf []byte, info *RequestInfo) (response *http.Response, err error) {
-	tr := http.DefaultTransport
-	req, err := http.NewRequest("POST", info.URL, bytes.NewReader(buf))
+	req, err := http.NewRequest("POST", info.RequestURL, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
-	}
-	if info.FrontingHostname != "" {
-		req.Host = info.FrontingHostname
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
@@ -91,7 +95,7 @@ func roundTrip(buf []byte, info *RequestInfo) (response *http.Response, err erro
 	// This retry mitigates intermittent failures between the client
 	// and front/server.
 	for i := 0; i <= 1; i++ {
-		response, err = tr.RoundTrip(req)
+		response, err = info.HttpTransport.RoundTrip(req)
 		if err == nil {
 			return
 		}
@@ -247,20 +251,23 @@ func handler(conn *pt.SocksConn) error {
 		return err
 	}
 
+	var frontingHostname, targetAddr string
+
+	targetAddr = conn.Req.Target
+	frontingHostname, _ = conn.Req.Args.Get("fhostname")
+
 	var info RequestInfo
 
-	info.TargetAddr = conn.Req.Target
 	info.ClientPublicKeyBase64, _ = conn.Req.Args.Get("cpubkey")
 	info.PsiphonServerAddr, _ = conn.Req.Args.Get("pserver")
-	info.FrontingHostname, _ = conn.Req.Args.Get("fhostname")
 	info.SshSessionID, _ = conn.Req.Args.Get("sshid")
 	info.ObfuscatedKeyword, _ = conn.Req.Args.Get("obfskey")
 
 	//Indicates that the client understands chunked responses of arbitrary length
 	info.MeekProtocolVersion = 1
 
-	if info.TargetAddr == "" {
-		return errors.New("TargetAddr is missing from SOCKS request")
+	if targetAddr == "" {
+		return errors.New("target address is missing from SOCKS request")
 	}
 
 	if info.ClientPublicKeyBase64 == "" {
@@ -275,20 +282,38 @@ func handler(conn *pt.SocksConn) error {
 	}
 
 	info.PayloadCookie, err = makeCookie(&info)
+
 	if err != nil {
 		return errors.New(fmt.Sprintf("Couldn't create encrypted payload: %s", err.Error()))
 	}
-	scheme := "http"
 
-	if info.FrontingHostname != "" {
-		scheme = "https"
+	info.HttpTransport = &http.Transport{}
+
+	if frontingHostname != "" {
+
+		//set HTTP request URL to http://<frontingHostname>/
+		//and use custom dialer in HTTP Transport to establish
+		//TLS connection to the targetAddr
+
+		info.RequestURL = (&url.URL{
+			Scheme: "http",
+			Host:   frontingHostname,
+			Path:   "/",
+		}).String()
+
+		info.HttpTransport.Dial = DialTLS(targetAddr)
+	} else {
+		//unfronted connection
+		//set HTTP request URL to http://<targetAddr>/
+		//and use default HTTP Transport
+		//for the RoundTrip
+
+		info.RequestURL = (&url.URL{
+			Scheme: "http",
+			Host:   targetAddr,
+			Path:   "/",
+		}).String()
 	}
-
-	info.URL = (&url.URL{
-		Scheme: scheme,
-		Host:   info.TargetAddr,
-		Path:   "/",
-	}).String()
 
 	return copyLoop(conn, &info)
 }
