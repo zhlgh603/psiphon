@@ -654,17 +654,16 @@ func createTLSConfig(host string) (certPEMBlock, keyPEMBlock []byte, err error) 
 }
 
 func (dispatcher *Dispatcher) Start() {
-	//EC ciphers in golang TLS are significantly heavier on the server's resources
-	//Since encryption strength is not as important at this point we are going to change order of preference
-	//of the available ciphersuites in favour of non EC ones
+	// ECC ciphers in golang TLS are significantly heavier on the server's resources
+	// Since encryption strength is not as important at this layer (this layer is obfuscation; tunneled SSH provides privacy)
+	// we are going to change order of preference of the available ciphersuites in favour of non ECC ones
 
 	mTLSConfig := &tls.Config{
 		CipherSuites: []uint16{
-			//non EC ones first
-			tls.TLS_RSA_WITH_RC4_128_SHA,
-			tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+			// non ECC ones first
 			tls.TLS_RSA_WITH_AES_128_CBC_SHA,
 			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_RSA_WITH_RC4_128_SHA,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
@@ -673,7 +672,6 @@ func (dispatcher *Dispatcher) Start() {
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-			tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
 		},
 		PreferServerCipherSuites: true,
 	}
