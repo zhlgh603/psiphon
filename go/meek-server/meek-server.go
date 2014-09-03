@@ -683,11 +683,6 @@ func (dispatcher *Dispatcher) Start() {
 			Addr:      fmt.Sprintf(":%d", dispatcher.config.Port),
 			Handler:   dispatcher,
 			TLSConfig: mTLSConfig,
-
-			// TODO: This timeout is actually more like a socket lifetime which closes active persistent connections.
-			// Implement a custom timeout. See link: https://groups.google.com/forum/#!topic/golang-nuts/NX6YzGInRgE
-			ReadTimeout:  600 * time.Second,
-			WriteTimeout: 600 * time.Second,
 		},
 	}
 
