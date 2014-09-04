@@ -62,12 +62,13 @@ type Cookie struct {
 
 func DialTLS(tlsaddr string) func(string, string) (net.Conn, error) {
 	//Credits: Ox Cart of the Lantern project
-	//links: https://gist.github.com/oxtoacart/5e78d25a7f9a9cda10cd
+	//https://gist.github.com/oxtoacart/5e78d25a7f9a9cda10cd
 	//https://github.com/getlantern/tlsdialer/tree/v1
 	return func(n, addr string) (net.Conn, error) {
 		return tlsdialer.Dial("tcp", tlsaddr, false, nil)
 	}
 }
+
 func randInt(min int, max int) int {
 	rand.Seed(time.Now().UTC().UnixNano())
 	return min + rand.Intn(max-min)
@@ -290,7 +291,6 @@ func handler(conn *pt.SocksConn) error {
 	info.HttpTransport = &http.Transport{}
 
 	if frontingHostname != "" {
-
 		//set HTTP request URL to http://<frontingHostname>/
 		//and use custom dialer in HTTP Transport to establish
 		//TLS connection to the targetAddr
