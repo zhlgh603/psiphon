@@ -33,6 +33,7 @@ import operator
 import gzip
 import copy
 import subprocess
+import traceback
 from pkg_resources import parse_version
 from multiprocessing.pool import ThreadPool
 
@@ -1182,7 +1183,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             if users_on_host == 0:
                 self.remove_host(server.host_id)
                 number_removed += 1
-            elif users_on_host < 20:
+            elif users_on_host < 50:
                 self.__disable_server(server)
                 number_disabled += 1
         return number_removed, number_disabled
@@ -1266,14 +1267,16 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             try:
                 self.add_servers(new_servers[:new_discovery_servers_count], propagation_channel_name, new_discovery_date_range, False)
             except Exception as ex:
-                print str(ex)
+                for line in traceback.format_exc().split('\n'):
+                    print line
                 failure = ex
 
         if new_propagation_servers_count > 0:
             try:
                 self.add_servers(new_servers[new_discovery_servers_count:], propagation_channel_name, None)
             except Exception as ex:
-                print str(ex)
+                for line in traceback.format_exc().split('\n'):
+                    print line
                 failure = ex
 
         if failure:
