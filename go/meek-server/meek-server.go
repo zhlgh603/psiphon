@@ -28,11 +28,14 @@ import (
 	"time"
 )
 
-const maxPayloadLength = 0x10000
-const turnAroundTimeout = 20 * time.Millisecond
-const extendedTurnAroundTimeout = 100 * time.Millisecond
-const maxSessionStaleness = 120 * time.Second
-const psiConnDialTimeout = 100 * time.Millisecond
+const MAX_PAYLOAD_LENGTH = 0x10000
+const TURN_AROUND_TIMEOUT = 20 * time.Millisecond
+const EXTENDED_TURN_AROUND_TIMEOUT = 100 * time.Millisecond
+const MAX_SESSION_STALENESS = 45 * time.Second
+const PSI_CONN_DIAL_TIMEOUT = 100 * time.Millisecond
+const TCP_KEEP_ALIVE_PERIOD = 3 * time.Minute
+const HTTP_CLIENT_READ_TIMEOUT = 45 * time.Second
+const HTTP_CLIENT_WRITE_TIMEOUT = 10 * time.Second
 
 const MEEK_PROTOCOL_VERSION = 1
 
@@ -91,7 +94,7 @@ func (session *Session) Touch() {
 }
 
 func (session *Session) Expired() bool {
-	return time.Since(session.LastSeen) > maxSessionStaleness
+	return time.Since(session.LastSeen) > MAX_SESSION_STALENESS
 }
 
 type Dispatcher struct {
@@ -145,7 +148,7 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 }
 
 func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
-	body := http.MaxBytesReader(responseWriter, request.Body, maxPayloadLength+1)
+	body := http.MaxBytesReader(responseWriter, request.Body, MAX_PAYLOAD_LENGTH+1)
 	requestBodySize, err := io.Copy(session.psiConn, body)
 	if err != nil {
 		return errors.New(fmt.Sprintf("writing payload to psiConn: %s", err))
@@ -167,7 +170,7 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 
 	} else {
 
-		reponseMaxPayloadLength := maxPayloadLength
+		reponseMaxPayloadLength := MAX_PAYLOAD_LENGTH
 
 		if throttle {
 			time.Sleep(
@@ -176,7 +179,7 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 		}
 
 		buf := make([]byte, reponseMaxPayloadLength)
-		session.psiConn.SetReadDeadline(time.Now().Add(turnAroundTimeout))
+		session.psiConn.SetReadDeadline(time.Now().Add(TURN_AROUND_TIMEOUT))
 		responseSize, err := session.psiConn.Read(buf)
 		if err != nil {
 			if e, ok := err.(net.Error); !ok || !e.Timeout() {
@@ -208,7 +211,7 @@ func copyWithTimeout(dst io.Writer, src net.Conn) (written int64, err error) {
 	startTime := time.Now()
 	buffer := make([]byte, 64*1024)
 	for {
-		src.SetReadDeadline(time.Now().Add(turnAroundTimeout))
+		src.SetReadDeadline(time.Now().Add(TURN_AROUND_TIMEOUT))
 		bytesRead, errRead := src.Read(buffer)
 		if bytesRead > 0 {
 			bytesWritten, errWrite := dst.Write(buffer[0:bytesRead])
@@ -235,7 +238,7 @@ func copyWithTimeout(dst io.Writer, src net.Conn) (written int64, err error) {
 			break
 		}
 		totalElapsedTime := time.Now().Sub(startTime) / time.Millisecond
-		if totalElapsedTime >= extendedTurnAroundTimeout {
+		if totalElapsedTime >= EXTENDED_TURN_AROUND_TIMEOUT {
 			break
 		}
 	}
@@ -293,7 +296,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return nil, err
 	}
 
-	conn, err := net.DialTimeout("tcp", clientSessionData.PsiphonServerAddress, psiConnDialTimeout)
+	conn, err := net.DialTimeout("tcp", clientSessionData.PsiphonServerAddress, PSI_CONN_DIAL_TIMEOUT)
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +494,7 @@ func (dispatcher *Dispatcher) closeSessionHelper(sessionId string, session *Sess
 
 func (dispatcher *Dispatcher) ExpireSessions() {
 	for {
-		time.Sleep(maxSessionStaleness / 2)
+		time.Sleep(MAX_SESSION_STALENESS / 2)
 		dispatcher.lock.Lock()
 		for sessionId, session := range dispatcher.sessionMap {
 			if session.Expired() {
@@ -502,12 +505,93 @@ func (dispatcher *Dispatcher) ExpireSessions() {
 	}
 }
 
+// TimeoutListener adapted from nettimeout (https://gist.github.com/jbardin/9663312)
+//
+// NOTE:
+// - not compatible with http.Server.ReadTimeout (conflicting use of net.Conn.SetReadDeadline)
+// - explicitly calls Close() on timeout, to mitigate https://code.google.com/p/go/issues/detail?id=8534;
+
+// TimeoutListener wraps a net.Listener, and gives a place to store the timeout
+// parameters. On Accept, it will wrap the net.Conn with our own Conn for us.
+type TimeoutListener struct {
+	net.Listener
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
+func (l *TimeoutListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	// tcpKeepAliveListener functionality from net.http.Server.ListenAndServe
+	tcp, ok := c.(*net.TCPConn)
+	if ok {
+		tcp.SetKeepAlive(true)
+		tcp.SetKeepAlivePeriod(TCP_KEEP_ALIVE_PERIOD)
+	}
+	tc := &TimeoutConn{
+		Conn:         c,
+		ReadTimeout:  l.ReadTimeout,
+		WriteTimeout: l.WriteTimeout,
+	}
+	return tc, nil
+}
+
+// TimeoutConn wraps a net.Conn, and sets a deadline for every read
+// and write operation.
+type TimeoutConn struct {
+	net.Conn
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
+func (c *TimeoutConn) Read(b []byte) (int, error) {
+	err := c.Conn.SetReadDeadline(time.Now().Add(c.ReadTimeout))
+	if err != nil {
+		if e, ok := err.(net.Error); ok && e.Timeout() {
+			c.Close()
+		}
+		return 0, err
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *TimeoutConn) Write(b []byte) (int, error) {
+	err := c.Conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout))
+	if err != nil {
+		if e, ok := err.(net.Error); ok && e.Timeout() {
+			c.Close()
+		}
+		return 0, err
+	}
+	return c.Conn.Write(b)
+}
+
+func NewTimeoutListener(l net.Listener, readTimeout, writeTimeout time.Duration) net.Listener {
+	tl := &TimeoutListener{
+		Listener:     l,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+	}
+	return tl
+}
+
 type MeekHTTPServer struct {
 	server *http.Server
 }
 
 func (httpServer *MeekHTTPServer) ListenAndServe() error {
-	return httpServer.server.ListenAndServe()
+	addr := httpServer.server.Addr
+	if addr == "" {
+		addr = ":http"
+	}
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	return httpServer.server.Serve(
+		NewTimeoutListener(l, HTTP_CLIENT_READ_TIMEOUT, HTTP_CLIENT_WRITE_TIMEOUT))
 }
 
 func (httpServer *MeekHTTPServer) ListenAndServeTLS(certPEMBlock, keyPEMBlock []byte) error {
@@ -531,13 +615,15 @@ func (httpServer *MeekHTTPServer) ListenAndServeTLS(certPEMBlock, keyPEMBlock []
 		return err
 	}
 
-	conn, err := net.Listen("tcp", addr)
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 
-	tlsListener := tls.NewListener(conn, tlsConfig)
-	return httpServer.server.Serve(tlsListener)
+	return httpServer.server.Serve(
+		tls.NewListener(
+			NewTimeoutListener(l, HTTP_CLIENT_READ_TIMEOUT, HTTP_CLIENT_WRITE_TIMEOUT),
+			tlsConfig))
 }
 
 func createTLSConfig(host string) (certPEMBlock, keyPEMBlock []byte, err error) {
@@ -568,17 +654,16 @@ func createTLSConfig(host string) (certPEMBlock, keyPEMBlock []byte, err error) 
 }
 
 func (dispatcher *Dispatcher) Start() {
-	//EC ciphers in golang TLS are significantly heavier on the server's resources
-	//Since encryption strength is not as important at this point we are going to change order of preference
-	//of the available ciphersuites in favour of non EC ones
+	// ECC ciphers in golang TLS are significantly heavier on the server's resources
+	// Since encryption strength is not as important at this layer (this layer is obfuscation; tunneled SSH provides privacy)
+	// we are going to change order of preference of the available ciphersuites in favour of non ECC ones
 
 	mTLSConfig := &tls.Config{
 		CipherSuites: []uint16{
-			//non EC ones first
-			tls.TLS_RSA_WITH_RC4_128_SHA,
-			tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+			// non ECC ones first
 			tls.TLS_RSA_WITH_AES_128_CBC_SHA,
 			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_RSA_WITH_RC4_128_SHA,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
@@ -587,7 +672,6 @@ func (dispatcher *Dispatcher) Start() {
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-			tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
 		},
 		PreferServerCipherSuites: true,
 	}
@@ -597,11 +681,6 @@ func (dispatcher *Dispatcher) Start() {
 			Addr:      fmt.Sprintf(":%d", dispatcher.config.Port),
 			Handler:   dispatcher,
 			TLSConfig: mTLSConfig,
-
-			// TODO: This timeout is actually more like a socket lifetime which closes active persistent connections.
-			// Implement a custom timeout. See link: https://groups.google.com/forum/#!topic/golang-nuts/NX6YzGInRgE
-			ReadTimeout:  600 * time.Second,
-			WriteTimeout: 600 * time.Second,
 		},
 	}
 
