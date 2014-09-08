@@ -769,8 +769,10 @@ func main() {
 		}
 	}
 
-	// This config override file may not exist
-	config, err = updateConfig("meek-server.json", config)
+	// This config overrides file may not exist.
+	// Config values specified in this file will override any values specified
+	// in the original config file read above.
+	config, _ = updateConfig("meek-server.json", config)
 
 	if config.Port == 0 {
 		log.Fatalf("port is missing from the config file, exiting now")
