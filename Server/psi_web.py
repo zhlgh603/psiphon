@@ -209,7 +209,7 @@ class ServerInstance(object):
                         'Missing %s in %s [%s]' % (input_name, request_name, str(request.params)))
                     return False
             if len(value) == 0:
-                value = EMPTY_VALUE 
+                value = EMPTY_VALUE
             if not validator(value):
                 syslog.syslog(
                     syslog.LOG_ERR,
@@ -278,7 +278,7 @@ class ServerInstance(object):
                     client_ip_address_strategy_value = discovery_info['client_ip_address_strategy_value']
         else:
             client_ip_address_strategy_value = psi_ops_discovery.calculate_ip_address_strategy_value(client_ip_address)
-                
+
         # logger callback will add log entry for each server IP address discovered
         def discovery_logger(server_ip_address):
             unknown = '0' if server_ip_address in known_servers else '1'
@@ -302,7 +302,7 @@ class ServerInstance(object):
         config['preemptive_reconnect_lifetime_milliseconds'] = \
             psi_config.PREEMPTIVE_RECONNECT_LIFETIME_MILLISECONDS if \
             client_region in psi_config.PREEMPTIVE_RECONNECT_REGIONS else 0
-        
+
         output = []
 
         # Legacy handshake output is a series of Name:Value lines returned to
@@ -392,7 +392,7 @@ class ServerInstance(object):
         return self._send_routes(inputs_lookup, start_response)
 
     def _send_routes(self, inputs_lookup, start_response):
-        # Do not send routes to Android clients 
+        # Do not send routes to Android clients
         if inputs_lookup['client_platform'].lower().find('android') != -1:
             start_response('200 OK', [])
             return []
@@ -411,7 +411,7 @@ class ServerInstance(object):
             # the response is empty.
             start_response('200 OK', [])
             return []
-    
+
     def connected(self, environ, start_response):
         request = Request(environ)
         # Peek at input to determine required parameters
@@ -530,37 +530,7 @@ class ServerInstance(object):
         return []
 
     def feedback(self, environ, start_response):
-        request = Request(environ)
-
-        additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
-                                                      consists_of(x, string.hexdigits) or
-                                                      x == EMPTY_VALUE)]
-        inputs = self._get_inputs(request, 'feedback', additional_inputs)
-        if not inputs:
-            start_response('404 Not Found', [])
-            return []
-
-        # Note: no event log here since we get a log per Q/A -- so there's
-        # a possibility of no log at all.
-
-        # Client POSTs a list of feedback responses; each response value contains
-        # question ID and answer ID
-
-        if request.body:
-            try:
-
-                # Note: no input validation on question/answers.
-                # Stats processor must handle this input with care.
-
-                for response in json.loads(request.body)['responses']:                    
-                    self._log_event('feedback',
-                                    inputs + [('question', response['question']),
-                                              ('answer', response['answer'])])
-            except:
-                start_response('403 Forbidden', [])
-                return []
-
-        # No action, this request is just for feedback logging
+        # TODO: When enough people have upgraded, remove this handler completely
         start_response('200 OK', [])
         return []
 
@@ -590,7 +560,7 @@ class ServerInstance(object):
         start_response('200 OK', response_headers)
         return [contents]
 
-        
+
 def get_servers():
     # enumerate all interfaces with an IPv4 address and server entry
     # return an array of server info for each server to be run
