@@ -720,15 +720,19 @@ func NewDispatcher(config *Config) (*Dispatcher, error) {
 	return dispatcher, nil
 }
 
-func parseConfigJSON(data []byte) (config *Config, err error) {
-	config = &Config{
-		GeoIpServicePort:            DEFAULT_GEOIP_SERVICE_PORT,
-		RedisDbHost:                 DEFAULT_REDIS_DB_HOST,
-		RedisDbPort:                 DEFAULT_REDIS_DB_PORT,
-		RedisSessionDbIndex:         DEFAULT_REDIS_SESSION_DB_INDEX,
-		RedisSessionExpireSeconds:   DEFAULT_REDIS_SESSION_EXPIRE_SECONDS,
-		RedisDiscoveryDbIndex:       DEFAULT_REDIS_DISCOVERY_DB_INDEX,
-		RedisDiscoveryExpireSeconds: DEFAULT_REDIS_DISCOVERY_EXPIRE_SECONDS,
+func parseConfigJSON(baseConfig *Config, data []byte) (config *Config, err error) {
+	if baseConfig == nil {
+		config = &Config{
+			GeoIpServicePort:            DEFAULT_GEOIP_SERVICE_PORT,
+			RedisDbHost:                 DEFAULT_REDIS_DB_HOST,
+			RedisDbPort:                 DEFAULT_REDIS_DB_PORT,
+			RedisSessionDbIndex:         DEFAULT_REDIS_SESSION_DB_INDEX,
+			RedisSessionExpireSeconds:   DEFAULT_REDIS_SESSION_EXPIRE_SECONDS,
+			RedisDiscoveryDbIndex:       DEFAULT_REDIS_DISCOVERY_DB_INDEX,
+			RedisDiscoveryExpireSeconds: DEFAULT_REDIS_DISCOVERY_EXPIRE_SECONDS,
+		}
+	} else {
+		config = baseConfig
 	}
 	err = json.Unmarshal(data, &config)
 	if err != nil {
@@ -739,27 +743,42 @@ func parseConfigJSON(data []byte) (config *Config, err error) {
 	return
 }
 
+func updateConfig(configJSONFilename string, baseConfig *Config) (config *Config, err error) {
+	config = baseConfig
+	var read []byte
+	read, err = ioutil.ReadFile(configJSONFilename)
+	if err != nil {
+		return
+	}
+
+	config, err = parseConfigJSON(baseConfig, read)
+	if err != nil {
+		log.Fatalf("error parsing config: %s", err)
+	}
+
+	return
+}
+
 func main() {
 	var configJSONFilename string
 	var config *Config
 	flag.StringVar(&configJSONFilename, "config", "", "JSON config file")
 	flag.Parse()
+	var err error
 
 	if configJSONFilename == "" {
 		log.Fatalf("config file is required, exiting now")
 	} else {
-		var err error
-		var read []byte
-		read, err = ioutil.ReadFile(configJSONFilename)
+		config, err = updateConfig(configJSONFilename, config)
 		if err != nil {
 			log.Fatalf("error reading configJSONFilename: %s", err)
 		}
-
-		config, err = parseConfigJSON(read)
-		if err != nil {
-			log.Fatalf("error parsing config: %s", err)
-		}
 	}
+
+	// This config overrides file may not exist.
+	// Config values specified in this file will override any values specified
+	// in the original config file read above.
+	config, _ = updateConfig("meek-server.json", config)
 
 	if config.Port == 0 {
 		log.Fatalf("port is missing from the config file, exiting now")
