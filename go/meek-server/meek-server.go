@@ -546,26 +546,32 @@ type TimeoutConn struct {
 	WriteTimeout time.Duration
 }
 
-func (c *TimeoutConn) Read(b []byte) (int, error) {
-	err := c.Conn.SetReadDeadline(time.Now().Add(c.ReadTimeout))
+func (c *TimeoutConn) Read(b []byte) (n int, err error) {
+	err = c.Conn.SetReadDeadline(time.Now().Add(c.ReadTimeout))
+	if err != nil {
+		return 0, err
+	}
+	n, err = c.Conn.Read(b)
 	if err != nil {
 		if e, ok := err.(net.Error); ok && e.Timeout() {
 			c.Close()
 		}
-		return 0, err
 	}
-	return c.Conn.Read(b)
+	return
 }
 
-func (c *TimeoutConn) Write(b []byte) (int, error) {
-	err := c.Conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout))
+func (c *TimeoutConn) Write(b []byte) (n int, err error) {
+	err = c.Conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout))
+	if err != nil {
+		return 0, err
+	}
+	n, err = c.Conn.Write(b)
 	if err != nil {
 		if e, ok := err.(net.Error); ok && e.Timeout() {
 			c.Close()
 		}
-		return 0, err
 	}
-	return c.Conn.Write(b)
+	return
 }
 
 func NewTimeoutListener(l net.Listener, readTimeout, writeTimeout time.Duration) net.Listener {
