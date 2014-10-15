@@ -57,11 +57,8 @@ def patch_ssl_adapter(ssl_adapter):
 def get_context_disallow_SSLv3(self):
     """Return an SSL.Context from self attributes."""
     # See http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/442473
-    # PSIPHON changes:
-    # 1. Switched SSL.SSLv23_METHOD to SSL.TLSv1_METHOD
-    # 2. Added set_options(SSL.OP_NO_SSLv2|SSL.OP_NO_SSLv3)
-    c = SSL.Context(SSL.TLSv1_METHOD)
-    c.set_options(SSL.OP_NO_SSLv2|SSL.OP_NO_SSLv3)
+    c = SSL.Context(SSL.SSLv23_METHOD)
+    c.set_options(SSL.OP_NO_SSLv2|SSL.OP_NO_SSLv3) # PSIPHON
     c.use_privatekey_file(self.private_key)
     if self.certificate_chain:
         c.load_verify_locations(self.certificate_chain)
