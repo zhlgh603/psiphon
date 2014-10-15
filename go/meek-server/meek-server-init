@@ -27,6 +27,7 @@ case "$1" in
   start)
         echo -n "Starting $DESC: "
         ulimit -n 64000
+        export GOMAXPROCS=`grep processor /proc/cpuinfo | wc -l`
         start-stop-daemon -S -q -p $PIDFILE -x $DAEMON -d $DAEMON_ROOT -b -m -- $DAEMON_OPTS
         echo "$NAME."
         ;;
