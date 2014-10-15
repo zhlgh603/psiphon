@@ -617,6 +617,7 @@ func (httpServer *MeekHTTPServer) ListenAndServeTLS(certPEMBlock, keyPEMBlock []
 	var err error
 	tlsConfig.Certificates = make([]tls.Certificate, 1)
 	tlsConfig.Certificates[0], err = tls.X509KeyPair(certPEMBlock, keyPEMBlock)
+        tlsConfig.MinVersion = tls.VersionTLS10
 	if err != nil {
 		return err
 	}
