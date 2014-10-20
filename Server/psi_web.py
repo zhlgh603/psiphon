@@ -47,6 +47,7 @@ import traceback
 import platform
 import redis
 from datetime import datetime
+import psi_web_patch
 
 # ===== PSINET database ===================================================
 
@@ -667,6 +668,7 @@ class WebServerThread(threading.Thread):
                                               self.certificate_temp_file.name,
                                               self.private_key_temp_file.name,
                                               None)
+                psi_web_patch.patch_ssl_adapter(self.server.ssl_adapter)
                 # Blocks until server stopped
                 syslog.syslog(syslog.LOG_INFO, 'started %s' % (self.ip_address,))
                 self.server.start()
@@ -793,3 +795,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
