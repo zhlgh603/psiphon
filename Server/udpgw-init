@@ -27,7 +27,7 @@ case "$1" in
   start)
 	echo -n "Starting $DESC: "
 	ulimit -n 64000
-	start-stop-daemon -S -q -p $PIDFILE -x $DAEMON -d $DAEMON_ROOT -b -m -c sshd -- --listen-addr 127.0.0.1:7300 --max-clients 10000
+	start-stop-daemon -S -q -p $PIDFILE -x $DAEMON -d $DAEMON_ROOT -b -m -c sshd -- --listen-addr 127.0.0.1:7300 --max-clients 10000 --max-connections-for-client 32
 	echo "$NAME."
 	;;
   stop)
