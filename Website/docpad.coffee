@@ -141,6 +141,7 @@ docpadConfig = {
           { name: 'blog-index' }
           { name: 'license' }
           { name: 'open-source' }
+          { name: 'sponsor' }
         ]
       }
       # { name: 'sponsor', additional_classes: ['show-if-not-sponsored', 'hidden'] }
