@@ -449,6 +449,10 @@ ssh_connect(const char *host, struct sockaddr_storage * hostaddr,
 void
 ssh_exchange_identification(int timeout_ms)
 {
+	// PSIPHON: HTTP-PREFIX
+	const char* prefix_terminator = "\r\n\r\n";
+	int prefix_terminator_offset = 0;
+
 	char buf[256], remote_version[256];	/* must be same size! */
 	int remote_major, remote_minor, mismatch;
 	int connection_in = packet_get_connection_in();
@@ -495,8 +499,25 @@ ssh_exchange_identification(int timeout_ms)
 				fatal("ssh_exchange_identification: "
 				    "read: %.100s", strerror(errno));
 
-                        if(options.obfuscate_handshake)
-                            obfuscate_input(&buf[i], 1);
+			// PSIPHON: HTTP-PREFIX
+			// Skip all bytes up to and including the prefix terminator, <CR><LF><CR><LF>
+			if (options.obfuscate_handshake && prefix_terminator_offset != -1) {
+				if (buf[i] == prefix_terminator[prefix_terminator_offset]) {
+					prefix_terminator_offset++;
+					if (prefix_terminator_offset == strlen(prefix_terminator)) {
+						prefix_terminator_offset = -1;
+					}
+				} else {
+					prefix_terminator_offset = 0;
+				}				
+				i--; // Rewind buffer (prefix isn't part of server's version message)
+				continue;
+				// TODO: this prefix scan skips the "++n > 65536" check?
+			}
+
+			if(options.obfuscate_handshake)
+				obfuscate_input(&buf[i], 1);
+
 
 			if (buf[i] == '\r') {
 				buf[i] = '\n';
@@ -576,13 +597,16 @@ ssh_exchange_identification(int timeout_ms)
 	    compat20 ? PROTOCOL_MINOR_2 : minor1,
 	    SSH_VERSION, compat20 ? "\r\n" : "\n");
 
+        /* copy buffer early because obfuscate_output will destroy it */
+	client_version_string = xstrdup(buf);
+
         sendlen = strlen(buf);
         if(options.obfuscate_handshake)
             obfuscate_output(buf, sendlen);
 
 	if (roaming_atomicio(vwrite, connection_out, buf, sendlen) != sendlen)
 		fatal("write: %.100s", strerror(errno));
-	client_version_string = xstrdup(buf);
+
 	chop(client_version_string);
 	chop(server_version_string);
 	debug("Local version string %.100s", client_version_string);
