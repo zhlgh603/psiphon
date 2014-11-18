@@ -106,7 +106,7 @@
   <string name="compression_savings">%s guardado</string>
   <string name="start">Iniciar</string>
   <string name="stop">Detener</string>
-  <string name="status_tab_name">Estado</string>
+  <string name="home_tab_name">Principal</string>
   <string name="settings_tab_name">Opciones</string>
   <string name="statistics_tab_name">Estadísticas</string>
   <string name="logs_tab_name">Registros</string>
@@ -142,4 +142,10 @@
   <string name="run_polipo_failed">La ejecución de Polipo falló: %s</string>
   <string name="wdm_force_iptables_toggle">Forzar método de \'Túnel para el dispositivo completo\' de root</string>
   <string name="http_prefix_toggle">Enmascarar como HTTP</string>
+  <string name="preference_notifications_title">Notificaciones</string>
+  <string name="preference_notifications_with_sound_title">Sonido</string>
+  <string name="preference_notifications_with_sound_summary">Reproduce un sonido cuando cambie el estado de la conexión</string>
+  <string name="preference_notifications_with_vibrate_title">Vibración</string>
+  <string name="preference_notifications_with_vibrate_summary">Vibra cuando el estado de la conexión cambia</string>
+  <string name="moreOptions">Más opciones</string>
 </resources>

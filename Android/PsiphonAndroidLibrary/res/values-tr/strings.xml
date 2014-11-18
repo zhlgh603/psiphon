@@ -106,7 +106,7 @@
   <string name="compression_savings">%s kurtarıldı</string>
   <string name="start">Başlat</string>
   <string name="stop">Durdur</string>
-  <string name="status_tab_name">Durum</string>
+  <string name="home_tab_name">Ev</string>
   <string name="settings_tab_name">Seçenekler</string>
   <string name="statistics_tab_name">İstatistikler</string>
   <string name="logs_tab_name">Günlükler</string>
@@ -142,4 +142,10 @@
   <string name="run_polipo_failed">Polipo\'yu çalıştırma başarısız: %s</string>
   <string name="wdm_force_iptables_toggle">Yönetici Tüm Cihazı Tünelle yöntemini zorla</string>
   <string name="http_prefix_toggle">HTTP olarak görün</string>
+  <string name="preference_notifications_title">Bildirimler</string>
+  <string name="preference_notifications_with_sound_title">Ses</string>
+  <string name="preference_notifications_with_sound_summary">Bağlantı durumu değiştiğinde ses çal</string>
+  <string name="preference_notifications_with_vibrate_title">Titret</string>
+  <string name="preference_notifications_with_vibrate_summary">Bağlantı durumu değiştiğinde titret</string>
+  <string name="moreOptions">Daha Fazla Seçenek</string>
 </resources>
