@@ -903,6 +903,16 @@ packet_send2_wrapped(void)
 	padlen = block_size - (len % block_size);
 	if (padlen < 4)
 		padlen += block_size;
+
+	// PSIPHON
+	// Use SSH variable length random padding (http://tools.ietf.org/html/rfc4253#section-6)
+	// in the early stages of the protocol (algorithm negotiation, key exchange) to avoid
+	// a fixed-size packet length sequence.
+	if (active_state->obfuscation && active_state->extra_pad == 0) {
+		// Uniform distribution of possible padded message sizes (which must be multiple of block size)
+		padlen += block_size * (arc4random() % (256/block_size - ((padlen + block_size - 1)/block_size)));
+	}
+
 	if (active_state->extra_pad) {
 		/* will wrap if extra_pad+padlen > 255 */
 		active_state->extra_pad =
@@ -915,7 +925,10 @@ packet_send2_wrapped(void)
 		active_state->extra_pad = 0;
 	}
 	cp = buffer_append_space(&active_state->outgoing_packet, padlen);
-	if (enc && !active_state->send_context.plaintext) {
+
+	// PSIPHON
+	// Use random padding values when plaintext messages are obfuscated
+	if (active_state->obfuscation || (enc && !active_state->send_context.plaintext)) {
 		/* random padding */
 		for (i = 0; i < padlen; i++) {
 			if (i % 4 == 0)
