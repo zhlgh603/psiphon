@@ -41,9 +41,9 @@ const HTTP_CLIENT_WRITE_TIMEOUT = 10 * time.Second
 
 const MEEK_PROTOCOL_VERSION_1 = 1
 
-// Protocol version 2 clients should initiate a session by sending connection information in 
-// encrypted cookie payload. Server will initiate the session, store it in a table and return 
-// session token back to client via Set-Cookie header. Client should use this token on all 
+// Protocol version 2 clients should initiate a session by sending connection information in
+// encrypted cookie payload. Server will initiate the session, store it in a table and return
+// session token back to client via Set-Cookie header. Client should use this token on all
 // consequitive request for the rest of the session.
 
 const MEEK_PROTOCOL_VERSION_2 = 2
@@ -96,6 +96,7 @@ type Session struct {
 	LastSeen            time.Time
 	BytesTransferred    int64
 	IsThrottled         bool
+	meekSessionKeySent  bool
 }
 
 func (session *Session) Touch() {
@@ -177,8 +178,9 @@ func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *
 		session.IsThrottled &&
 		session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes
 
-	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_2 {
+	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_2  && session.meekSessionKeySent == false {
 		http.SetCookie(responseWriter, sessionCookie)
+                session.meekSessionKeySent = true;
 	}
 
 	if !throttle && session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_1 {
@@ -332,7 +334,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return
 	}
 
-	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion}
+	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion, meekSessionKeySent: false}
 	session.Touch()
 
 	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
