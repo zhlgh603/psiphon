@@ -2,7 +2,6 @@ package main
 
 import (
 	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
-	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
@@ -15,7 +14,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"syscall"
 	"time"
 )
 
@@ -118,96 +116,16 @@ func sendRecv(buf []byte, conn net.Conn, info *RequestInfo) (int64, error) {
 		return 0, errors.New(fmt.Sprintf("status code was %d, not %d", resp.StatusCode, http.StatusOK))
 	}
 
-	return io.Copy(conn, resp.Body)
-}
-
-// Repeatedly read from conn, issue HTTP requests, and write the responses back
-// to conn.
-func copyLoop(conn net.Conn, info *RequestInfo) error {
-	var interval time.Duration
-
-	ch := make(chan []byte)
-
-	// Read from the Conn and send byte slices on the channel.
-	go func() {
-		var buf [maxPayloadLength]byte
-		r := bufio.NewReader(conn)
-		for {
-			n, err := r.Read(buf[:])
-			b := make([]byte, n)
-			copy(b, buf[:n])
-			// log.Printf("read from local: %q", b)
-			ch <- b
-			if err != nil {
-				log.Printf("error reading from local: %s", err)
-				break
-			}
-		}
-		close(ch)
-	}()
-
-	interval = initPollInterval
-loop:
-	for {
-		var buf []byte
-		var ok bool
-
-		// log.Printf("waiting up to %.2f s", interval.Seconds())
-		// start := time.Now()
-		select {
-		case buf, ok = <-ch:
-			if !ok {
-				break loop
-			}
-			// log.Printf("read %d bytes from local after %.2f s", len(buf), time.Since(start).Seconds())
-		case <-time.After(interval):
-			// log.Printf("read nothing from local after %.2f s", time.Since(start).Seconds())
-			buf = nil
-		}
-
-		nw, err := sendRecv(buf, conn, info)
-		if err != nil {
-			//Ignore peer disconnect
-			operr, ok := err.(*net.OpError)
-			if !ok {
-				return err
-			}
-			errno, ok := operr.Err.(syscall.Errno)
-			if !ok {
-				return err
-			}
-			switch errno {
-			case syscall.ERROR_NETNAME_DELETED, syscall.WSAECONNRESET:
-				return nil
-			}
-			return err
-		}
-		/*
-			if nw > 0 {
-				log.Printf("got %d bytes from remote", nw)
-			} else {
-				log.Printf("got nothing from remote")
-			}
-		*/
-
-		if nw > 0 || len(buf) > 0 {
-			// If we sent or received anything, poll again
-			// immediately.
-			interval = 0
-		} else if interval == 0 {
-			// The first time we don't send or receive anything,
-			// wait a while.
-			interval = initPollInterval
-		} else {
-			// After that, wait a little longer.
-			interval = time.Duration(float64(interval) * pollIntervalMultiplier)
-		}
-		if interval > maxPollInterval {
-			interval = maxPollInterval
+	// watch response cookies for meek session key token.
+	// Once found it must be used for all consecutive requests made to the server
+	for _, c := range resp.Cookies() {
+		if info.PayloadCookie.Name == c.Name {
+			info.PayloadCookie.Value = c.Value
+			break
 		}
 	}
 
-	return nil
+	return io.Copy(conn, resp.Body)
 }
 
 func makeCookie(info *RequestInfo) (*http.Cookie, error) {
@@ -265,7 +183,10 @@ func handler(conn *pt.SocksConn) error {
 	info.ObfuscatedKeyword, _ = conn.Req.Args.Get("obfskey")
 
 	//Indicates that the client understands chunked responses of arbitrary length
-	info.MeekProtocolVersion = 1
+	//info.MeekProtocolVersion = 1
+
+	//protocol v.2 indicates that client handles Set-Cookie header in the response
+	info.MeekProtocolVersion = 2
 
 	if targetAddr == "" {
 		return errors.New("target address is missing from SOCKS request")
