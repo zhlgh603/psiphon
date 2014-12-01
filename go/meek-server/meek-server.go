@@ -287,8 +287,7 @@ func (dispatcher *Dispatcher) terminateConnection(responseWriter http.ResponseWr
 }
 
 func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (sessKey string, session *Session, err error) {
-	sessKey = ""
-	session = nil
+
 	if len(cookie) == 0 {
 		err = errors.New("cookie is empty")
 		return
