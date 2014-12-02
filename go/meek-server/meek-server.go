@@ -3,7 +3,6 @@ package main
 import (
 	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
 	"crypto/hmac"
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -11,7 +10,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -45,8 +43,11 @@ const MEEK_PROTOCOL_VERSION_1 = 1
 // encrypted cookie payload. Server will initiate the session, store it in a table and return
 // session token back to client via Set-Cookie header. Client should use this token on all
 // consequitive request for the rest of the session.
-
 const MEEK_PROTOCOL_VERSION_2 = 2
+
+const MIN_SESSION_KEY_LENGTH = 8
+const MAX_SESSION_KEY_LENGTH = 20
+const ALPHANUMERICAL = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 // Default config values from Server/psi_config.py
 
@@ -178,9 +179,9 @@ func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *
 		session.IsThrottled &&
 		session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes
 
-	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_2  && session.meekSessionKeySent == false {
+	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_2 && session.meekSessionKeySent == false {
 		http.SetCookie(responseWriter, sessionCookie)
-                session.meekSessionKeySent = true;
+		session.meekSessionKeySent = true
 	}
 
 	if !throttle && session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_1 {
@@ -286,6 +287,32 @@ func (dispatcher *Dispatcher) terminateConnection(responseWriter http.ResponseWr
 	conn.Close()
 }
 
+func generateSessionKey() (token string, err error) {
+	max := MAX_SESSION_KEY_LENGTH - MIN_SESSION_KEY_LENGTH
+
+	if max <= 0 {
+		err = fmt.Errorf("MAX_SESSION_KEY_LENGHT is less or equal MIN_SESSION_KEY_LENGTH")
+		return
+	}
+
+	randomInt, err := rand.Int(rand.Reader, big.NewInt(int64(max+1)))
+	if err != nil {
+		return
+	}
+
+	tokenLength := int(randomInt.Uint64()) + MIN_SESSION_KEY_LENGTH
+
+	var bytes = make([]byte, tokenLength)
+	rand.Read(bytes)
+	alphanumLength := byte(len(ALPHANUMERICAL))
+	for i, b := range bytes {
+		bytes[i] = ALPHANUMERICAL[b%alphanumLength]
+	}
+
+	token = string(bytes)
+	return
+}
+
 func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (sessKey string, session *Session, err error) {
 
 	if len(cookie) == 0 {
@@ -345,9 +372,10 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 
 	dispatcher.lock.Lock()
 	if clientSessionData.MeekProtocolVersion >= MEEK_PROTOCOL_VERSION_2 {
-		h := md5.New()
-		io.WriteString(h, cookie)
-		sessKey = hex.EncodeToString(h.Sum(nil))
+		sessKey, err = generateSessionKey()
+		if err != nil {
+			return
+		}
 	} else {
 		sessKey = cookie
 	}
