@@ -37,7 +37,17 @@ const TCP_KEEP_ALIVE_PERIOD = 3 * time.Minute
 const HTTP_CLIENT_READ_TIMEOUT = 45 * time.Second
 const HTTP_CLIENT_WRITE_TIMEOUT = 10 * time.Second
 
-const MEEK_PROTOCOL_VERSION = 1
+const MEEK_PROTOCOL_VERSION_1 = 1
+
+// Protocol version 2 clients should initiate a session by sending connection information in
+// encrypted cookie payload. Server will initiate the session, store it in a table and return
+// session token back to client via Set-Cookie header. Client should use this token on all
+// consequitive request for the rest of the session.
+const MEEK_PROTOCOL_VERSION_2 = 2
+
+const MIN_SESSION_KEY_LENGTH = 8
+const MAX_SESSION_KEY_LENGTH = 20
+const ALPHANUMERICAL = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 // Default config values from Server/psi_config.py
 
@@ -87,6 +97,7 @@ type Session struct {
 	LastSeen            time.Time
 	BytesTransferred    int64
 	IsThrottled         bool
+	meekSessionKeySent  bool
 }
 
 func (session *Session) Touch() {
@@ -105,10 +116,16 @@ type Dispatcher struct {
 }
 
 func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
-	cookie := ""
+	// Keeping client's cookie around because we want to re-use its name
+	var clientCookie *http.Cookie
 	for _, c := range request.Cookies() {
-		cookie = c.Value
+		clientCookie = c
 		break
+	}
+	if clientCookie == nil {
+		log.Println("Cookie is not present in the HTTP request")
+		dispatcher.terminateConnection(responseWriter, request)
+		return
 	}
 
 	if request.Method != "POST" {
@@ -117,18 +134,20 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		return
 	}
 
-	session, err := dispatcher.GetSession(request, cookie)
+	sessionKey, session, err := dispatcher.GetSession(request, clientCookie.Value)
 	if err != nil {
 		log.Printf("GetSession: %s", err)
 		dispatcher.terminateConnection(responseWriter, request)
 		return
 	}
 
-	err = dispatcher.relayPayload(session, responseWriter, request)
+	sessionCookie := &http.Cookie{Name: clientCookie.Name, Value: sessionKey}
+
+	err = dispatcher.relayPayload(sessionCookie, session, responseWriter, request)
 	if err != nil {
 		log.Printf("dispatch: %s", err)
 		dispatcher.terminateConnection(responseWriter, request)
-		dispatcher.CloseSession(cookie)
+		dispatcher.CloseSession(sessionKey)
 		return
 	}
 
@@ -147,7 +166,7 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 	*/
 }
 
-func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
+func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *Session, responseWriter http.ResponseWriter, request *http.Request) error {
 	body := http.MaxBytesReader(responseWriter, request.Body, MAX_PAYLOAD_LENGTH+1)
 	requestBodySize, err := io.Copy(session.psiConn, body)
 	if err != nil {
@@ -160,7 +179,12 @@ func (dispatcher *Dispatcher) relayPayload(session *Session, responseWriter http
 		session.IsThrottled &&
 		session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes
 
-	if !throttle && session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION {
+	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_2 && session.meekSessionKeySent == false {
+		http.SetCookie(responseWriter, sessionCookie)
+		session.meekSessionKeySent = true
+	}
+
+	if !throttle && session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_1 {
 		responseSize, err := copyWithTimeout(responseWriter, session.psiConn)
 		if err != nil {
 			return errors.New(fmt.Sprintf("reading payload from psiConn: %s", err))
@@ -263,45 +287,80 @@ func (dispatcher *Dispatcher) terminateConnection(responseWriter http.ResponseWr
 	conn.Close()
 }
 
-func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (*Session, error) {
+func generateSessionKey() (token string, err error) {
+	max := MAX_SESSION_KEY_LENGTH - MIN_SESSION_KEY_LENGTH
+
+	if max <= 0 {
+		err = fmt.Errorf("MAX_SESSION_KEY_LENGHT is less or equal MIN_SESSION_KEY_LENGTH")
+		return
+	}
+
+	randomInt, err := rand.Int(rand.Reader, big.NewInt(int64(max+1)))
+	if err != nil {
+		return
+	}
+
+	tokenLength := int(randomInt.Uint64()) + MIN_SESSION_KEY_LENGTH
+
+	var bytes = make([]byte, tokenLength)
+	rand.Read(bytes)
+	alphanumLength := byte(len(ALPHANUMERICAL))
+	for i, b := range bytes {
+		bytes[i] = ALPHANUMERICAL[b%alphanumLength]
+	}
+
+	token = string(bytes)
+	return
+}
+
+func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (sessKey string, session *Session, err error) {
+
 	if len(cookie) == 0 {
-		return nil, errors.New("cookie is empty")
+		err = errors.New("cookie is empty")
+		return
 	}
 
 	dispatcher.lock.RLock()
 	session, ok := dispatcher.sessionMap[cookie]
 	dispatcher.lock.RUnlock()
 	if ok {
+		err = nil
 		session.Touch()
-		return session, nil
+		return
 	}
+
+	// At this point we have either a new session credentials ciphertext
+	// or an expired session token.
+	// Let's try and get connection credentials from the cookie payload.
+	// If one of the following string massaging operations fails we are
+	// most likely dealing with an expired session or a malicious request
 
 	obfuscated, err := base64.StdEncoding.DecodeString(cookie)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	encrypted, err := dispatcher.crypto.Deobfuscate(obfuscated, dispatcher.config.ObfuscatedKeyword)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	cookieJson, err := dispatcher.crypto.Decrypt(encrypted)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	clientSessionData, err := parseCookieJSON(cookieJson)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	conn, err := net.DialTimeout("tcp", clientSessionData.PsiphonServerAddress, PSI_CONN_DIAL_TIMEOUT)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion}
+	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion, meekSessionKeySent: false}
 	session.Touch()
 
 	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
@@ -312,10 +371,18 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 	}
 
 	dispatcher.lock.Lock()
-	dispatcher.sessionMap[cookie] = session
+	if clientSessionData.MeekProtocolVersion >= MEEK_PROTOCOL_VERSION_2 {
+		sessKey, err = generateSessionKey()
+		if err != nil {
+			return
+		}
+	} else {
+		sessKey = cookie
+	}
+	dispatcher.sessionMap[sessKey] = session
 	dispatcher.lock.Unlock()
 
-	return session, nil
+	return
 }
 
 func parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, err error) {
@@ -617,6 +684,7 @@ func (httpServer *MeekHTTPServer) ListenAndServeTLS(certPEMBlock, keyPEMBlock []
 	var err error
 	tlsConfig.Certificates = make([]tls.Certificate, 1)
 	tlsConfig.Certificates[0], err = tls.X509KeyPair(certPEMBlock, keyPEMBlock)
+	tlsConfig.MinVersion = tls.VersionTLS10
 	if err != nil {
 		return err
 	}

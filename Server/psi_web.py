@@ -47,6 +47,7 @@ import traceback
 import platform
 import redis
 from datetime import datetime
+import psi_web_patch
 
 # ===== PSINET database ===================================================
 
@@ -98,6 +99,15 @@ def is_valid_boolean_str(str):
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
+
+
+def safe_int(input):
+    return_value = 0
+    try:
+        return_value = int(input)
+    except:
+        pass
+    return return_value
 
 
 # ===== Psiphon Web Server =====
@@ -493,12 +503,12 @@ class ServerInstance(object):
                 for page_view in stats['page_views']:
                     self._log_event('page_views',
                                     inputs + [('page', page_view['page']),
-                                              ('count', page_view['count'])])
+                                              ('count', safe_int(page_view['count']))])
 
                 for https_req in stats['https_requests']:
                     self._log_event('https_requests',
                                     inputs + [('domain', https_req['domain']),
-                                              ('count', https_req['count'])])
+                                              ('count', safe_int(https_req['count']))])
             except:
                 start_response('403 Forbidden', [])
                 return []
@@ -667,6 +677,7 @@ class WebServerThread(threading.Thread):
                                               self.certificate_temp_file.name,
                                               self.private_key_temp_file.name,
                                               None)
+                psi_web_patch.patch_ssl_adapter(self.server.ssl_adapter)
                 # Blocks until server stopped
                 syslog.syslog(syslog.LOG_INFO, 'started %s' % (self.ip_address,))
                 self.server.start()
@@ -793,3 +804,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
