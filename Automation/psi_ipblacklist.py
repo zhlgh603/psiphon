@@ -32,6 +32,25 @@ LIST_DIR = os.path.abspath(os.path.join(BASE_PATH, BLACKLIST_DIR, 'lists'))
 
 LISTS_URL = 'https://s3.amazonaws.com/p3_malware_lists/'
 
+def apply_local_lists(mal_lists, list_dir=LIST_DIR):
+    if os.path.isdir(list_dir):
+        lists = os.listdir(list_dir)
+        for L in lists:
+            item = L.rstrip('.list')
+            if item not in mal_lists.keys():
+                print item
+                mal_lists[item] = {'set_name' : item,
+                                   'rawlist' : L,
+                                   'ipset_file' : ''.join([item, '.ipset'])
+                                  }
+                
+                mal_lists[item]['ip_list'] = parse_ip_list(mal_lists[item]['rawlist'], 'r')
+                create_ipset_commands(mal_lists[item])
+                write_ipset_script(mal_lists[item])
+                run_ipset_script(mal_lists[item])
+                modify_iptables(mal_lists[item], '-D', 'INPUT 2', 'src', '')
+                modify_iptables(mal_lists[item], '-I', 'INPUT 2', 'src', '-j DROP')
+
 def build_malware_dictionary(url):
     req = urllib2.Request(url)
     malware_dicts = {}
@@ -98,11 +117,12 @@ def run_ipset_script(tracker):
     script = os.path.join(IPSET_DIR, tracker['ipset_file'])
     subprocess.call(script, shell=True)
 
-def modify_iptables(tracker, opt, chain):
+
+def modify_iptables(tracker, opt, chain, flags="dst", job='-j DROP'):
     #iptables command:
     #iptables -D <chain> -m set --set $setname dst -j DROP
     #iptables -I <chain> -m set --set $setname dst -j DROP
-    cmd = "iptables %s %s -m set --set %s dst -j DROP" % (opt, chain, tracker['set_name'])
+    cmd = "iptables %s %s -m set --match-set %s %s %s" % (opt, chain, tracker['set_name'], flags, job)
     subprocess.call(cmd, shell=True)
 
 if __name__ == "__main__":
@@ -121,6 +141,8 @@ if __name__ == "__main__":
             modify_iptables(mal_lists[item], '-I', 'OUTPUT')
             modify_iptables(mal_lists[item], '-D', 'FORWARD')
             modify_iptables(mal_lists[item], '-I', 'FORWARD')
+        
+        apply_local_lists(mal_lists, LIST_DIR)
     else:
         print 'Malware list is empty, exiting'
         sys.exit()
