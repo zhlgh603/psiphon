@@ -305,6 +305,8 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     config["DataStoreDirectory"] = TStringToNarrow(dataStoreDirectory);
     config["UpstreamHttpProxyAddress"] = GetUpstreamProxyAddress();
     config["EgressRegion"] = Settings::EgressRegion();
+    config["LocalHttpProxyPort"] = Settings::LocalHttpProxyPort();
+    config["LocalSocksProxyPort"] = Settings::LocalSocksProxyPort();
 
     // In temporary tunnel mode, only the specific server should be connected to,
     // and a handshake is not performed.
