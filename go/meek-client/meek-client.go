@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gopkg.in/getlantern/tlsdialer.v1"
 	"io"
 	"log"
 	"math/rand"
@@ -15,6 +13,9 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"bitbucket.org/psiphon/psiphon-circumvention-system/go/utils/crypto"
+	tlsdialer "gopkg.in/getlantern/tlsdialer.v1"
 )
 
 import "git.torproject.org/pluggable-transports/goptlib.git"
@@ -245,10 +246,11 @@ func acceptLoop(ln *pt.SocksListener) error {
 		conn, err := ln.AcceptSocks()
 		if err != nil {
 			log.Printf("error in AcceptSocks: %s", err)
-			if e, ok := err.(net.Error); ok && !e.Temporary() {
-				return err
+			if e, ok := err.(net.Error); ok && e.Temporary() {
+				// This is a temporary error, so we can keep using this listener
+				continue
 			}
-			continue
+			return err
 		}
 		go func() {
 			err := handler(conn)
