@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright (c) 2012, Psiphon Inc.
+# Copyright (c) 2014, Psiphon Inc.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -20,9 +20,9 @@
 import os
 import shutil
 import shlex
-import textwrap
 import sys
 import fileinput
+import urlparse
 import psi_utils
 import utils
 from cogapp import Cog
@@ -108,14 +108,14 @@ def write_embedded_values(propagation_channel_id,
                           client_version,
                           embedded_server_list,
                           remote_server_list_signature_public_key,
-                          remote_server_list_url,
+                          remote_server_list_url_split,
                           feedback_encryption_public_key,
                           feedback_upload_server,
                           feedback_upload_path,
                           feedback_upload_server_headers,
                           info_link_url,
                           upgrade_signature_public_key,
-                          upgrade_url,
+                          upgrade_url_split,
                           get_new_version_url,
                           get_new_version_email,
                           faq_url,
@@ -133,7 +133,7 @@ def write_embedded_values(propagation_channel_id,
                               info_link_url,
                               '',
                               '',
-                              upgrade_url[0] + '://' + upgrade_url[1] + '/' + upgrade_url[2],
+                              urlparse.urlunsplit(upgrade_url_split),
                               upgrade_signature_public_key,
                               get_new_version_url,
                               get_new_version_email,
@@ -142,7 +142,7 @@ def write_embedded_values(propagation_channel_id,
                               propagator_managed_upgrades,
                               propagation_channel_id,
                               sponsor_id,
-                              remote_server_list_url[0] + '://' + remote_server_list_url[1] + '/' + remote_server_list_url[2],
+                              urlparse.urlunsplit(remote_server_list_url_split),
                               remote_server_list_signature_public_key,
                               '","'.join(home_tab_url_exclusions))
 
@@ -171,14 +171,14 @@ def build_client(
         banner,
         encoded_server_list,
         remote_server_list_signature_public_key,
-        remote_server_list_url,
+        remote_server_list_url_split,
         feedback_encryption_public_key,
         feedback_upload_server,
         feedback_upload_path,
         feedback_upload_server_headers,
         info_link_url,
         upgrade_signature_public_key,
-        upgrade_url,
+        upgrade_url_split,
         get_new_version_url,
         get_new_version_email,
         faq_url,
@@ -207,14 +207,14 @@ def build_client(
             version,
             encoded_server_list,
             remote_server_list_signature_public_key,
-            remote_server_list_url,
+            remote_server_list_url_split,
             feedback_encryption_public_key,
             feedback_upload_server,
             feedback_upload_path,
             feedback_upload_server_headers,
             info_link_url,
             upgrade_signature_public_key,
-            upgrade_url,
+            upgrade_url_split,
             get_new_version_url,
             get_new_version_email,
             faq_url,
@@ -259,7 +259,7 @@ def build_library(
         sponsor_id,
         encoded_server_list,
         remote_server_list_signature_public_key,
-        remote_server_list_url,
+        remote_server_list_url_split,
         feedback_encryption_public_key,
         feedback_upload_server,
         feedback_upload_path,
@@ -277,7 +277,7 @@ def build_library(
             version,
             encoded_server_list,
             remote_server_list_signature_public_key,
-            remote_server_list_url,
+            remote_server_list_url_split,
             feedback_encryption_public_key,
             feedback_upload_server,
             feedback_upload_path,
