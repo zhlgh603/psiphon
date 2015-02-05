@@ -45,3 +45,23 @@ int ShowHTMLDlg(
         LPCTSTR urlFragment,
         LPCTSTR args,
         tstring& o_result);
+
+int ShowModelessHTMLDlg(
+	HWND hParentWnd,
+	LPCTSTR resourceName,
+	LPCTSTR urlFragment,
+	LPCTSTR args,
+	tstring& o_result);
+
+class HtmlUi
+{
+public:
+    // Takes control of scriptEngine (increments the reference count)
+    HtmlUi(IDispatch* scriptEngine);
+    virtual ~HtmlUi();
+
+    bool CallScript(wstring& result, const wchar_t* scriptFn, ...);
+
+private:
+    IDispatchPtr m_scriptEngine;
+};

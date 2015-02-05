@@ -154,7 +154,7 @@ bool Settings::Show(HINSTANCE hInst, HWND hParentWnd)
     configDataStream << jsonWriter.write(config);
 
     tstring result;
-    if (ShowHTMLDlg(
+    if (ShowModelessHTMLDlg(
         hParentWnd,
         _T("SETTINGS_HTML_RESOURCE"),
         GetLocaleName().c_str(),
