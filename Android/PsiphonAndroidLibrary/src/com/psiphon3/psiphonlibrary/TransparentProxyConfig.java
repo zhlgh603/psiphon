@@ -129,6 +129,8 @@ public class TransparentProxyConfig
     public static void teardownTransparentProxyRouting(Context context)
             throws PsiphonTransparentProxyException
     {
+        OpenWiFiConnector.deactivate(context);
+        
         String ipTablesPath = getIpTables(context);
         
         boolean psiphonChainExists = false;
