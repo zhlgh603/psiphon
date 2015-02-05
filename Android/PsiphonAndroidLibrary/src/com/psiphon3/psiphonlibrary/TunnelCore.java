@@ -863,6 +863,12 @@ public class TunnelCore implements Connection.IStopSignalPending, Tun2Socks.IPro
                     return runAgain;
                 }
             }
+            
+            if (tunnelWholeDevice)
+            {
+                // Assumption that tunnel whole device mode is now running
+                OpenWiFiConnector.activate(m_parentService);
+            }
 
             checkSignals(0);
 
@@ -1606,6 +1612,8 @@ public class TunnelCore implements Connection.IStopSignalPending, Tun2Socks.IPro
         // stopService call has no effect and the only way to stop
         // the VPN is via the OS notification UI.
         Tun2Socks.Stop();
+
+        OpenWiFiConnector.deactivate(m_parentService);
 
         // Sometimes we're in the state where there's no fd, and the
         // service still isn't responding to external stopService() calls.
