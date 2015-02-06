@@ -39,6 +39,7 @@ public class OpenWiFiConnector
     private static OpenWiFiConnector mInstance = null;
     private WiFiScanResultsAvailableReceiver mScanResultsReceiver = null;
     private ArrayList<Integer> mEnabledNetworkIDs = null;
+    private boolean mActive = false;
     
     private OpenWiFiConnector()
     {
@@ -55,23 +56,28 @@ public class OpenWiFiConnector
         return mInstance;
     }
     
-    public static void activate(Context context)
-    {
-        context.registerReceiver(getInstance().mScanResultsReceiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
-    }
-    
-    public static void deactivate(Context context)
+    public synchronized static void setActive(Context context, boolean active)
     {
         OpenWiFiConnector instance = getInstance();
-        context.unregisterReceiver(instance.mScanResultsReceiver);
-        
-        // Disable all enabled networks
-        WifiManager wifiManager = (WifiManager)context.getSystemService(Context.WIFI_SERVICE);
-        for (Integer networkID : instance.mEnabledNetworkIDs)
+        if (active)
         {
-            wifiManager.disableNetwork(networkID);
+            instance.mActive = true;
+            context.registerReceiver(instance.mScanResultsReceiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
         }
-        instance.mEnabledNetworkIDs.clear();
+        else
+        {
+            instance.mActive = false;
+            context.unregisterReceiver(instance.mScanResultsReceiver);
+            
+            // Disable all enabled networks
+            WifiManager wifiManager = (WifiManager)context.getSystemService(Context.WIFI_SERVICE);
+            for (Integer networkID : instance.mEnabledNetworkIDs)
+            {
+                wifiManager.disableNetwork(networkID);
+                wifiManager.removeNetwork(networkID);
+            }
+            instance.mEnabledNetworkIDs.clear();
+        }
     }
     
     private synchronized static void addEnabledNetworkID(Integer networkID)
@@ -88,20 +94,25 @@ public class OpenWiFiConnector
         String bestOpenNetworkSSID = "";
         for (ScanResult scanResult : scanResults)
         {
-            // Find Open networks
             String capabilities = scanResult.capabilities;
-            if (!capabilities.contains("PSK") &&
-                    !capabilities.contains("WEP") &&
-                    !capabilities.contains("EAP"))
+            if (scanResult.SSID.length() == 0 ||
+                    capabilities.contains("PSK") ||
+                    capabilities.contains("WEP") ||
+                    capabilities.contains("EAP") ||
+                    capabilities.contains("[IBSS]"))
             {
-                if (!openNetworkPresent ||
-                        scanResult.level > bestSignalLevel)
-                {
-                    bestSignalLevel = scanResult.level;
-                    bestOpenNetworkSSID = scanResult.SSID;
-                }
-                
+                // Exclude hidden networks, networks with security, and ad-hoc networks
+                continue;
+            }
+            
+            MyLog.i(R.string.detect_open_wifi, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, scanResult.SSID, scanResult.level, capabilities);
+
+            if (!openNetworkPresent ||
+                    scanResult.level > bestSignalLevel)
+            {
                 openNetworkPresent = true;
+                bestSignalLevel = scanResult.level;
+                bestOpenNetworkSSID = scanResult.SSID;
             }
         }
         return bestOpenNetworkSSID;
@@ -129,6 +140,11 @@ public class OpenWiFiConnector
         
         @Override
         public void onReceive(Context context, Intent intent) {
+            if (!getInstance().mActive)
+            {
+                return;
+            }
+            
             // Don't do anything if WiFi is already connected/connecting
             ConnectivityManager connManager = (ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
             NetworkInfo wifiNetworkInfo = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
