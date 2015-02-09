@@ -452,6 +452,13 @@ DWORD WINAPI ConnectionManager::ConnectionManagerStartThread(void* object)
             my_print(NOT_SENSITIVE, true, _T("%s: caught TryNextServer"), __TFUNCTION__);
             // Fall through
         }
+        catch (TransportConnection::PermanentFailure&)
+        {
+            // Unrecoverable error. Cleanup and exit.
+            my_print(NOT_SENSITIVE, true, _T("%s: caught TransportConnection::PermanentFailure"), __TFUNCTION__);
+            manager->SetState(CONNECTION_MANAGER_STATE_STOPPED);
+            break;
+        }
         catch (StopSignal::UnexpectedDisconnectStopException& ex)
         {
             my_print(NOT_SENSITIVE, true, _T("%s: caught StopSignal::UnexpectedDisconnectStopException"), __TFUNCTION__);
@@ -942,12 +949,10 @@ void ConnectionManager::UpdateCurrentSessionInfo(const SessionInfo& sessionInfo)
 
     try
     {
-        // CoreTransport does not provide a ServerEntry, but VPNTransport does.
-        ServerEntry* pServerEntry = m_currentSessionInfo.HasServerEntry() ? &m_currentSessionInfo.GetServerEntry() : 0;
-
         TransportRegistry::AddServerEntries(
             m_currentSessionInfo.GetDiscoveredServerEntries(), 
-            pServerEntry);
+            // CoreTransport does not provide a ServerEntry, but VPNTransport does.
+            m_currentSessionInfo.HasServerEntry() ? &m_currentSessionInfo.GetServerEntry() : 0);
     }
     catch (std::exception &ex)
     {
