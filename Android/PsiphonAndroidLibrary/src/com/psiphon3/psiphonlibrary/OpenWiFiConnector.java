@@ -38,13 +38,13 @@ public class OpenWiFiConnector
 {
     private static OpenWiFiConnector mInstance = null;
     private WiFiScanResultsAvailableReceiver mScanResultsReceiver = null;
-    private ArrayList<Integer> mEnabledNetworkIDs = null;
+    private ArrayList<String> mEnabledNetworkQuotedSSIDs = null;
     private boolean mActive = false;
     
     private OpenWiFiConnector()
     {
         mScanResultsReceiver = new WiFiScanResultsAvailableReceiver();
-        mEnabledNetworkIDs = new ArrayList<Integer>();
+        mEnabledNetworkQuotedSSIDs = new ArrayList<String>();
     }
     
     private synchronized static OpenWiFiConnector getInstance()
@@ -64,25 +64,29 @@ public class OpenWiFiConnector
             instance.mActive = true;
             context.registerReceiver(instance.mScanResultsReceiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
         }
-        else
+        else if (instance.mActive)
         {
             instance.mActive = false;
             context.unregisterReceiver(instance.mScanResultsReceiver);
             
             // Disable all enabled networks
             WifiManager wifiManager = (WifiManager)context.getSystemService(Context.WIFI_SERVICE);
-            for (Integer networkID : instance.mEnabledNetworkIDs)
+            for (String quotedNetworkSSID : instance.mEnabledNetworkQuotedSSIDs)
             {
-                wifiManager.disableNetwork(networkID);
-                wifiManager.removeNetwork(networkID);
+                int networkID = getConfiguredOpenWiFiWithSSID(wifiManager, quotedNetworkSSID);
+                if (networkID != -1)
+                {
+                    wifiManager.disableNetwork(networkID);
+                    wifiManager.removeNetwork(networkID);
+                }
             }
-            instance.mEnabledNetworkIDs.clear();
+            instance.mEnabledNetworkQuotedSSIDs.clear();
         }
     }
     
-    private synchronized static void addEnabledNetworkID(Integer networkID)
+    private synchronized static void addEnabledNetworkSSID(String quotedNetworkSSID)
     {
-        getInstance().mEnabledNetworkIDs.add(networkID);
+        getInstance().mEnabledNetworkQuotedSSIDs.add(quotedNetworkSSID);
     }
     
     private static String findBestOpenWiFiSSID(WifiManager wifiManager)
@@ -118,16 +122,36 @@ public class OpenWiFiConnector
         return bestOpenNetworkSSID;
     }
     
+    private static int getConfiguredOpenWiFiWithSSID(WifiManager wifiManager, String quotedSSID)
+    {
+        List<WifiConfiguration> wifiConfigurations = wifiManager.getConfiguredNetworks();
+        for (WifiConfiguration network : wifiConfigurations)
+        {
+            if (network.SSID.equals(quotedSSID)){
+                if (network.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.NONE))
+                {
+                    return network.networkId;
+                }
+            }
+        }
+        return -1;
+    }
+    
     private static void connectToOpenWiFiSSID(WifiManager wifiManager, String SSID)
     {
-        WifiConfiguration wifiConfig = new WifiConfiguration();
-        wifiConfig.SSID = String.format("\"%s\"", SSID);
-        wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-        int networkID = wifiManager.addNetwork(wifiConfig);
+        String quotedSSID = String.format("\"%s\"", SSID);
+        int networkID = getConfiguredOpenWiFiWithSSID(wifiManager, quotedSSID);
+        if (networkID == -1)
+        {
+            WifiConfiguration wifiConfig = new WifiConfiguration();
+            wifiConfig.SSID = quotedSSID;
+            wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+            networkID = wifiManager.addNetwork(wifiConfig);
+            addEnabledNetworkSSID(quotedSSID);
+        }
         wifiManager.disconnect();
         wifiManager.enableNetwork(networkID, true);
         wifiManager.reconnect();
-        addEnabledNetworkID(networkID);
         MyLog.i(R.string.connecting_to_open_wifi, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, SSID);
         // TODO: notification?
     }
