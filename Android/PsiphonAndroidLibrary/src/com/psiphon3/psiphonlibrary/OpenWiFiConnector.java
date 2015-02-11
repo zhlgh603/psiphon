@@ -20,6 +20,7 @@
 package com.psiphon3.psiphonlibrary;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
@@ -73,87 +74,10 @@ public class OpenWiFiConnector
             WifiManager wifiManager = (WifiManager)context.getSystemService(Context.WIFI_SERVICE);
             for (String quotedNetworkSSID : instance.mEnabledNetworkQuotedSSIDs)
             {
-                int networkID = getConfiguredOpenWiFiWithSSID(wifiManager, quotedNetworkSSID);
-                if (networkID != -1)
-                {
-                    wifiManager.disableNetwork(networkID);
-                    wifiManager.removeNetwork(networkID);
-                }
+                DeconfigureOpenWiFiWithSSID(wifiManager, quotedNetworkSSID);
             }
             instance.mEnabledNetworkQuotedSSIDs.clear();
         }
-    }
-    
-    private synchronized static void addEnabledNetworkSSID(String quotedNetworkSSID)
-    {
-        getInstance().mEnabledNetworkQuotedSSIDs.add(quotedNetworkSSID);
-    }
-    
-    private static String findBestOpenWiFiSSID(WifiManager wifiManager)
-    {
-        List<ScanResult> scanResults = wifiManager.getScanResults();
-
-        boolean openNetworkPresent = false;
-        int bestSignalLevel = 0;
-        String bestOpenNetworkSSID = "";
-        for (ScanResult scanResult : scanResults)
-        {
-            String capabilities = scanResult.capabilities;
-            if (scanResult.SSID.length() == 0 ||
-                    capabilities.contains("PSK") ||
-                    capabilities.contains("WEP") ||
-                    capabilities.contains("EAP") ||
-                    capabilities.contains("[IBSS]"))
-            {
-                // Exclude hidden networks, networks with security, and ad-hoc networks
-                continue;
-            }
-            
-            MyLog.i(R.string.detect_open_wifi, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, scanResult.SSID, scanResult.level, capabilities);
-
-            if (!openNetworkPresent ||
-                    scanResult.level > bestSignalLevel)
-            {
-                openNetworkPresent = true;
-                bestSignalLevel = scanResult.level;
-                bestOpenNetworkSSID = scanResult.SSID;
-            }
-        }
-        return bestOpenNetworkSSID;
-    }
-    
-    private static int getConfiguredOpenWiFiWithSSID(WifiManager wifiManager, String quotedSSID)
-    {
-        List<WifiConfiguration> wifiConfigurations = wifiManager.getConfiguredNetworks();
-        for (WifiConfiguration network : wifiConfigurations)
-        {
-            if (network.SSID.equals(quotedSSID)){
-                if (network.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.NONE))
-                {
-                    return network.networkId;
-                }
-            }
-        }
-        return -1;
-    }
-    
-    private static void connectToOpenWiFiSSID(WifiManager wifiManager, String SSID)
-    {
-        String quotedSSID = String.format("\"%s\"", SSID);
-        int networkID = getConfiguredOpenWiFiWithSSID(wifiManager, quotedSSID);
-        if (networkID == -1)
-        {
-            WifiConfiguration wifiConfig = new WifiConfiguration();
-            wifiConfig.SSID = quotedSSID;
-            wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-            networkID = wifiManager.addNetwork(wifiConfig);
-            addEnabledNetworkSSID(quotedSSID);
-        }
-        wifiManager.disconnect();
-        wifiManager.enableNetwork(networkID, true);
-        wifiManager.reconnect();
-        MyLog.i(R.string.connecting_to_open_wifi, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, SSID);
-        // TODO: notification?
     }
     
     public static class WiFiScanResultsAvailableReceiver extends BroadcastReceiver
@@ -175,12 +99,133 @@ public class OpenWiFiConnector
             if (!wifiNetworkInfo.isConnectedOrConnecting())
             {
                 WifiManager wifiManager = (WifiManager)context.getSystemService(Context.WIFI_SERVICE);
-                String bestWiFiSSID = findBestOpenWiFiSSID(wifiManager);
+                List<ScanResult> scanResults = wifiManager.getScanResults();
+                // Prune out enabled networks that are now out of range
+                pruneEnabledNetworks(wifiManager, scanResults);
+                // Connect to the best available open network
+                String bestWiFiSSID = findBestOpenWiFiSSID(scanResults);
                 if (bestWiFiSSID.length() > 0)
                 {
-                    connectToOpenWiFiSSID(wifiManager, bestWiFiSSID);
+                    if (!wifiNetworkInfo.isConnectedOrConnecting())
+                    {
+                        connectToOpenWiFiSSID(wifiManager, bestWiFiSSID);
+                    }
                 }
             }
         }
+    }
+    
+    private synchronized static void pruneEnabledNetworks(WifiManager wifiManager, List<ScanResult> scanResults)
+    {
+        OpenWiFiConnector instance = getInstance();
+        Iterator<String> iterator = instance.mEnabledNetworkQuotedSSIDs.iterator();
+        while (iterator.hasNext())
+        {
+            String enabledNetworkQuotedSSID = iterator.next();
+            boolean networkInRange = false;
+            for (ScanResult scanResult : scanResults)
+            {
+                if (scanResult.SSID.equals(enabledNetworkQuotedSSID) &&
+                        openNetworkCapabilities(scanResult.capabilities))
+                {
+                    networkInRange = true;
+                    break;
+                }
+            }
+            // Deconfigure this network if it is not in the scan results
+            if (!networkInRange)
+            {
+                DeconfigureOpenWiFiWithSSID(wifiManager, enabledNetworkQuotedSSID);
+                iterator.remove();
+            }
+        }
+    }
+    
+    private static String findBestOpenWiFiSSID(List<ScanResult> scanResults)
+    {
+        boolean openNetworkPresent = false;
+        int bestSignalLevel = 0;
+        String bestOpenNetworkSSID = "";
+        for (ScanResult scanResult : scanResults)
+        {
+            String capabilities = scanResult.capabilities;
+            if (scanResult.SSID.length() == 0 ||
+                    scanResult.SSID.toLowerCase().startsWith("hp-print") ||
+                    !openNetworkCapabilities(capabilities))
+            {
+                // Exclude hidden networks, "HP-Print-*" networks, and networks that are not Open
+                continue;
+            }
+            
+            MyLog.i(R.string.detect_open_wifi, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, scanResult.SSID, scanResult.level, capabilities);
+
+            if (!openNetworkPresent ||
+                    scanResult.level > bestSignalLevel)
+            {
+                openNetworkPresent = true;
+                bestSignalLevel = scanResult.level;
+                bestOpenNetworkSSID = scanResult.SSID;
+            }
+        }
+        return bestOpenNetworkSSID;
+    }
+    
+    private static void connectToOpenWiFiSSID(WifiManager wifiManager, String SSID)
+    {
+        String quotedSSID = String.format("\"%s\"", SSID);
+        int networkID = getConfiguredOpenWiFiWithSSID(wifiManager, quotedSSID);
+        if (networkID == -1)
+        {
+            WifiConfiguration wifiConfig = new WifiConfiguration();
+            wifiConfig.SSID = quotedSSID;
+            wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+            networkID = wifiManager.addNetwork(wifiConfig);
+            addEnabledNetworkSSID(quotedSSID);
+        }
+        wifiManager.disconnect();
+        // Don't disable other networks to allow other preferred networks to connect
+        wifiManager.enableNetwork(networkID, false);
+        wifiManager.reconnect();
+        MyLog.i(R.string.connecting_to_open_wifi, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, SSID);
+        // TODO: notification?
+    }
+
+    private static boolean openNetworkCapabilities(String capabilities)
+    {
+        // doesn't have security and not ad-hoc
+        return !capabilities.contains("PSK") &&
+                !capabilities.contains("WEP") &&
+                !capabilities.contains("EAP") &&
+                !capabilities.contains("[IBSS]");
+    }
+    
+    private static int getConfiguredOpenWiFiWithSSID(WifiManager wifiManager, String quotedSSID)
+    {
+        List<WifiConfiguration> wifiConfigurations = wifiManager.getConfiguredNetworks();
+        for (WifiConfiguration network : wifiConfigurations)
+        {
+            if (network.SSID.equals(quotedSSID)){
+                if (network.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.NONE))
+                {
+                    return network.networkId;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static void DeconfigureOpenWiFiWithSSID(WifiManager wifiManager, String quotedNetworkSSID)
+    {
+        int networkID = getConfiguredOpenWiFiWithSSID(wifiManager, quotedNetworkSSID);
+        if (networkID != -1)
+        {
+            wifiManager.disableNetwork(networkID);
+            wifiManager.removeNetwork(networkID);
+        }
+    }
+
+    private synchronized static void addEnabledNetworkSSID(String quotedNetworkSSID)
+    {
+        getInstance().mEnabledNetworkQuotedSSIDs.add(quotedNetworkSSID);
     }
 }
