@@ -49,8 +49,11 @@
 #include <sstream>
 #include <json.h>
 #include <mshtmhst.h>
+#include <mshtml.h>
 #include <urlmon.h>
 #include <shellapi.h>
+#include <comdef.h>
+#include <comdefsp.h>
 
 // Boost stuff
 #include <boost/shared_ptr.hpp>
