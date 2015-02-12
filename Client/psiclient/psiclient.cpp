@@ -721,22 +721,25 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
 
     g_hWnd = CreateWindowEx(
-        WS_EX_APPWINDOW,
+        0,
         g_szWindowClass,
         g_szTitle,
-        WS_OVERLAPPEDWINDOW,
-        rect.right - WINDOW_WIDTH,
-        rect.bottom - WINDOW_HEIGHT,
-        WINDOW_WIDTH,
-        WINDOW_HEIGHT,
-        NULL, NULL, hInstance, NULL);
+        0,
+        0,
+        0,
+        0,
+        0,
+        HWND_MESSAGE, 
+        NULL, hInstance, NULL);
 
     ShowWindow(g_hWnd, nCmdShow);
-    UpdateWindow(g_hWnd);
+    //UpdateWindow(g_hWnd);
+    //ShowWindow(g_hWnd, SW_HIDE);
 
     return TRUE;
 }
 
+static int timerTicks = 0;
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -768,7 +771,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         SetTimer(hWnd, IDT_BUTTON_ANIMATION, 250, NULL);
 
         // Start a connection
-        g_connectionManager.Toggle();
+        //g_connectionManager.Toggle();
 
         break;
 
@@ -777,6 +780,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_TIMER:
+        if (timerTicks == 4)
+            Settings::Show(g_hInst, NULL);
+        timerTicks++;
+
         if (IDT_BUTTON_ANIMATION == wParam)
         {
             UpdateButton(hWnd);
