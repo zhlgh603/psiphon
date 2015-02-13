@@ -29,6 +29,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.SystemClock;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
@@ -82,13 +83,23 @@ public class OpenWiFiConnector
     
     public static class WiFiScanResultsAvailableReceiver extends BroadcastReceiver
     {
+        private final int CONNECTION_ATTEMPT_GRACE_PERIOD_MILLISECONDS = 10000;
+        
+        private long mLastConnectionAttemptTime = 0;
+        
         public WiFiScanResultsAvailableReceiver()
         {
         }
         
         @Override
-        public void onReceive(Context context, Intent intent) {
+        public void onReceive(Context context, Intent intent)
+        {
             if (!getInstance().mActive)
+            {
+                return;
+            }
+
+            if (SystemClock.elapsedRealtime() - mLastConnectionAttemptTime < CONNECTION_ATTEMPT_GRACE_PERIOD_MILLISECONDS)
             {
                 return;
             }
@@ -108,6 +119,7 @@ public class OpenWiFiConnector
                 {
                     if (!wifiNetworkInfo.isConnectedOrConnecting())
                     {
+                        mLastConnectionAttemptTime = SystemClock.elapsedRealtime();
                         connectToOpenWiFiSSID(wifiManager, bestWiFiSSID);
                     }
                 }
