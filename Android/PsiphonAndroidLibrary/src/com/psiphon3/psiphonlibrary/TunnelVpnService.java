@@ -83,6 +83,8 @@ public class TunnelVpnService extends VpnService
     @Override
     public void onRevoke()
     {
+        OpenWiFiConnector.setActive(this, false);
+        
         MyLog.w(R.string.vpn_service_revoked, MyLog.Sensitivity.NOT_SENSITIVE);
         // stopSelf will trigger onDestroy in the main thread, which will in turn invoke m_Core.onDestroy
         stopSelf();

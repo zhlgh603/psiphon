@@ -149,4 +149,6 @@
     <string name="preference_notifications_with_vibrate_summary">Vibrate when connection status changes</string>
     <string name="moreOptions">More Options</string>
     <string name="root_mode_not_supported">Root mode is not supported on this version of Android</string>
+    <string name="connecting_to_open_wifi">Connecting to Open Wi-Fi network: %s</string>
+    <string name="detect_open_wifi">Open Wi-Fi network detected: %1$s Level: %2$d Capabilities: %3$s</string>
 </resources>
