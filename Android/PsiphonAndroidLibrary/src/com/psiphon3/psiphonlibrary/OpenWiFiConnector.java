@@ -137,7 +137,8 @@ public class OpenWiFiConnector
             boolean networkInRange = false;
             for (ScanResult scanResult : scanResults)
             {
-                if (scanResult.SSID.equals(enabledNetworkQuotedSSID) &&
+                String quotedSSID = String.format("\"%s\"", scanResult.SSID);
+                if (quotedSSID.equals(enabledNetworkQuotedSSID) &&
                         openNetworkCapabilities(scanResult.capabilities))
                 {
                     networkInRange = true;
