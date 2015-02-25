@@ -47,19 +47,24 @@ import java.util.Timer;
 import java.util.regex.Pattern;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpStatus;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.Credentials;
 import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGetHC4;
 import org.apache.http.client.methods.HttpPostHC4;
 import org.apache.http.client.methods.HttpPutHC4;
 import org.apache.http.client.methods.HttpRequestBaseHC4;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.config.Registry;
 import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.DnsResolver;
@@ -70,6 +75,7 @@ import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.conn.ssl.X509HostnameVerifier;
 import org.apache.http.entity.ByteArrayEntity;
+import org.apache.http.impl.client.BasicCredentialsProviderHC4;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.BasicHttpClientConnectionManager;
@@ -85,6 +91,7 @@ import org.xbill.DNS.PsiphonState;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.os.Build;
 import android.os.SystemClock;
 import android.util.Pair;
 import android.webkit.URLUtil;
@@ -1314,15 +1321,40 @@ public class ServerInterface
 
     public static class ProtectedSSLConnectionSocketFactory extends SSLConnectionSocketFactory
     {
+        public static String[] getSupportedProtocols() throws IOException
+        {
+            // Android 2.2.2 SSlSocket.getEnabledProtocols() crash workaround
+            // in org.apache.http.conn.ssl.SSLConnectionSocketFactory
+            // For more details on the bug see
+            // https://code.google.com/p/android/issues/detail?id=21394
+            // This doesn't affect older version of HttpClient,a new call to
+            // SSlSocket.getEnabledProtocols() was introduced by this changeset 
+            // http://markmail.org/message/jvzl5fatgj747fcx in 4.3.5.1
+
+            javax.net.ssl.SSLSocketFactory sf = (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault();
+            javax.net.ssl.SSLSocket sslsock;
+            sslsock = (javax.net.ssl.SSLSocket) sf.createSocket();
+            String[] allProtocols = sslsock.getSupportedProtocols();
+            final List<String> enabledProtocols = new ArrayList<String>(allProtocols.length);
+            for (String protocol : allProtocols) {
+                if (!protocol.startsWith("SSL")) {
+                    enabledProtocols.add(protocol);
+                }
+            }
+            if (!enabledProtocols.isEmpty()) {
+                return enabledProtocols.toArray(new String[enabledProtocols.size()]);
+            }
+            return null;
+        }
+
         Tun2Socks.IProtectSocket protectSocket;
 
         ProtectedSSLConnectionSocketFactory(
                 Tun2Socks.IProtectSocket protectSocket,
                 SSLContext sslContext,
-                X509HostnameVerifier verifier)
+                X509HostnameVerifier verifier) throws IOException
         {
-            super(sslContext, verifier);
-
+            super(sslContext, ProtectedSSLConnectionSocketFactory.getSupportedProtocols(), null, verifier);
             this.protectSocket = protectSocket;
         }
 
@@ -1411,6 +1443,7 @@ public class ServerInterface
         HttpRequestBaseHC4 request = null;
         CloseableHttpResponse response = null;
         CloseableHttpClient client = null;
+        HttpClientContext httpClientContext = null;
 
         try
         {
@@ -1418,6 +1451,9 @@ public class ServerInterface
                 .setConnectTimeout(timeout)
                 .setConnectionRequestTimeout(timeout)
                 .setSocketTimeout(timeout);
+            
+            httpClientContext = HttpClientContext.create();
+
             
             HttpHost httpproxy;
             if (useLocalProxy)
@@ -1432,6 +1468,13 @@ public class ServerInterface
                 {
                     httpproxy = new HttpHost(proxySettings.proxyHost, proxySettings.proxyPort);
                 	requestBuilder.setProxy(httpproxy);
+                	Credentials proxyCredentials = PsiphonData.getPsiphonData().getProxyCredentials();
+                	if(proxyCredentials != null)
+                	{
+                		CredentialsProvider credentialsProvider = new BasicCredentialsProviderHC4();
+                		credentialsProvider.setCredentials(AuthScope.ANY, proxyCredentials);
+                		httpClientContext.setCredentialsProvider(credentialsProvider);
+                	}
                 }
             }
 
@@ -1489,6 +1532,7 @@ public class ServerInterface
             client = HttpClientBuilder.create()
                     .setConnectionManager(connectionManager)
                     .build();
+            
 
             if (requestMethod == RequestMethod.POST ||
                 (requestMethod == RequestMethod.INFER && body != null))
@@ -1537,7 +1581,7 @@ public class ServerInterface
             new Timer(true).schedule(timeoutAbort, timeout);
             try
             {
-                response = client.execute(request);
+                response = client.execute(request, httpClientContext);
             }
             finally
             {
