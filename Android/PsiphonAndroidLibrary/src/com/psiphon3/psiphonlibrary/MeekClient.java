@@ -48,14 +48,28 @@ import java.security.GeneralSecurityException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.Timer;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.net.ssl.SSLContext;
 
-import org.apache.http.HttpResponse;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpHost;
 import org.apache.http.HttpStatus;
+import org.apache.http.auth.AuthProtocolState;
+import org.apache.http.auth.AuthScheme;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.AuthStateHC4;
+import org.apache.http.auth.Credentials;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.CookieStore;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPostHC4;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.config.Registry;
 import org.apache.http.config.RegistryBuilder;
@@ -63,22 +77,37 @@ import org.apache.http.conn.DnsResolver;
 import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLSocketFactory;
+import org.apache.http.cookie.Cookie;
+import org.apache.http.cookie.CookieOrigin;
+import org.apache.http.cookie.CookieSpec;
+import org.apache.http.cookie.CookieSpecProvider;
+import org.apache.http.cookie.MalformedCookieException;
 import org.apache.http.entity.ByteArrayEntityHC4;
+import org.apache.http.impl.client.BasicCookieStoreHC4;
+import org.apache.http.impl.client.BasicCredentialsProviderHC4;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.impl.conn.BasicHttpClientConnectionManager;
+import org.apache.http.impl.conn.DefaultSchemePortResolver;
+import org.apache.http.impl.conn.ManagedHttpClientConnectionFactory;
+import org.apache.http.impl.cookie.BasicClientCookieHC4;
+import org.apache.http.impl.cookie.BrowserCompatSpecHC4;
+import org.apache.http.protocol.HttpContext;
+import org.apache.http.util.EntityUtilsHC4;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.content.Context;
 import ch.ethz.ssh2.crypto.ObfuscatedSSH;
 
 import com.psiphon3.psiphonlibrary.ServerInterface.ProtectedPlainConnectionSocketFactory;
 import com.psiphon3.psiphonlibrary.ServerInterface.ProtectedSSLConnectionSocketFactory;
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
+import com.psiphon3.psiphonlibrary.Utils.RequestTimeoutAbort;
 
 public class MeekClient {
 
-    final static int MEEK_PROTOCOL_VERSION = 1;
+    final static int MEEK_PROTOCOL_VERSION = 2;
     final static int MAX_PAYLOAD_LENGTH = 0x10000;
     final static int MIN_POLL_INTERVAL_MILLISECONDS = 1;
     final static int IDLE_POLL_INTERVAL_MILLISECONDS = 100;
@@ -104,6 +133,8 @@ public class MeekClient {
     private ServerSocket mServerSocket;
     private int mLocalPort = -1;
     private Set<Socket> mClients;
+    private final Context mContext;
+    private final AtomicBoolean mPrintedProxyAuth = new AtomicBoolean(false);
     
     public enum MeekProtocol {FRONTED, UNFRONTED};
 
@@ -119,7 +150,9 @@ public class MeekClient {
             String cookieEncryptionPublicKey,
             String obfuscationKeyword,
             String frontingDomain,
-            String frontingHost) {
+            String frontingHost,
+    		Context context) {
+    	mContext = context.getApplicationContext();
         mProtocol = MeekProtocol.FRONTED;
         mProtectSocket = protectSocket;
         mServerInterface = serverInterface;
@@ -141,7 +174,9 @@ public class MeekClient {
             String cookieEncryptionPublicKey,
             String obfuscationKeyword,
             String meekServerHost,
-            int meekServerPort) {
+            int meekServerPort,
+            Context context) {
+    	mContext = context.getApplicationContext();
         mProtocol = MeekProtocol.UNFRONTED;
         mProtectSocket = protectSocket;
         mServerInterface = serverInterface;
@@ -236,10 +271,11 @@ public class MeekClient {
         InputStream socketInputStream = null;
         OutputStream socketOutputStream = null;
         HttpClientConnectionManager connManager = null;
+        CloseableHttpClient httpClient = null;
         try {
             socketInputStream = socket.getInputStream();
             socketOutputStream = socket.getOutputStream();
-            String cookie = makeCookie();
+            Cookie cookie = makeCookie();
             byte[] payloadBuffer = new byte[MAX_PAYLOAD_LENGTH];
             int pollIntervalMilliseconds = MIN_POLL_INTERVAL_MILLISECONDS;
             
@@ -251,32 +287,64 @@ public class MeekClient {
                 ProtectedSSLConnectionSocketFactory sslSocketFactory = new ProtectedSSLConnectionSocketFactory(
                         mProtectSocket, sslContext, SSLSocketFactory.BROWSER_COMPATIBLE_HOSTNAME_VERIFIER);
                 registryBuilder.register("https",  sslSocketFactory);                
-            } else {
-                ProtectedPlainConnectionSocketFactory plainSocketFactory = new ProtectedPlainConnectionSocketFactory(mProtectSocket);
-                registryBuilder.register("http",  plainSocketFactory); 
-            }
+            } 
             
+            //Always register http scheme for HTTP proxy support
+            ProtectedPlainConnectionSocketFactory plainSocketFactory = new ProtectedPlainConnectionSocketFactory(mProtectSocket);
+            registryBuilder.register("http",  plainSocketFactory); 
             Registry<ConnectionSocketFactory> socketFactoryRegistry = registryBuilder.build();
 
             // Use ProtectedDnsResolver to resolve the fronting domain outside of the tunnel
             DnsResolver dnsResolver = ServerInterface.getDnsResolver(mProtectSocket, mServerInterface);
-            connManager = new PoolingHttpClientConnectionManager(socketFactoryRegistry, dnsResolver);
-            // We're using the pool for its ability to override the DnsResolver. Only need 1 connection.
-            ((PoolingHttpClientConnectionManager) connManager).setDefaultMaxPerRoute(1);
-            ((PoolingHttpClientConnectionManager) connManager).setMaxTotal(1);
+            connManager = new BasicHttpClientConnectionManager(socketFactoryRegistry,
+                    ManagedHttpClientConnectionFactory.INSTANCE, DefaultSchemePortResolver.INSTANCE , dnsResolver);
 
-            RequestConfig.Builder requestBuilder = RequestConfig.custom();
-            requestBuilder = requestBuilder.setConnectTimeout(MEEK_SERVER_TIMEOUT_MILLISECONDS);
-            requestBuilder = requestBuilder.setConnectionRequestTimeout(MEEK_SERVER_TIMEOUT_MILLISECONDS);
+            CookieSpecProvider nonValidatingCookieSpecProvider = new CookieSpecProvider() {
+                public CookieSpec create(HttpContext context) {
+                    return new BrowserCompatSpecHC4() {
+                        @Override
+                        public void validate(Cookie cookie, CookieOrigin origin)
+                                throws MalformedCookieException {
+                        }
+                    };
+                }
+            };
             
-            
-            CloseableHttpClient httpClient = HttpClientBuilder
-                    .create()
-                    .setDefaultRequestConfig(requestBuilder.build())
-                    .setConnectionManager(connManager)
-                    .disableCookieManagement()
+            Registry<CookieSpecProvider> cookieSpecRegistry = RegistryBuilder.<CookieSpecProvider>create()
+                    .register("novalidation", nonValidatingCookieSpecProvider)
                     .build();
+                
+            RequestConfig.Builder requestBuilder = RequestConfig.custom()
+                    .setConnectTimeout(MEEK_SERVER_TIMEOUT_MILLISECONDS)
+                    .setConnectionRequestTimeout(MEEK_SERVER_TIMEOUT_MILLISECONDS)
+                    .setSocketTimeout(MEEK_SERVER_TIMEOUT_MILLISECONDS)
+                    .setCookieSpec("novalidation");
             
+            CookieStore cookieStore = new BasicCookieStoreHC4();
+            HttpClientContext httpClientContext = HttpClientContext.create();
+            httpClientContext.setCookieStore(cookieStore);
+            
+            PsiphonData.ProxySettings proxySettings = PsiphonData.getPsiphonData().getProxySettings(mContext);
+            if (proxySettings != null)
+            {
+            	HttpHost httpproxy = new HttpHost(proxySettings.proxyHost, proxySettings.proxyPort);
+            	requestBuilder.setProxy(httpproxy);
+            	Credentials proxyCredentials = PsiphonData.getPsiphonData().getProxyCredentials();
+            	if(proxyCredentials != null)
+            	{
+            		CredentialsProvider credentialsProvider = new BasicCredentialsProviderHC4();
+            		credentialsProvider.setCredentials(AuthScope.ANY, proxyCredentials);
+            		httpClientContext.setCredentialsProvider(credentialsProvider);
+            	}
+            }
+            
+            httpClient = HttpClientBuilder
+                    .create()
+                    .setConnectionManager(connManager)
+                    .setDefaultCookieSpecRegistry(cookieSpecRegistry)
+                    .disableAutomaticRetries()
+                    .build();
+
             URI uri = null;
             if (mFrontingDomain != null) {
                 uri = new URIBuilder().setScheme("https").setHost(mFrontingDomain).setPath("/").build();
@@ -307,53 +375,93 @@ public class MeekClient {
                 // and front/server.
                 int retry;
                 for (retry = 1; retry >= 0; retry--) {
-                    HttpPost httpPost = new HttpPost(uri);
+                    HttpPostHC4 httpPost = new HttpPostHC4(uri);
                     ByteArrayEntityHC4 entity = new ByteArrayEntityHC4(payloadBuffer, 0, payloadLength);
                     entity.setContentType(HTTP_POST_CONTENT_TYPE);
                     httpPost.setEntity(entity);
+                    httpPost.setConfig(requestBuilder.build());
 
                     if (mFrontingDomain != null) {
                         httpPost.addHeader("Host", mFrontingHost);
                     }
-                    httpPost.addHeader("Cookie", cookie);
+                    httpPost.addHeader("Cookie", String.format("%s=%s", cookie.getName(), cookie.getValue()));
                     
-                    HttpResponse response = null;
+                    CloseableHttpResponse response = null;
+                    HttpEntity rentity = null;
+                    
                     try {
-                        response = httpClient.execute(httpPost);
-                    } catch (IOException e) {
-                        MyLog.w(R.string.meek_error, MyLog.Sensitivity.NOT_SENSITIVE, e.getMessage());
-                        // Retry (or abort)
-                        continue;
-                    }
-                    int statusCode = response.getStatusLine().getStatusCode();
-                    if (statusCode != HttpStatus.SC_OK) {
-                        MyLog.w(R.string.meek_http_request_error, MyLog.Sensitivity.NOT_SENSITIVE, statusCode);
-                        // Retry (or abort)
-                        continue;
-                    }
-
-                    boolean receivedData = false;
-                    InputStream responseInputStream = response.getEntity().getContent();
-                    try {
-                        int readLength;
-                        while ((readLength = responseInputStream.read(payloadBuffer)) != -1) {
-                            receivedData = true;
-                            socketOutputStream.write(payloadBuffer, 0 , readLength);
+                        RequestTimeoutAbort timeoutAbort = new RequestTimeoutAbort(httpPost);
+                        new Timer(true).schedule(timeoutAbort, MEEK_SERVER_TIMEOUT_MILLISECONDS);
+                        try {
+                            response = httpClient.execute(httpPost, httpClientContext);
+                        } catch (IOException e) {
+                            MyLog.w(R.string.meek_error, MyLog.Sensitivity.NOT_SENSITIVE, e.getMessage());
+                            // Retry (or abort)
+                            continue;
+                        } finally {
+                            timeoutAbort.cancel();
+                        }
+                        int statusCode = response.getStatusLine().getStatusCode();
+                        if (statusCode != HttpStatus.SC_OK) {
+                            MyLog.w(R.string.meek_http_request_error, MyLog.Sensitivity.NOT_SENSITIVE, statusCode);
+                            // Retry (or abort)
+                            continue;
+                        }
+                        
+                        AuthStateHC4 authState = (AuthStateHC4) httpClientContext.getAttribute(HttpClientContext.PROXY_AUTH_STATE);
+                        AuthScheme authScheme = authState.getAuthScheme(); 
+                        
+                        //Log proxy auth only once per meek session 
+                        if (mPrintedProxyAuth.compareAndSet(false, true) && 
+                                authState.getState() == AuthProtocolState.SUCCESS && authScheme != null) {
+                            MyLog.g("ProxyAuthentication", "Scheme", authScheme.getSchemeName());
+                        }
+                        
+                        List<Cookie> responseCookies = httpClientContext.getCookieStore().getCookies();
+                        for (Cookie responseCookie : responseCookies) {
+                            if (responseCookie.getName().equals(cookie.getName()) &&
+                                    !responseCookie.getValue().equals(cookie.getValue())) {
+                                cookie = responseCookie;
+                                break;
+                            }
+                        }
+                        
+                        boolean receivedData = false;
+                        rentity = response.getEntity();
+                        if (rentity != null) {
+                            InputStream responseInputStream = rentity.getContent();
+                            try {
+                                int readLength;
+                                while ((readLength = responseInputStream.read(payloadBuffer)) != -1) {
+                                    receivedData = true;
+                                    socketOutputStream.write(payloadBuffer, 0 , readLength);
+                                }
+                            } finally {
+                                Utils.closeHelper(responseInputStream);
+                            }
+                        }
+                        
+                        if (payloadLength > 0 || receivedData) {
+                            pollIntervalMilliseconds = MIN_POLL_INTERVAL_MILLISECONDS;
+                        } else if (pollIntervalMilliseconds == MIN_POLL_INTERVAL_MILLISECONDS) {
+                            pollIntervalMilliseconds = IDLE_POLL_INTERVAL_MILLISECONDS;
+                        } else {
+                            pollIntervalMilliseconds = (int)(pollIntervalMilliseconds*POLL_INTERVAL_MULTIPLIER);
+                        }
+                        if (pollIntervalMilliseconds > MAX_POLL_INTERVAL_MILLISECONDS) {
+                            pollIntervalMilliseconds = MAX_POLL_INTERVAL_MILLISECONDS;
                         }
                     } finally {
-                        Utils.closeHelper(responseInputStream);
-                    }
-                    if (payloadLength > 0 || receivedData) {
-                        pollIntervalMilliseconds = MIN_POLL_INTERVAL_MILLISECONDS;
-                    } else if (pollIntervalMilliseconds == MIN_POLL_INTERVAL_MILLISECONDS) {
-                        pollIntervalMilliseconds = IDLE_POLL_INTERVAL_MILLISECONDS;
-                    } else {
-                        pollIntervalMilliseconds = (int)(pollIntervalMilliseconds*POLL_INTERVAL_MULTIPLIER);
-                    }
-                    if (pollIntervalMilliseconds > MAX_POLL_INTERVAL_MILLISECONDS) {
-                        pollIntervalMilliseconds = MAX_POLL_INTERVAL_MILLISECONDS;
-                    }
+                        if (rentity == null && response != null) {
+                            rentity = response.getEntity();
+                        }
+                        if (rentity != null) {
+                            EntityUtilsHC4.consume(rentity);
+                        }
+                        Utils.closeHelper(response);
 
+                        httpPost.releaseConnection();
+                    }
                     // Success: exit retry loop
                     break;
                 }
@@ -362,6 +470,8 @@ public class MeekClient {
                     break;
                 }
             }
+        } catch (ClientProtocolException e) {
+        	MyLog.w(R.string.meek_error, MyLog.Sensitivity.NOT_SENSITIVE, e.getMessage());
         } catch (IOException e) {
             MyLog.w(R.string.meek_error, MyLog.Sensitivity.NOT_SENSITIVE, e.getMessage());
         } catch (URISyntaxException e) {
@@ -383,16 +493,14 @@ public class MeekClient {
         } catch (GeneralSecurityException e) {
             MyLog.w(R.string.meek_error, MyLog.Sensitivity.NOT_SENSITIVE, e.getMessage());                    
         } finally {
-            if (connManager != null) {
-                connManager.shutdown();
-            }
+            Utils.closeHelper(httpClient);
             Utils.closeHelper(socketInputStream);
             Utils.closeHelper(socketOutputStream);
             Utils.closeHelper(socket);
         }
     }
     
-    private String makeCookie()
+    private Cookie makeCookie()
             throws JSONException, GeneralSecurityException, IOException {
 
         JSONObject payload = new JSONObject();
@@ -436,6 +544,6 @@ public class MeekClient {
         final String cookieKeyValues = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         char cookieKey = cookieKeyValues.toCharArray()[Utils.insecureRandRange(0, cookieKeyValues.length()-1)];
 
-        return cookieKey + "=" + cookieValue;
+        return new BasicClientCookieHC4(String.valueOf(cookieKey), cookieValue);
     }
 }

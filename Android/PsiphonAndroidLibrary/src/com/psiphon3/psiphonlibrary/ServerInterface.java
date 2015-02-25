@@ -43,22 +43,28 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
 import java.util.regex.Pattern;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
-import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.Credentials;
 import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpPut;
-import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGetHC4;
+import org.apache.http.client.methods.HttpPostHC4;
+import org.apache.http.client.methods.HttpPutHC4;
+import org.apache.http.client.methods.HttpRequestBaseHC4;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.config.Registry;
 import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.DnsResolver;
@@ -69,11 +75,14 @@ import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.conn.ssl.X509HostnameVerifier;
 import org.apache.http.entity.ByteArrayEntity;
+import org.apache.http.impl.client.BasicCredentialsProviderHC4;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.impl.conn.BasicHttpClientConnectionManager;
+import org.apache.http.impl.conn.DefaultSchemePortResolver;
+import org.apache.http.impl.conn.ManagedHttpClientConnectionFactory;
 import org.apache.http.impl.conn.SystemDefaultDnsResolver;
-import org.apache.http.params.HttpParams;
+import org.apache.http.protocol.HttpContext;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -82,12 +91,14 @@ import org.xbill.DNS.PsiphonState;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.os.Build;
 import android.os.SystemClock;
 import android.util.Pair;
 import android.webkit.URLUtil;
 
 import com.psiphon3.psiphonlibrary.AuthenticatedDataPackage.AuthenticatedDataPackageException;
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
+import com.psiphon3.psiphonlibrary.Utils.RequestTimeoutAbort;
 
 
 // We address this warning in Utils.initializeSecureRandom()
@@ -168,6 +179,23 @@ public class ServerInterface
         public static final String CAPABILITY_UNFRONTED_MEEK = "UNFRONTED-MEEK";
 
         public static final String REGION_CODE_ANY = "";
+        
+        public boolean supportsProtocol(String protocol)
+        {
+            if (protocol.equals(PsiphonConstants.RELAY_PROTOCOL_OSSH))
+            {
+                return hasCapability(CAPABILITY_OSSH);
+            }
+            else if (protocol.equals(PsiphonConstants.RELAY_PROTOCOL_UNFRONTED_MEEK_OSSH))
+            {
+                return hasCapability(CAPABILITY_UNFRONTED_MEEK);
+            }
+            else if (protocol.equals(PsiphonConstants.RELAY_PROTOCOL_FRONTED_MEEK_OSSH))
+            {
+                return hasCapability(CAPABILITY_FRONTED_MEEK);
+            }
+            return false;
+        }
 
         public boolean hasCapability(String capability)
         {
@@ -226,7 +254,7 @@ public class ServerInterface
 
     /** Array of all outstanding/ongoing requests. Anything in this array will
      * be aborted when {@link#stop()} is called. */
-    private final List<HttpRequestBase> outstandingRequests = new ArrayList<HttpRequestBase>();
+    private final List<HttpRequestBaseHC4> outstandingRequests = new ArrayList<HttpRequestBaseHC4>();
 
     /** This flag is set to true when {@link#stop()} is called, and set back to
      * false when {@link#start()} is called. */
@@ -335,7 +363,7 @@ public class ServerInterface
                 {
                     synchronized(outstandingRequests)
                     {
-                        for (HttpRequestBase request : outstandingRequests)
+                        for (HttpRequestBaseHC4 request : outstandingRequests)
                         {
                             if (!request.isAborted()) request.abort();
                         }
@@ -1293,15 +1321,40 @@ public class ServerInterface
 
     public static class ProtectedSSLConnectionSocketFactory extends SSLConnectionSocketFactory
     {
+        public static String[] getSupportedProtocols() throws IOException
+        {
+            // Android 2.2.2 SSlSocket.getEnabledProtocols() crash workaround
+            // in org.apache.http.conn.ssl.SSLConnectionSocketFactory
+            // For more details on the bug see
+            // https://code.google.com/p/android/issues/detail?id=21394
+            // This doesn't affect older version of HttpClient,a new call to
+            // SSlSocket.getEnabledProtocols() was introduced by this changeset 
+            // http://markmail.org/message/jvzl5fatgj747fcx in 4.3.5.1
+
+            javax.net.ssl.SSLSocketFactory sf = (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault();
+            javax.net.ssl.SSLSocket sslsock;
+            sslsock = (javax.net.ssl.SSLSocket) sf.createSocket();
+            String[] allProtocols = sslsock.getSupportedProtocols();
+            final List<String> enabledProtocols = new ArrayList<String>(allProtocols.length);
+            for (String protocol : allProtocols) {
+                if (!protocol.startsWith("SSL")) {
+                    enabledProtocols.add(protocol);
+                }
+            }
+            if (!enabledProtocols.isEmpty()) {
+                return enabledProtocols.toArray(new String[enabledProtocols.size()]);
+            }
+            return null;
+        }
+
         Tun2Socks.IProtectSocket protectSocket;
 
         ProtectedSSLConnectionSocketFactory(
                 Tun2Socks.IProtectSocket protectSocket,
                 SSLContext sslContext,
-                X509HostnameVerifier verifier)
+                X509HostnameVerifier verifier) throws IOException
         {
-            super(sslContext, verifier);
-
+            super(sslContext, ProtectedSSLConnectionSocketFactory.getSupportedProtocols(), null, verifier);
             this.protectSocket = protectSocket;
         }
 
@@ -1319,7 +1372,8 @@ public class ServerInterface
         // - CreateLayeredSocket not overridden: in our usage of it, this will be invoked with
         //   the proxy set to localhost and protect() is not required.
 
-        public Socket createSocket(HttpParams params)
+        @Override
+        public Socket createSocket(HttpContext context)
                 throws IOException
         {
             Socket socket = SocketChannel.open().socket();
@@ -1329,22 +1383,6 @@ public class ServerInterface
             }
 
             return socket;
-        }
-
-        public Socket createSocket()
-                throws IOException
-        {
-            // Deprecated - our code will not call this
-            assert(false);
-            return null;
-        }
-
-        public Socket createSocket(Socket socket, String host, int port, boolean autoClose)
-                throws IOException, UnknownHostException
-        {
-            // Deprecated - our code will not call this
-            assert(false);
-            return null;
         }
     }
 
@@ -1361,8 +1399,8 @@ public class ServerInterface
 
         // NOTE:
         // See comment block in ProtectedSSLSocketFactory
-
-        public Socket createSocket(HttpParams params)
+        @Override
+        public Socket createSocket(HttpContext context)
         {
             Socket socket = null;
             try
@@ -1378,13 +1416,6 @@ public class ServerInterface
             }
 
             return socket;
-        }
-
-        public Socket createSocket()
-        {
-            // Deprecated - our code will not call this
-            assert(false);
-            return null;
         }
     }
 
@@ -1409,13 +1440,20 @@ public class ServerInterface
             IResumableDownload resumableDownload)
         throws PsiphonServerInterfaceException
     {
-        HttpRequestBase request = null;
+        HttpRequestBaseHC4 request = null;
+        CloseableHttpResponse response = null;
+        CloseableHttpClient client = null;
+        HttpClientContext httpClientContext = null;
 
         try
         {
-            RequestConfig.Builder requestBuilder = RequestConfig.custom();
-            requestBuilder = requestBuilder.setConnectTimeout(timeout);
-            requestBuilder = requestBuilder.setConnectionRequestTimeout(timeout);
+            RequestConfig.Builder requestBuilder = RequestConfig.custom()
+                .setConnectTimeout(timeout)
+                .setConnectionRequestTimeout(timeout)
+                .setSocketTimeout(timeout);
+            
+            httpClientContext = HttpClientContext.create();
+
             
             HttpHost httpproxy;
             if (useLocalProxy)
@@ -1430,6 +1468,13 @@ public class ServerInterface
                 {
                     httpproxy = new HttpHost(proxySettings.proxyHost, proxySettings.proxyPort);
                 	requestBuilder.setProxy(httpproxy);
+                	Credentials proxyCredentials = PsiphonData.getPsiphonData().getProxyCredentials();
+                	if(proxyCredentials != null)
+                	{
+                		CredentialsProvider credentialsProvider = new BasicCredentialsProviderHC4();
+                		credentialsProvider.setCredentials(AuthScope.ANY, proxyCredentials);
+                		httpClientContext.setCredentialsProvider(credentialsProvider);
+                	}
                 }
             }
 
@@ -1480,31 +1525,34 @@ public class ServerInterface
                 .register("http", plainSocketFactory)
                 .build();
 
-            HttpClientConnectionManager poolingHttpClientConnectionManager = new PoolingHttpClientConnectionManager(
-                    socketFactoryRegistry, dnsResolver);
+            HttpClientConnectionManager connectionManager = new BasicHttpClientConnectionManager(
+                    socketFactoryRegistry, ManagedHttpClientConnectionFactory.INSTANCE, 
+                    DefaultSchemePortResolver.INSTANCE , dnsResolver);
 			
-            CloseableHttpClient client = HttpClientBuilder.create()
-                    .setDefaultRequestConfig(requestBuilder.build())
-                    .setConnectionManager(poolingHttpClientConnectionManager)
+            client = HttpClientBuilder.create()
+                    .setConnectionManager(connectionManager)
                     .build();
+            
 
             if (requestMethod == RequestMethod.POST ||
                 (requestMethod == RequestMethod.INFER && body != null))
             {
-                HttpPost post = new HttpPost(url);
+                HttpPostHC4 post = new HttpPostHC4(url);
                 post.setEntity(new ByteArrayEntity(body));
                 request = post;
             }
             else if (requestMethod == RequestMethod.PUT)
             {
-                HttpPut put = new HttpPut(url);
+                HttpPutHC4 put = new HttpPutHC4(url);
                 put.setEntity(new ByteArrayEntity(body));
                 request = put;
             }
             else
             {
-                request = new HttpGet(url);
+                request = new HttpGetHC4(url);
             }
+            
+            request.setConfig(requestBuilder.build());
 
             if (canAbort)
             {
@@ -1529,7 +1577,16 @@ public class ServerInterface
                 request.addHeader("Range", "bytes="+Long.toString(resumableDownload.getResumeOffset()) + "-");
             }
 
-            HttpResponse response = client.execute(request);
+            RequestTimeoutAbort timeoutAbort = new RequestTimeoutAbort(request);
+            new Timer(true).schedule(timeoutAbort, timeout);
+            try
+            {
+                response = client.execute(request, httpClientContext);
+            }
+            finally
+            {
+                timeoutAbort.cancel();
+            }
 
             int statusCode = response.getStatusLine().getStatusCode();
 
@@ -1660,15 +1717,39 @@ public class ServerInterface
         }
         finally
         {
+            if (response != null) {
+                try
+                {
+                    response.close();
+                }
+                catch (IOException e)
+                {
+                    MyLog.w(R.string.make_request_close_http_response, MyLog.Sensitivity.NOT_SENSITIVE, e);
+                }
+            }
             if (request != null && canAbort)
             {
                 synchronized(this.outstandingRequests)
                 {
                     // Harmless if the request was successful. Necessary clean-up if
                     // the request was interrupted.
-                    if (!request.isAborted()) request.abort();
+                    if (!request.isAborted()){
+                        request.abort();
+                    }
 
+                    request.releaseConnection();
+                    
                     this.outstandingRequests.remove(request);
+                }
+            }
+            if (client != null) {
+                try
+                {
+                    client.close();
+                }
+                catch (IOException e)
+                {
+                    MyLog.w(R.string.make_request_close_http_client, MyLog.Sensitivity.NOT_SENSITIVE, e);
                 }
             }
         }
