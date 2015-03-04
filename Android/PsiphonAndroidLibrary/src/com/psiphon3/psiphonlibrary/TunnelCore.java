@@ -81,6 +81,7 @@ public class TunnelCore implements Connection.IStopSignalPending, Tun2Socks.IPro
     private Thread m_tunnelThread = null;
     private ServerInterface m_interface = null;
     private UpgradeManager.UpgradeDownloader m_upgradeDownloader = null;
+    private ServerSelector.TargetProtocolState m_targetProtocolState = null;
     private ServerSelector m_serverSelector = null;
     private boolean m_destroyed = false;
     private IEvents m_eventsInterface = null;
@@ -112,7 +113,8 @@ public class TunnelCore implements Connection.IStopSignalPending, Tun2Socks.IPro
     public void onCreate()
     {
         m_interface = new ServerInterface(m_parentContext);
-        m_serverSelector = new ServerSelector(this, this, m_interface, m_parentContext);
+        m_targetProtocolState = new ServerSelector.TargetProtocolState();
+        m_serverSelector = new ServerSelector(m_targetProtocolState, this, this, m_interface, m_parentContext);
         m_upgradeDownloader = new UpgradeManager.UpgradeDownloader(m_parentContext, m_interface);
     }
 
@@ -210,12 +212,12 @@ public class TunnelCore implements Connection.IStopSignalPending, Tun2Socks.IPro
         if (alert)
         {
             if (PreferenceManager.getDefaultSharedPreferences(m_parentService).getBoolean(
-                    m_parentService.getString(R.string.preferenceNotificationsWithSound), true))
+                    m_parentService.getString(R.string.preferenceNotificationsWithSound), false))
             {
                 notification.defaults |= Notification.DEFAULT_SOUND;
             }
             if (PreferenceManager.getDefaultSharedPreferences(m_parentService).getBoolean(
-                    m_parentService.getString(R.string.preferenceNotificationsWithVibrate), true))
+                    m_parentService.getString(R.string.preferenceNotificationsWithVibrate), false))
             {
                 notification.defaults |= Notification.DEFAULT_VIBRATE;
             }
@@ -1216,6 +1218,12 @@ public class TunnelCore implements Connection.IStopSignalPending, Tun2Socks.IPro
                     {
                         m_eventsInterface.signalUnexpectedDisconnect(m_parentContext);
                     }
+                }
+                
+                if (PsiphonConstants.TARGET_PROTOCOL_ROTATION_SESSION_DURATION_THRESHOLD_MILLISECONDS >=
+                        PsiphonData.getPsiphonData().getDataTransferStats().getElapsedTime())
+                {
+                    m_targetProtocolState.rotateTarget();
                 }
             }
 
