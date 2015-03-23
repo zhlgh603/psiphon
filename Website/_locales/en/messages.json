@@ -141,6 +141,10 @@
     "message": "App Stores",
     "description": "this is referring to the general idea of app stores, like Google Play, Amazon AppStore, Apple App Store"
   },
+  "faq-information-collected-answer-head-5": {
+    "message": "Website",
+    "description": "this is referring to the Psiphon website"
+  },
   "faq-information-collected-answer-para-1": {
     "message": "We collect the following data to find out how well Psiphon is working, what sites are popular and what propagation strategies are effective. This information is shared with our partners so that they can see, for example, how often their sites are visited through Psiphon and from which countries."
   },
@@ -239,6 +243,12 @@
   },
   "faq-information-collected-answer-para-14": {
     "message": "If we need to diagnose a problem, we may enable full mail server logging for a short amount of time. If you send an email during that time, your email address will be written to the system log. Those logs are deleted after one week."
+  },
+  "faq-information-collected-answer-para-15-item-1": {
+    "message": "We sometimes use Google AdSense advertisements to support our site, which may use technology such as cookies and web beacons. Google's use of the DoubleClick cookie enables it and its partners to serve ads based on your visit to this site and/or other sites on the Internet. Any information collected through this process is handled under the terms of the Google privacy policy at"
+  },
+  "faq-information-collected-answer-para-15-item-2": {
+    "message": "You can choose to disable or selectively turn off our cookies or third-party cookies in your browser settings, and can opt out of the use of the DoubleClick cookie for interest-based advertising by visiting"
   },
   "faq-ip-change-question": {
     "message": "Why does my Psiphon IP address frequently change?"
@@ -826,6 +836,10 @@
   "footer-license": {
     "message": "Site content licensed under",
     "description": "The beginning of the 'Licensed under [license name here]' footer text"
+  },
+  "footer-privacy-policy": {
+    "message": "<a href=\"./about.html#privacy-policy\">Privacy Policy",
+    "description": "A link to our privacy policy in the footer"
   },
   "donate-heading": {
     "message": "Contribute to Psiphon",
