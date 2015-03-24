@@ -309,6 +309,10 @@ class ServerInstance(object):
                     inputs_lookup['client_version'],
                     event_logger=discovery_logger)
 
+        # Report back client region in case client needs to fetch routes file
+        # for his region off a 3rd party 
+        config['client_region'] = client_region
+
         config['preemptive_reconnect_lifetime_milliseconds'] = \
             psi_config.PREEMPTIVE_RECONNECT_LIFETIME_MILLISECONDS if \
             client_region in psi_config.PREEMPTIVE_RECONNECT_REGIONS else 0
