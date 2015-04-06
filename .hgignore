@@ -28,6 +28,9 @@ Client/psiclient/psiclient.aps
 
 Automation/Builds
 Automation/logs
+psi_data_config.py
+psi_ops_config.py
+transifex_conf.json
 
 Android/PsiphonAndroid/bin
 Android/PsiphonAndroid/gen
