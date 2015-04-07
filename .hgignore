@@ -80,3 +80,6 @@ publish
 Automation/zenoss_credentials.py
 pyclient/psi_client.dat
 Server/psi_health_check.py
+
+# Website generated files
+Website/_site
