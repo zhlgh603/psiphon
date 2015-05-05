@@ -16,6 +16,7 @@ Client/psiclient/3rdParty/cryptopp562/Win32/cryptlib/Debug
 Client/psiclient/3rdParty/cryptopp562/Win32/Output/Debug
 Client/psiclient/3rdParty/cryptopp562/Win32/cryptlib/Release
 Client/psiclient/3rdParty/cryptopp562/Win32/Output/Release
+Client/psiclient/psiclient.aps
 *.suo
 *.opensdf
 *.ipch
