@@ -16,6 +16,7 @@ Client/psiclient/3rdParty/cryptopp562/Win32/cryptlib/Debug
 Client/psiclient/3rdParty/cryptopp562/Win32/Output/Debug
 Client/psiclient/3rdParty/cryptopp562/Win32/cryptlib/Release
 Client/psiclient/3rdParty/cryptopp562/Win32/Output/Release
+Client/psiclient/psiclient.aps
 *.suo
 *.opensdf
 *.ipch
@@ -79,3 +80,6 @@ publish
 Automation/zenoss_credentials.py
 pyclient/psi_client.dat
 Server/psi_health_check.py
+
+# Website generated files
+Website/_site
