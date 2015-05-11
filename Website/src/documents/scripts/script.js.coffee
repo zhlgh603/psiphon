@@ -1,4 +1,4 @@
-# Copyright (c) 2014, Psiphon Inc.
+# Copyright (c) 2015, Psiphon Inc.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -82,6 +82,16 @@ $ ->
     $.getJSON(sponsor_email_info_file)
       .done (email) ->
         $('.sponsor-email').prop('href', "mailto:#{email}").text(email)
+
+  # We don't use any analytics on most copies of the site, but we do on a couple.
+  # Check for the presence of a file that provides a Google Analytics tracking ID.
+  # If present, enable GAnalytics.
+  $.ajax(PATH_TO_ROOT+'/assets/google-analytics-id')
+    .done (gaID) ->
+      gaID = gaID.trim() or ''
+      return if not gaID
+      newScriptElem = $('<script>').text "(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)})(window,document,'script','//www.google-analytics.com/analytics.js','ga');ga('create','#{gaID}','auto');ga('send','pageview');"
+      newScriptElem.insertBefore($('script').eq(0))
 
   # Set up any slab text we have on the page.
   if $('.slabtext-container').length
