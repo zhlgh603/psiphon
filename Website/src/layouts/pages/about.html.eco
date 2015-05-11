@@ -75,30 +75,6 @@ layout: page
   </div>
 </div>
 
-<div class="row">
-  <span class="anchor-target" id="privacy-policy"></span>
-  <div class="col-md-12">
-    <h2><%= @tt 'about-privacy-head' %></h2>
-    <p>
-      <%= @tt 'privacy-para-1' %>
-    </p>
-    <p>
-      <%= @tt 'privacy-para-2' %>
-    </p>
-    <ul>
-      <li>
-        <a href="http://www.priv.gc.ca/" target="_blank"><%= @tt 'privacy-canadian-privacy-commission-link-text' %></a>
-      </li>
-      <li>
-        <a href="http://www.ipc.on.ca/" target="_blank"><%= @tt 'privacy-ontario-privacy-commissioner-link-text' %></a>
-      </li>
-    </ul>
-    <p>
-      <%= @tt 'privacy-para-3' %>
-    </p>
-    <p>
-      <%- @tt 'privacy-para-4' %>
-    </p>
     <p>
       <%= @tt 'faq-information-collected-answer-para-15-item-1' %>
       <a href="https://www.google.com/policies/privacy/partners/?hl=<%= @document.language %>" target="_blank">https://www.google.com/policies/privacy/partners/?hl=<%= @document.language %></a>
@@ -107,5 +83,3 @@ layout: page
       <%= @tt 'faq-information-collected-answer-para-15-item-2' %>
       <a href="https://www.google.com/ads/preferences/?hl=<%= @document.language %>" target="_blank">https://www.google.com/ads/preferences/?hl=<%= @document.language %></a>
     </p>
-  </div>
-</div>
