@@ -8,7 +8,7 @@ layout: page
   </div>
 </div>
 
-<div id="store" class="anchor-target show-if-not-sponsored hidden">
+<div id="store" class="anchor-target">
   <div class="row">
     <div class="download-head">
       <h2><%= @tt 'download-store-head' %></h2>
@@ -71,13 +71,13 @@ layout: page
 
   <div class="row download-item">
     <div class="download-os-with-qr">
-      <a href="<%-  @relativeToRoot @downloads.android %>">
+      <a href="https://s3.amazonaws.com/0ubz-2q11-gi9y/PsiphonAndroid.apk">
         <img class="download-os-logo" src="<%= @relativeToRoot '/images/android/android-logo.png' %>">
       </a>
     </div>
     <div class="download-link-with-qr">
       <h4>
-        <a href="<%-  @relativeToRoot @downloads.android %>" class="alert-link">
+        <a href="https://s3.amazonaws.com/0ubz-2q11-gi9y/PsiphonAndroid.apk" class="alert-link">
           <%= @tt 'download-android-direct' %>
         </a>
       </h4>
@@ -85,23 +85,18 @@ layout: page
         <%- @tt 'download-android-direct-description' %>
       </p>
     </div>
-    <div class="download-qr">
-      <a href="<%-  @relativeToRoot @downloads.android %>">
-        <img class="img-responsive" src="<%= @relativeToRoot '/images/android/android-download-qr.png' %>">
-      </a>
-    </div>
   </div>
 
 
   <div class="row download-item">
     <div class="download-os">
-      <a href="<%-  @relativeToRoot @downloads.windows %>">
+      <a href="https://s3.amazonaws.com/0ubz-2q11-gi9y/psiphon3.exe">
         <img class="download-os-logo" src="<%= @relativeToRoot '/images/windows-logo.png' %>">
       </a>
     </div>
     <div class="download-link">
       <h4>
-        <a href="<%-  @relativeToRoot @downloads.windows %>" class="alert-link">
+        <a href="https://s3.amazonaws.com/0ubz-2q11-gi9y/psiphon3.exe" class="alert-link">
           <%= @tt 'download-windows-direct' %>
         </a>
       </h4>
