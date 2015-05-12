@@ -126,6 +126,16 @@ $ jarsigner -verbose -verify PsiphonAndroid.apk</code></pre>
     <p>
       <%- @tt 'faq-information-collected-answer-redirect' %>
     </p>
+    
+    <h3><%= @tt 'faq-information-collected-answer-head-5' %></h3>
+    <p>
+      <%= @tt 'faq-information-collected-answer-para-15-item-1' %>
+      <a href="https://www.google.com/policies/privacy/partners/?hl=<%= @document.language %>" target="_blank">https://www.google.com/policies/privacy/partners/?hl=<%= @document.language %></a>
+    </p>
+    <p>
+      <%= @tt 'faq-information-collected-answer-para-15-item-2' %>
+      <a href="https://www.google.com/ads/preferences/?hl=<%= @document.language %>" target="_blank">https://www.google.com/ads/preferences/?hl=<%= @document.language %></a>
+    </p>
   </div>
 </div>
 
