@@ -6,12 +6,12 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
@@ -22,7 +22,11 @@
 struct StopInfo;
 
 
-bool ExtractExecutable(DWORD resourceID, const TCHAR* exeFilename, tstring& path);
+bool ExtractExecutable(
+    DWORD resourceID,
+    const TCHAR* exeFilename,
+    tstring& path,
+    bool succeedIfExists=false);
 
 bool WriteFile(const tstring& filename, const string& data);
 
@@ -33,9 +37,9 @@ bool WriteFile(const tstring& filename, const string& data);
 //  ERROR_OPERATION_ABORTED if cancel event signaled
 // process and cancelEvent can be NULL
 DWORD WaitForConnectability(
-        int port, 
-        DWORD timeout, 
-        HANDLE process, 
+        int port,
+        DWORD timeout,
+        HANDLE process,
         const StopInfo& stopInfo);
 
 // NOTE: targetPort is inout, outputing the first available port
@@ -91,8 +95,8 @@ DWORD GetTickCountDiff(DWORD start, DWORD end);
 
 wstring EscapeSOCKSArg(const char* input);
 
-string UriEncode(const std::string & sSrc);
-string UriDecode(const std::string & sSrc);
+tstring UrlEncode(const tstring& input);
+tstring UrlDecode(const tstring& input);
 
 
 /*
@@ -147,4 +151,4 @@ private:
     tstring m_logInfo;
 };
 
-#define AUTOMUTEX(mutex) 
+#define AUTOMUTEX(mutex)

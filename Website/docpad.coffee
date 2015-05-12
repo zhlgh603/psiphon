@@ -54,8 +54,7 @@ docpadConfig = {
 
     # Enabled languages
     # This is the order in which they will be displayed in the language picker
-    languages: ['en', 'fa', 'ar', 'tr', 'zh', 'ru', 'uz@cyrillic', 'uz@Latn', 'tk', 'th', 'az', 'ug@Latn', 'kk', 'es', 'vi', 'fr', 'nb', 'de', 'el',
-    'ko', 'pt_PT']
+    languages: ['en', 'fa', 'ar', 'zh', 'az', 'de', 'el', 'es', 'fr', 'kk', 'ko', 'nb', 'pt_PT', 'ru', 'th', 'tk', 'tr', 'ug@Latn', 'uz@cyrillic', 'uz@Latn', 'vi']
 
     # Translation file location.
     translation_files:
@@ -108,15 +107,15 @@ docpadConfig = {
         title_key: 'sponsor-title'
         nav_title_key: 'sponsor-nav-title'
 
-      'about':
-        filename: '/about.html'
-        title_key: 'about-title'
-        nav_title_key: 'about-nav-title'
-
       'blog-index':
         filename: '/blog/index.html'
         title_key: 'blog-index-title'
         nav_title_key: 'blog-index-nav-title'
+
+      'privacy':
+        filename: '/privacy.html'
+        title_key: 'privacy-title'
+        nav_title_key: 'privacy-nav-title'
 
       'license':
         filename: '/license.html'
@@ -133,6 +132,11 @@ docpadConfig = {
         title_key: 'privacy-bulletin-title'
         nav_title_key: 'privacy-bulletin-nav-title'
 
+      'about':
+        filename: '/about.html'
+        title_key: 'about-title'
+        nav_title_key: 'about-nav-title'
+
     navLayout: [
       { name: 'download' }
       {
@@ -141,10 +145,11 @@ docpadConfig = {
         subnav: [
           { name: 'user-guide' }
           { name: 'faq' }
-          { name: 'about' }
           { name: 'blog-index' }
+          { name: 'privacy' }
           { name: 'license' }
           { name: 'open-source' }
+          { name: 'about' }
         ]
       }
       # { name: 'sponsor', additional_classes: ['show-if-not-sponsored', 'hidden'] }

@@ -300,8 +300,14 @@ static void HtmlUI_BeforeNavigateHandler(LPCTSTR url)
         && _tcslen(url) > appSaveSettingsLen)
     {
         my_print(NOT_SENSITIVE, true, _T("%s: Update settings requested"), __TFUNCTION__);
-        tstring uriEncoded(url + appSaveSettingsLen);
-        string stringJSON = UriDecode(TStringToNarrow(uriEncoded));
+        
+        tstring urlDecoded = UrlDecode(url);
+        if (urlDecoded.length() < appSaveSettingsLen + 1)
+        {
+            return;
+        }
+
+        string stringJSON(TStringToNarrow(urlDecoded).c_str() + appSaveSettingsLen);
         bool settingsChanged = false;
         if (Settings::FromJson(stringJSON, settingsChanged) && settingsChanged)
         {
@@ -325,8 +331,13 @@ static void HtmlUI_BeforeNavigateHandler(LPCTSTR url)
         && _tcslen(url) > appSendFeedbackLen)
     {
         my_print(NOT_SENSITIVE, true, _T("%s: Send feedback requested"), __TFUNCTION__);
-        tstring uriEncoded(url + appSendFeedbackLen);
-        string stringJSON = UriDecode(TStringToNarrow(uriEncoded));
+        tstring urlDecoded = UrlDecode(url);
+        if (urlDecoded.length() < appSendFeedbackLen + 1)
+        {
+            return;
+        }
+
+        string stringJSON(TStringToNarrow(urlDecoded).c_str() + appSendFeedbackLen);
         my_print(NOT_SENSITIVE, false, _T("Sending feedback..."));
         g_connectionManager.SendFeedback(NarrowToTString(stringJSON).c_str());
     }
@@ -334,8 +345,13 @@ static void HtmlUI_BeforeNavigateHandler(LPCTSTR url)
         && _tcslen(url) > appSetCookiesLen)
     {
         my_print(NOT_SENSITIVE, true, _T("%s: Set cookies requested"), __TFUNCTION__);
-        tstring uriEncoded(url + appSetCookiesLen);
-        string stringJSON = UriDecode(TStringToNarrow(uriEncoded));
+        tstring urlDecoded = UrlDecode(url);
+        if (urlDecoded.length() < appSetCookiesLen + 1)
+        {
+            return;
+        }
+
+        string stringJSON(TStringToNarrow(urlDecoded).c_str() + appSetCookiesLen);
         Settings::SetCookies(stringJSON);
     }
     else if (_tcscmp(url, appBannerClick) == 0)
@@ -460,9 +476,9 @@ int APIENTRY _tWinMain(
         if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
         {
             // Bit of a dirty hack to prevent the HTML control code from crashing
-            // on exit. 
+            // on exit.
             // WM_APP+2 is the message used for MC_HN_STATUSTEXT. Sometimes it
-            // arrives after the control is destroyed and will cause an app 
+            // arrives after the control is destroyed and will cause an app
             // crash if we let it through.
             if (msg.message == (WM_APP + 2) && g_htmlUiFinished)
                 continue;

@@ -26,6 +26,7 @@
 #include <WinSock2.h>
 #include <TlHelp32.h>
 #include <WinCrypt.h>
+#include <WinInet.h>
 #include "utilities.h"
 #include "stopsignal.h"
 #include "cryptlib.h"
@@ -69,7 +70,11 @@ void TerminateProcessByName(const TCHAR* executableName)
 }
 
 
-bool ExtractExecutable(DWORD resourceID, const TCHAR* exeFilename, tstring& path)
+bool ExtractExecutable(
+    DWORD resourceID,
+    const TCHAR* exeFilename,
+    tstring& path,
+    bool succeedIfExists/*=false*/)
 {
     // Extract executable from resources and write to temporary file
 
@@ -124,6 +129,19 @@ bool ExtractExecutable(DWORD resourceID, const TCHAR* exeFilename, tstring& path
             if (!attemptedTerminate &&
                 ERROR_SHARING_VIOLATION == lastError)
             {
+                if (succeedIfExists)
+                {
+                    // The file must exist, and we can't write to it, most likely because it is
+                    // locked by a currently executing process. We can go ahead and consider the
+                    // file extracted.
+                    // TODO: We should check that the file size and contents are the same. If the file
+                    // is different, it would be better to proceed with attempting to extract the
+                    // executable and even terminating any locking process -- for example, the locking
+                    // process may be a dangling child process left over from before a client upgrade.
+                    path = filePath;
+                    return true;
+                }
+
                 TerminateProcessByName(exeFilename);
                 attemptedTerminate = true;
             }
@@ -928,6 +946,53 @@ wstring EscapeSOCKSArg(const char* input)
     return NarrowToTString(output).c_str();
 }
 
+
+// Adapted from:
+// http://stackoverflow.com/questions/154536/encode-decode-urls-in-c
+tstring UrlCodec(const tstring& input, bool encode)
+{
+    DWORD flags = encode ? 0 : ICU_DECODE;
+    tstring encodedURL = _T("");
+    DWORD outputBufferSize = input.size() * 2;
+    LPTSTR outputBuffer = new TCHAR[outputBufferSize];
+    BOOL result = ::InternetCanonicalizeUrl(input.c_str(), outputBuffer, &outputBufferSize, flags);
+    DWORD error = ::GetLastError();
+    if (!result && error == ERROR_INSUFFICIENT_BUFFER)
+    {
+        delete[] outputBuffer;
+        outputBuffer = new TCHAR[outputBufferSize];
+        result = ::InternetCanonicalizeUrl(input.c_str(), outputBuffer, &outputBufferSize, flags);
+    }
+
+    if (result)
+    {
+        encodedURL = outputBuffer;
+    }
+    else
+    {
+        my_print(NOT_SENSITIVE, true, _T("%s: InternetCanonicalizeUrl failed for %s with code %ld"), __TFUNCTION__, input.c_str(), GetLastError());
+    }
+    
+    if (outputBuffer != 0)
+    {
+        delete[] outputBuffer;
+        outputBuffer = 0;
+    }
+
+    return encodedURL;
+}
+
+tstring UrlEncode(const tstring& input)
+{
+    return UrlCodec(input, true);
+}
+
+tstring UrlDecode(const tstring& input)
+{
+    return UrlCodec(input, false);
+}
+
+
 tstring GetLocaleName()
 {
     int size = GetLocaleInfo(
@@ -981,131 +1046,6 @@ tstring GetISO8601DatetimeString()
         systime.wMilliseconds);
 
     return ret;
-}
-
-/*
- * From: http://www.codeguru.com/cpp/cpp/algorithms/strings/article.php/c12759/URI-Encoding-and-Decoding.htm
- */
-// Uri encode and decode.
-// RFC1630, RFC1738, RFC2396
-
-#include <string>
-#include <assert.h>
-
-const char HEX2DEC[256] =
-{
-    /*       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F */
-    /* 0 */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* 1 */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* 2 */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* 3 */  0, 1, 2, 3,  4, 5, 6, 7,  8, 9,-1,-1, -1,-1,-1,-1,
-
-    /* 4 */ -1,10,11,12, 13,14,15,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* 5 */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* 6 */ -1,10,11,12, 13,14,15,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* 7 */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-
-    /* 8 */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* 9 */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* A */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* B */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-
-    /* C */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* D */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* E */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
-    /* F */ -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1
-};
-
-std::string UriDecode(const std::string & sSrc)
-{
-    // Note from RFC1630:  "Sequences which start with a percent sign
-    // but are not followed by two hexadecimal characters (0-9, A-F) are reserved
-    // for future extension"
-
-    const unsigned char * pSrc = (const unsigned char *)sSrc.c_str();
-    const int SRC_LEN = sSrc.length();
-    const unsigned char * const SRC_END = pSrc + SRC_LEN;
-    const unsigned char * const SRC_LAST_DEC = SRC_END - 2;   // last decodable '%' 
-
-    char * const pStart = new char[SRC_LEN];
-    char * pEnd = pStart;
-
-    while (pSrc < SRC_LAST_DEC)
-    {
-        if (*pSrc == '%')
-        {
-            char dec1, dec2;
-            if (-1 != (dec1 = HEX2DEC[*(pSrc + 1)])
-                && -1 != (dec2 = HEX2DEC[*(pSrc + 2)]))
-            {
-                *pEnd++ = (dec1 << 4) + dec2;
-                pSrc += 3;
-                continue;
-            }
-        }
-
-        *pEnd++ = *pSrc++;
-    }
-
-    // the last 2- chars
-    while (pSrc < SRC_END)
-        *pEnd++ = *pSrc++;
-
-    std::string sResult(pStart, pEnd);
-    delete[] pStart;
-    return sResult;
-}
-
-// Only alphanum is safe.
-const char SAFE[256] =
-{
-    /*      0 1 2 3  4 5 6 7  8 9 A B  C D E F */
-    /* 0 */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* 1 */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* 2 */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* 3 */ 1,1,1,1, 1,1,1,1, 1,1,0,0, 0,0,0,0,
-
-    /* 4 */ 0,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1,
-    /* 5 */ 1,1,1,1, 1,1,1,1, 1,1,1,0, 0,0,0,0,
-    /* 6 */ 0,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1,
-    /* 7 */ 1,1,1,1, 1,1,1,1, 1,1,1,0, 0,0,0,0,
-
-    /* 8 */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* 9 */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* A */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* B */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-
-    /* C */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* D */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* E */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-    /* F */ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0
-};
-
-std::string UriEncode(const std::string & sSrc)
-{
-    const char DEC2HEX[16 + 1] = "0123456789ABCDEF";
-    const unsigned char * pSrc = (const unsigned char *)sSrc.c_str();
-    const int SRC_LEN = sSrc.length();
-    unsigned char * const pStart = new unsigned char[SRC_LEN * 3];
-    unsigned char * pEnd = pStart;
-    const unsigned char * const SRC_END = pSrc + SRC_LEN;
-
-    for (; pSrc < SRC_END; ++pSrc)
-    {
-        if (SAFE[*pSrc])
-            *pEnd++ = *pSrc;
-        else
-        {
-            // escape this char
-            *pEnd++ = '%';
-            *pEnd++ = DEC2HEX[*pSrc >> 4];
-            *pEnd++ = DEC2HEX[*pSrc & 0x0F];
-        }
-    }
-
-    std::string sResult((char *)pStart, (char *)pEnd);
-    delete[] pStart;
-    return sResult;
 }
 
 
