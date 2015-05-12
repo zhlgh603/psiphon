@@ -135,16 +135,6 @@
   "faq-information-collected-answer-redirect": {
     "message": "Please see our <a href=\"privacy.html\">Privacy Policy</a> to learn about what information we collect.",
     "description": "This is the FAQ answer to the question 'What info does Psiphon collect?' The user needs to go to a separate page to see the full answer."
-  "faq-information-collected-answer-head-5": {
-    "message": "Website",
-    "description": "this is referring to the Psiphon website"
-  },
-  },
-  "faq-information-collected-answer-para-15-item-1": {
-    "message": "We sometimes use Google AdSense advertisements to support our site, which may use technology such as cookies and web beacons. Google's use of the DoubleClick cookie enables it and its partners to serve ads based on your visit to this site and/or other sites on the Internet. Any information collected through this process is handled under the terms of the Google privacy policy at"
-  },
-  "faq-information-collected-answer-para-15-item-2": {
-    "message": "You can choose to disable or selectively turn off our cookies or third-party cookies in your browser settings, and can opt out of the use of the DoubleClick cookie for interest-based advertising by visiting"
   },
   "faq-ip-change-question": {
     "message": "Why does my Psiphon IP address frequently change?"
@@ -675,10 +665,6 @@
   "footer-license": {
     "message": "Site content licensed under",
     "description": "The beginning of the 'Licensed under [license name here]' footer text"
-  },
-  "footer-privacy-policy": {
-    "message": "<a href=\"./about.html#privacy-policy\">Privacy Policy",
-    "description": "A link to our privacy policy in the footer"
   },
   "donate-heading": {
     "message": "Contribute to Psiphon",
