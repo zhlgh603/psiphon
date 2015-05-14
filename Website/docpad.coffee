@@ -149,6 +149,7 @@ docpadConfig = {
           { name: 'privacy' }
           { name: 'license' }
           { name: 'open-source' }
+          { name: 'sponsor' }
           { name: 'about' }
         ]
       }
