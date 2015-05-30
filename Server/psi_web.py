@@ -235,7 +235,7 @@ class ServerInstance(object):
     def _log_event(self, event_name, log_values):
         syslog.syslog(
             syslog.LOG_INFO,
-            ' '.join([event_name] + [str(value) for (_, value) in log_values]))
+            ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
 
     def handshake(self, environ, start_response):
         request = Request(environ)
