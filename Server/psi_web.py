@@ -79,7 +79,7 @@ def is_valid_ip_address(str):
     try:
         socket.inet_aton(str)
         return True
-    except socket.error:
+    except:
         return False
 
 
