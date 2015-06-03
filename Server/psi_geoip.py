@@ -104,7 +104,7 @@ def get_geoip(network_address):
             if _has_isp_db():
                 isp = _get_isp_db().org_by_name(network_address)
                 if isp:
-                    geoip['isp'] = isp
+                    geoip['isp'] = isp.decode('iso-8859-1').encode('utf-8')
 
             return geoip
 
