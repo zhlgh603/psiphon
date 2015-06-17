@@ -347,10 +347,6 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
         config["UpstreamHttpProxyAddress"] = GetUpstreamProxyAddress();
     }
 
-    config["EgressRegion"] = Settings::EgressRegion();
-    config["LocalHttpProxyPort"] = Settings::LocalHttpProxyPort();
-    config["LocalSocksProxyPort"] = Settings::LocalSocksProxyPort();
-
     if (Settings::SplitTunnel())
     {
         config["SplitTunnelRoutesUrlFormat"] = SPLIT_TUNNEL_ROUTES_URL_FORMAT;
@@ -381,6 +377,12 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
         {
             config["EstablishTunnelTimeoutSeconds"] = TEMPORARY_TUNNEL_TIMEOUT_SECONDS;
         }
+    }
+    else
+    {
+        config["EgressRegion"] = Settings::EgressRegion();
+        config["LocalHttpProxyPort"] = Settings::LocalHttpProxyPort();
+        config["LocalSocksProxyPort"] = Settings::LocalSocksProxyPort();
     }
 
     ostringstream configDataStream;
