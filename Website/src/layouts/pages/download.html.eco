@@ -74,13 +74,13 @@ layout: page
 
   <div class="row download-item show-if-android">
     <div class="download-os-with-qr">
-      <a href="https://s3.amazonaws.com/0ubz-2q11-gi9y/PsiphonAndroid.apk">
+      <a href="https://s3.amazonaws.com/psiphon/web/mjr4-p23r-puwl/PsiphonAndroid.apk">
         <img class="download-os-logo" src="<%= @relativeToRoot '/images/android/android-logo.png' %>">
       </a>
     </div>
     <div class="download-link-with-qr">
       <h4>
-        <a href="https://s3.amazonaws.com/0ubz-2q11-gi9y/PsiphonAndroid.apk" class="alert-link">
+        <a href="https://s3.amazonaws.com/psiphon/web/mjr4-p23r-puwl/PsiphonAndroid.apk" class="alert-link">
           <%= @tt 'download-android-direct' %>
         </a>
       </h4>
@@ -93,13 +93,13 @@ layout: page
 
   <div class="row download-item show-if-windows">
     <div class="download-os">
-      <a href="https://s3.amazonaws.com/0ubz-2q11-gi9y/psiphon3.exe">
+      <a href="https://s3.amazonaws.com/psiphon/web/mjr4-p23r-puwl/psiphon3.exe">
         <img class="download-os-logo" src="<%= @relativeToRoot '/images/windows-logo.png' %>">
       </a>
     </div>
     <div class="download-link">
       <h4>
-        <a href="https://s3.amazonaws.com/0ubz-2q11-gi9y/psiphon3.exe" class="alert-link">
+        <a href="https://s3.amazonaws.com/psiphon/web/mjr4-p23r-puwl/psiphon3.exe" class="alert-link">
           <%= @tt 'download-windows-direct' %>
         </a>
       </h4>
