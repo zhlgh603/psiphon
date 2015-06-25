@@ -35,6 +35,7 @@ SOURCE_ROOT = os.path.join(os.path.abspath('..'), 'Android')
 PSIPHON_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'PsiphonAndroid')
 PSIPHON_LIB_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'PsiphonAndroidLibrary')
 PLAY_SERVICES_LIB_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'google-play-services_lib')
+MOPUB_LIB_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'mopub-sdk')
 ZIRCO_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'zirco-browser')
 KALIUM_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'kalium-jni', 'src', 'main', 'java', 'org')
 PSIPHON_LIB_SOURCE_SRC_ORG = os.path.join(PSIPHON_LIB_SOURCE_ROOT, 'src', 'org')
@@ -90,10 +91,12 @@ key.alias.password=%s
         'android update lib-project -p "%s"' % (ZIRCO_SOURCE_ROOT,),
         'android update lib-project -p "%s"' % (PSIPHON_LIB_SOURCE_ROOT,),
         'android update lib-project -p "%s"' % (PLAY_SERVICES_LIB_SOURCE_ROOT,),
+        'android update lib-project -p "%s"' % (MOPUB_LIB_SOURCE_ROOT,),
         'android update project -p "%s"' % (PSIPHON_SOURCE_ROOT,),
         'ant -q -f "%s" clean' % (os.path.join(ZIRCO_SOURCE_ROOT, 'build.xml'),),
         'ant -q -f "%s" clean' % (os.path.join(PSIPHON_LIB_SOURCE_ROOT, 'build.xml'),),
         'ant -q -f "%s" clean' % (os.path.join(PLAY_SERVICES_LIB_SOURCE_ROOT, 'build.xml'),),
+        'ant -q -f "%s" clean' % (os.path.join(MOPUB_LIB_SOURCE_ROOT, 'build.xml'),),
         'ant -q -f "%s" clean' % (os.path.join(PSIPHON_SOURCE_ROOT, 'build.xml'),),
         'ant -q -f "%s" release' % (os.path.join(PSIPHON_SOURCE_ROOT, 'build.xml'),),
         ]
