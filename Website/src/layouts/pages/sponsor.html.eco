@@ -4,21 +4,6 @@ layout: page
 
 <div class="row">
   <div class="col-md-12">
-    <p>
-      <%= @tt 'sponsor-para-1' %>
-    </p>
-    <p>
-      <%= @tt 'sponsor-para-2' %>
-    </p>
-    <p>
-      <%- @tt 'sponsor-para-3' %>
-    </p>
-  </div>
-</div>
-
-<!--
-<div class="row">
-  <div class="col-md-12">
     <div class="panel panel-default">
       <div class="panel-heading">
         <h2><%= @tt 'donate-heading' %></h2>
@@ -29,7 +14,7 @@ layout: page
         </p>
         <div class="row donate-buttons">
 
-          <div class="col-xs-6 text-right donate-button">
+          <div class="col-xs-12 text-center donate-button">
             <form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
             <input type="hidden" name="cmd" value="_donations">
             <input type="hidden" name="business" value="GA32YA4RP62EG">
@@ -44,21 +29,6 @@ layout: page
             <input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" border="0" name="submit" alt="PayPal - The safer, easier way to pay online!">
             <img alt="" border="0" src="https://www.paypalobjects.com/en_US/i/scr/pixel.gif" width="1" height="1">
             </form>
-          </div>
-
-          <div class="col-xs-6 text-left donate-button">
-            <script id="fbhiugg">
-              (function(i){
-                var f,s=document.getElementById(i);
-                f=document.createElement('iframe');
-                f.src='//api.flattr.com/button/view/?uid=psiphon&button=compact&url='+encodeURIComponent(document.URL);
-                f.title='Flattr';
-                f.height=20;
-                f.width=110;
-                f.style.borderWidth=0;
-                s.parentNode.insertBefore(f,s);
-              })('fbhiugg');
-            </script>
           </div>
 
         </div>
@@ -103,4 +73,3 @@ layout: page
     </div>
   </div>
 </div>
--->
