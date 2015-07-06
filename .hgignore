@@ -45,6 +45,7 @@ Client/psiclient/embeddedvalues.h
 
 Automation/host_reports/staging
 Automation/host_reports/data
+Automation/transifex_conf.json
 
 node_modules/
 out/
