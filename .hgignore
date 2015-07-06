@@ -83,3 +83,5 @@ Server/psi_health_check.py
 
 # Website generated files
 Website/_site
+# Website config files
+Website/sponsor_snippet_pull_conf.json
