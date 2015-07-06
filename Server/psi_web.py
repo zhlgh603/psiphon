@@ -261,16 +261,16 @@ class ServerInstance(object):
             syslog.LOG_INFO,
             ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
         if event_name in ['connected']:
-        json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
-        for key, value in log_values:
-            # convert a number in a string to a long
-            if (type(value) == str or type(value) == unicode) and value.isdigit():
-                json_log[key] = long(value)
-            # encode unicode to utf8
-            elif type(value) == unicode:
-                json_log[key] = str(value.encode('utf8'))
-            else:
-                json_log[key] = value
+            json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
+            for key, value in log_values:
+                # convert a number in a string to a long
+                if (type(value) == str or type(value) == unicode) and value.isdigit():
+                    json_log[key] = long(value)
+                # encode unicode to utf8
+                elif type(value) == unicode:
+                    json_log[key] = str(value.encode('utf8'))
+                else:
+                    json_log[key] = value
             logger.info(json.dumps(json_log))
 
     @exception_logger
