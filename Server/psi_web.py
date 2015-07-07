@@ -29,6 +29,8 @@ import threading
 import time
 import os
 import syslog
+import logging
+from logging import handlers as logginghandlers
 import ssl
 import tempfile
 import netifaces
@@ -123,11 +125,19 @@ def exception_logger(function):
     return wrapper
     
     
+# ===== JSON Logging =====
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logHandler = logginghandlers.RotatingFileHandler(filename="/var/log/psiphonv-json/psiphonv-json.log", maxBytes=52428800, backupCount=3)
+logger.addHandler(logHandler)
+
+
 # ===== Psiphon Web Server =====
 
 class ServerInstance(object):
 
-    def __init__(self, ip_address, server_secret, capabilities):
+    def __init__(self, ip_address, server_secret, capabilities, host_id):
         self.session_redis = redis.StrictRedis(
             host=psi_config.SESSION_DB_HOST,
             port=psi_config.SESSION_DB_PORT,
@@ -139,6 +149,7 @@ class ServerInstance(object):
         self.server_ip_address = ip_address
         self.server_secret = server_secret
         self.capabilities = capabilities
+        self.host_id = host_id
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
@@ -249,6 +260,18 @@ class ServerInstance(object):
         syslog.syslog(
             syslog.LOG_INFO,
             ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
+        if event_name in ['connected']:
+            json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
+            for key, value in log_values:
+                # convert a number in a string to a long
+                if (type(value) == str or type(value) == unicode) and value.isdigit():
+                    json_log[key] = long(value)
+                # encode unicode to utf8
+                elif type(value) == unicode:
+                    json_log[key] = str(value.encode('utf8'))
+                else:
+                    json_log[key] = value
+            logger.info(json.dumps(json_log))
 
     @exception_logger
     def handshake(self, environ, start_response):
@@ -622,7 +645,8 @@ def get_servers():
                          server.web_server_secret,
                          server.web_server_certificate,
                          server.web_server_private_key,
-                         server.capabilities))
+                         server.capabilities,
+                         server.host_id))
         except ValueError as e:
             if str(e) != 'You must specify a valid interface name.':
                 raise
@@ -631,7 +655,7 @@ def get_servers():
 
 class WebServerThread(threading.Thread):
 
-    def __init__(self, ip_address, port, secret, certificate, private_key, capabilities, server_threads):
+    def __init__(self, ip_address, port, secret, certificate, private_key, capabilities, host_id, server_threads):
         #super(WebServerThread, self).__init__(self)
         threading.Thread.__init__(self)
         self.ip_address = ip_address
@@ -640,6 +664,7 @@ class WebServerThread(threading.Thread):
         self.certificate = certificate
         self.private_key = private_key
         self.capabilities = capabilities
+        self.host_id = host_id
         self.server = None
         self.certificate_temp_file = None
         self.private_key_temp_file = None
@@ -671,7 +696,7 @@ class WebServerThread(threading.Thread):
         # While loop is for recovery from 'unknown ca' issue.
         while True:
             try:
-                server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities)
+                server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities, self.host_id)
                 self.server = wsgiserver.CherryPyWSGIServer(
                                 (self.ip_address, int(self.port)),
                                 wsgiserver.WSGIPathInfoDispatcher(
