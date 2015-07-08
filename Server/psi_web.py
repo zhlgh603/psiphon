@@ -29,8 +29,6 @@ import threading
 import time
 import os
 import syslog
-import logging
-from logging import handlers as logginghandlers
 import ssl
 import tempfile
 import netifaces
@@ -125,14 +123,6 @@ def exception_logger(function):
     return wrapper
     
     
-# ===== JSON Logging =====
-
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-logHandler = logginghandlers.RotatingFileHandler(filename="/var/log/psiphonv-json/psiphonv-json.log", maxBytes=52428800, backupCount=3)
-logger.addHandler(logHandler)
-
-
 # ===== Psiphon Web Server =====
 
 class ServerInstance(object):
@@ -260,7 +250,7 @@ class ServerInstance(object):
         syslog.syslog(
             syslog.LOG_INFO,
             ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
-        if event_name in ['connected']:
+        if event_name not in ['status']:
             json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
             for key, value in log_values:
                 # convert a number in a string to a long
@@ -271,7 +261,9 @@ class ServerInstance(object):
                     json_log[key] = str(value.encode('utf8'))
                 else:
                     json_log[key] = value
-            logger.info(json.dumps(json_log))
+            syslog.syslog(
+                syslog.LOG_INFO | syslog.LOG_LOCAL0,
+                json.dumps(json_log))
 
     @exception_logger
     def handshake(self, environ, start_response):
