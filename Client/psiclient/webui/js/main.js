@@ -73,6 +73,10 @@ $(function() {
   // Set the logo "info" link
   $('.logo a').attr('href', g_initObj.Config.InfoURL).attr('title', g_initObj.Config.InfoURL);
 
+  // Update the logo when the connected state changes
+  $window.on(CONNECTED_STATE_CHANGE_EVENT, updateLogoConnectState);
+
+
   // The banner image filename is parameterized.
   $('.banner img').attr('src', g_initObj.Config.Banner);
   // Let the C-code decide what should be opened when the banner is clicked.
@@ -125,6 +129,7 @@ $(function() {
   setTimeout(HtmlCtrlInterface_AppReady, 100);
 });
 
+
 function resizeContent() {
   // We want the content part of our window to fill the window, we don't want
   // excessive scroll bars, etc. It's difficult to do "fill the remaining height"
@@ -145,6 +150,7 @@ function resizeContent() {
               .css(!g_isRTL ? 'margin-right' : 'margin-left', 0);
 }
 
+
 // Ensures that elements that should not be scrolled are not scrolled.
 // This should only be called once.
 function initScrollFix() {
@@ -154,6 +160,24 @@ function initScrollFix() {
     $('body').scrollTop(0);
   });
 }
+
+
+// Update the main connect button, as well as the connection indicator on the tab.
+function updateLogoConnectState() {
+  var newSrc, stoppedSrc, connectedSrc;
+  stoppedSrc = $('.logo img').data('stopped-src');
+  connectedSrc = $('.logo img').data('connected-src');
+
+  if (g_lastState === 'connected') {
+    newSrc = connectedSrc;
+  }
+  else {
+    newSrc = stoppedSrc;
+  }
+
+  $('.logo img').prop('src', newSrc);
+}
+
 
 /* CONNECTION ****************************************************************/
 
@@ -395,6 +419,7 @@ $(function settingsInit() {
       UpstreamProxyHostname: 'upstreamhost',
       UpstreamProxyPort: 234,
       EgressRegion: 'GB',
+      SystrayMinimize: 0,
       defaults: {
         SplitTunnel: 0,
         VPN: 0,
@@ -403,7 +428,8 @@ $(function settingsInit() {
         SkipUpstreamProxy: 0,
         UpstreamProxyHostname: '',
         UpstreamProxyPort: '',
-        EgressRegion: ''
+        EgressRegion: '',
+        SystrayMinimize: 0
       }
     };
   }
@@ -475,7 +501,7 @@ function applySettings() {
     return false;
   }
   else if (settingsJSON !== g_initialSettingsJSON) {
-    // Settings have changed -- update them in the application (and trigger a reconnect).
+    // Settings have changed -- update them in the application (and trigger a reconnect, if necessary).
     HtmlCtrlInterface_SaveSettings(settingsJSON);
 
     if (g_lastState === 'starting' || g_lastState === 'connected') {
@@ -549,6 +575,10 @@ function fillSettingsValues(obj) {
       'click',
       { ignoreDisabled: true });
   }
+
+  if (typeof(obj.SystrayMinimize) !== 'undefined') {
+    $('#SystrayMinimize').prop('checked', !!obj.SystrayMinimize);
+  }
 }
 
 // Handler for the Reset Settings button
@@ -579,7 +609,8 @@ function settingsToJSON() {
     UpstreamProxyHostname: $('#UpstreamProxyHostname').val(),
     UpstreamProxyPort: validatePort($('#UpstreamProxyPort').val()),
     SkipUpstreamProxy: $('#SkipUpstreamProxy').prop('checked') ? 1 : 0,
-    EgressRegion: egressRegion === BEST_REGION_VALUE ? '' : egressRegion
+    EgressRegion: egressRegion === BEST_REGION_VALUE ? '' : egressRegion,
+    SystrayMinimize: $('#SystrayMinimize').prop('checked') ? 1 : 0
   };
 
   return JSON.stringify(returnValue);
@@ -1171,6 +1202,25 @@ function switchLocale(locale, initial) {
       $(this).toggleClass(rtlClasses, rtl);
     }
   });
+
+  //
+  // Update C code string table with new language values
+  //
+
+  // Iterate through the English keys, since we know it will be complete.
+  var translation = window.PSIPHON.LOCALES.en.translation;
+  var appBackendStringTable = {};
+  for (var key in translation) {
+    if (!translation.hasOwnProperty(key)) {
+      continue;
+    }
+
+    if (key.indexOf('appbackend#') === 0) {
+      appBackendStringTable[key] = i18n.t(key);
+    }
+  }
+
+  HtmlCtrlInterface_AddStringTableItem(appBackendStringTable);
 }
 
 function populateLocales() {
@@ -1398,8 +1448,12 @@ $(function() {
     return;
   }
 
-  // Make the connect button "work"
+  // Make the connect button "work" in browser mode
   $('#connect-toggle a').click(function(e) {
+    if (!IS_BROWSER) {
+      return;
+    }
+
     e.preventDefault();
     var buttonConnectState = $(this).parents('.connect-toggle-content').data('connect-state');
     if (buttonConnectState === 'stopped') {
@@ -1484,16 +1538,16 @@ var PSIPHON_LINK_PREFIX = 'psi:';
 
 // Add new status message.
 function HtmlCtrlInterface_AddMessage(jsonArgs) {
-  setTimeout(function() {
+  nextTick(function() {
     // Allow object as input to assist with debugging
     var args = (typeof(jsonArgs) === 'object') ? jsonArgs : JSON.parse(jsonArgs);
     addLogMessage(args);
-  }, 1);
+  });
 }
 
 // Add new notice. This may be interpreted and acted upon.
 function HtmlCtrlInterface_AddNotice(jsonArgs) {
-  setTimeout(function() {
+  nextTick(function() {
     // Allow object as input to assist with debugging
     var args = (typeof(jsonArgs) === 'object') ? jsonArgs : JSON.parse(jsonArgs);
     if (args.noticeType === 'UpstreamProxyError') {
@@ -1509,32 +1563,42 @@ function HtmlCtrlInterface_AddNotice(jsonArgs) {
       // Update the UI.
       updateAvailableEgressRegions(true);
     }
-  }, 1);
+  });
 }
 
 // Set the connected state.
+// We will de-bounce the state change messages.
+var g_timeoutSetState = null;
 function HtmlCtrlInterface_SetState(jsonArgs) {
-  setTimeout(function() {
+  // Clear any queued state changes.
+  if (g_timeoutSetState !== null) {
+    clearTimeout(g_timeoutSetState);
+    g_timeoutSetState = null;
+  }
+
+  g_timeoutSetState = setTimeout(function() {
+    g_timeoutSetState = null;
+
     // Allow object as input to assist with debugging
     var args = (typeof(jsonArgs) === 'object') ? jsonArgs : JSON.parse(jsonArgs);
     g_lastState = args.state;
     $window.trigger(CONNECTED_STATE_CHANGE_EVENT);
-  }, 1);
+  }, 100);
 }
 
 // Refresh the current settings values.
 function HtmlCtrlInterface_RefreshSettings(jsonArgs) {
-  setTimeout(function() {
+  nextTick(function() {
     var args = JSON.parse(jsonArgs);
     refreshSettings(args);
-  }, 1);
+  });
 }
 
 /* Calls from JS code to C code. */
 
 // Let the C code know that the UI is ready.
 function HtmlCtrlInterface_AppReady() {
-  setTimeout(function() {
+  nextTick(function() {
     var appURL = PSIPHON_LINK_PREFIX + 'ready';
     if (IS_BROWSER) {
       console.log(appURL);
@@ -1542,7 +1606,37 @@ function HtmlCtrlInterface_AppReady() {
     else {
       window.location = appURL;
     }
-  }, 1);
+  });
+}
+
+// Give the C code a string table entry in the appropriate language.
+// The `stringtable` can and should be a full set of key:string mappings, but
+// the strings will be sent to the C code one at a time, to prevent URL size
+// overflow.
+function HtmlCtrlInterface_AddStringTableItem(stringtable) {
+  for (var key in stringtable) {
+    if (!stringtable.hasOwnProperty(key)) {
+      continue;
+    }
+
+    var item = {
+      key: key,
+      string: stringtable[key]
+    };
+    sendStringTableItem(item);
+  }
+
+  function sendStringTableItem(itemObj) {
+    nextTick(function() {
+      var appURL = PSIPHON_LINK_PREFIX + 'stringtable?' + encodeURIComponent(JSON.stringify(itemObj));
+      if (IS_BROWSER) {
+        console.log(decodeURIComponent(appURL));
+      }
+      else {
+        window.location = appURL;
+      }
+    });
+  }
 }
 
 // Connection should start.
@@ -1551,7 +1645,7 @@ function HtmlCtrlInterface_Start() {
   if (g_lastState === 'starting' || g_lastState === 'connected') {
     return;
   }
-  setTimeout(function() {
+  nextTick(function() {
     var appURL = PSIPHON_LINK_PREFIX + 'start';
     if (IS_BROWSER) {
       console.log(appURL);
@@ -1559,7 +1653,7 @@ function HtmlCtrlInterface_Start() {
     else {
       window.location = appURL;
     }
-  }, 1);
+  });
 }
 
 // Connection should stop.
@@ -1568,7 +1662,7 @@ function HtmlCtrlInterface_Stop() {
   if (g_lastState === 'stopping' || g_lastState === 'disconnected') {
     return;
   }
-  setTimeout(function() {
+  nextTick(function() {
     var appURL = PSIPHON_LINK_PREFIX + 'stop';
     if (IS_BROWSER) {
       console.log(appURL);
@@ -1576,12 +1670,12 @@ function HtmlCtrlInterface_Stop() {
     else {
       window.location = appURL;
     }
-  }, 1);
+  });
 }
 
 // Settings should be saved.
 function HtmlCtrlInterface_SaveSettings(settingsJSON) {
-  setTimeout(function() {
+  nextTick(function() {
     var appURL = PSIPHON_LINK_PREFIX + 'savesettings?' + encodeURIComponent(settingsJSON);
     if (IS_BROWSER) {
       console.log(decodeURIComponent(appURL));
@@ -1590,12 +1684,12 @@ function HtmlCtrlInterface_SaveSettings(settingsJSON) {
     else {
       window.location = appURL;
     }
-  }, 1);
+  });
 }
 
 // Feedback should be sent.
 function HtmlCtrlInterface_SendFeedback(feedbackJSON) {
-  setTimeout(function() {
+  nextTick(function() {
     var appURL = PSIPHON_LINK_PREFIX + 'sendfeedback?' + encodeURIComponent(feedbackJSON);
     if (IS_BROWSER) {
       console.log(decodeURIComponent(appURL));
@@ -1603,12 +1697,12 @@ function HtmlCtrlInterface_SendFeedback(feedbackJSON) {
     else {
       window.location = appURL;
     }
-  }, 1);
+  });
 }
 
 // Cookies (i.e., UI settings) should be saved.
 function HtmlCtrlInterface_SetCookies(cookiesJSON) {
-  setTimeout(function() {
+  nextTick(function() {
     var appURL = PSIPHON_LINK_PREFIX + 'setcookies?' + encodeURIComponent(cookiesJSON);
     if (IS_BROWSER) {
       console.log(decodeURIComponent(appURL));
@@ -1616,12 +1710,12 @@ function HtmlCtrlInterface_SetCookies(cookiesJSON) {
     else {
       window.location = appURL;
     }
-  }, 1);
+  });
 }
 
 // Banner was clicked.
 function HtmlCtrlInterface_BannerClick() {
-  setTimeout(function() {
+  nextTick(function() {
     var appURL = PSIPHON_LINK_PREFIX + 'bannerclick';
     if (IS_BROWSER) {
       console.log(decodeURIComponent(appURL));
@@ -1630,7 +1724,7 @@ function HtmlCtrlInterface_BannerClick() {
     else {
       window.location = appURL;
     }
-  }, 1);
+  });
 }
 
 

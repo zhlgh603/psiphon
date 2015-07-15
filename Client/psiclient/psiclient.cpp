@@ -59,6 +59,12 @@ static bool g_htmlUiReady = false;
 // which leads to a crash on exit.
 static bool g_htmlUiFinished = false;
 
+// Timer IDs
+// Note: Trying to use SetTimer/KillTimer without an explicit ID led to inconsistent behaviour.
+#define TIMER_ID_SYSTRAY_MINIMIZE       100
+#define TIMER_ID_SYSTRAY_STATE_UPDATE   101
+
+
 //==== Controls ================================================================
 
 static void OnResize(HWND hWnd, UINT uWidth, UINT uHeight)
@@ -104,6 +110,326 @@ void OnCreate(HWND hWndParent)
         (HMENU)IDC_HTML_CTRL,
         g_hInst,
         NULL);
+}
+
+
+//==== String Table helpers ==================================================
+
+#define STRING_KEY_STATE_STOPPED_TITLE          "appbackend#state-stopped-title"
+#define STRING_KEY_STATE_STOPPED_BODY           "appbackend#state-stopped-body"
+#define STRING_KEY_STATE_STARTING_TITLE         "appbackend#state-starting-title"
+#define STRING_KEY_STATE_STARTING_BODY          "appbackend#state-starting-body"
+#define STRING_KEY_STATE_CONNECTED_TITLE        "appbackend#state-connected-title"
+#define STRING_KEY_STATE_CONNECTED_BODY         "appbackend#state-connected-body"
+#define STRING_KEY_STATE_STOPPING_TITLE         "appbackend#state-stopping-title"
+#define STRING_KEY_STATE_STOPPING_BODY          "appbackend#state-stopping-body"
+#define STRING_KEY_MINIMIZED_TO_SYSTRAY_TITLE   "appbackend#minimized-to-systray-title"
+#define STRING_KEY_MINIMIZED_TO_SYSTRAY_BODY    "appbackend#minimized-to-systray-body"
+
+static map<string, wstring> g_stringTable;
+
+static void AddStringTableEntry(const string& entryJson)
+{
+    Json::Value json;
+    Json::Reader reader;
+    bool parsingSuccessful = reader.parse(entryJson, json);
+    if (!parsingSuccessful)
+    {
+        my_print(NOT_SENSITIVE, true, _T("%s:%d: Failed to parse string table entry"), __TFUNCTION__, __LINE__);
+        return;
+    }
+
+    string key, narrowStr;
+
+    try
+    {
+        if (!json.isMember("key") ||
+            !json.isMember("string"))
+        {
+            // The stored values are invalid
+            return;
+        }
+
+        key = json.get("key", "").asString();
+        narrowStr = json.get("string", "").asString();
+        if (key.empty() || narrowStr.empty())
+        {
+            return;
+        }
+    }
+    catch (exception& e)
+    {
+        my_print(NOT_SENSITIVE, false, _T("%s:%d: JSON parse exception: %S"), __TFUNCTION__, __LINE__, e.what());
+        return;
+    }
+
+    wstring str = UTF8ToWString(narrowStr.c_str());
+
+    g_stringTable[key] = str;
+}
+
+// Returns true if the string table entry is found, false otherwise. 
+static bool GetStringTableEntry(LPSTR key, wstring& o_entry)
+{
+    o_entry.clear();
+
+    map<string, wstring>::const_iterator iter = g_stringTable.find(key);
+    if (iter == g_stringTable.end())
+    {
+        return false;
+    }
+
+    o_entry = iter->second;
+
+    return true;
+}
+
+
+//==== Systray/Notification helpers ===========================================
+
+// General info on Notifications: https://msdn.microsoft.com/en-us/library/ee330740%28v=vs.85%29.aspx
+// NOTIFYICONDATA: https://msdn.microsoft.com/en-us/library/bb773352%28v=vs.85%29.aspx
+// Shell_NotifyIcon: https://msdn.microsoft.com/en-us/library/bb762159%28VS.85%29.aspx
+
+// Not defined on older OSes
+#ifndef NIIF_LARGE_ICON
+#define NIIF_LARGE_ICON 0x00000020
+#endif
+
+static NOTIFYICONDATA g_notifyIconData = { 0 };
+static HICON g_notifyIconStopped = NULL;
+static HICON g_notifyIconConnected = NULL;
+static bool g_notifyIconInitialized = false;
+
+
+// InitSystrayIcon initializes the systray icon/notification. Gets called by 
+// UpdateSystrayState and should not be called directly.
+static bool InitSystrayIcon() {
+    if (g_notifyIconInitialized)
+    {
+        return true;
+    }
+
+    g_notifyIconStopped = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_SYSTRAY_STOPPED));
+    g_notifyIconConnected = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_SYSTRAY_CONNECTED));
+
+    g_notifyIconData.cbSize = sizeof(NOTIFYICONDATA);
+    g_notifyIconData.hWnd = g_hWnd;
+    g_notifyIconData.uID = 1;  // Used to identify multiple icons. We only use one.
+    g_notifyIconData.uCallbackMessage = WM_PSIPHON_TRAY_ICON_NOTIFY;
+    g_notifyIconData.uTimeout = 30000;  // 30s is the max time the balloon can show
+
+    g_notifyIconData.hIcon = g_notifyIconStopped;  // Begin with the stopped icon.
+
+    g_notifyIconData.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON;
+
+    _tcsncpy_s(
+        g_notifyIconData.szTip,
+        sizeof(g_notifyIconData.szTip) / sizeof(TCHAR),
+        g_szTitle,
+        _TRUNCATE);
+
+    g_notifyIconData.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+
+    BOOL bSuccess = Shell_NotifyIcon(NIM_ADD, &g_notifyIconData);
+    if (bSuccess)
+    {
+        g_notifyIconData.uVersion = NOTIFYICON_VERSION;
+        (void)Shell_NotifyIcon(NIM_SETVERSION, &g_notifyIconData);
+    }
+
+    g_notifyIconInitialized = !!bSuccess;
+    return g_notifyIconInitialized;
+}
+
+// UpdateSystrayIcon sets the current systray icon. 
+// If infoTitle is non-empty, then it will also display a balloon.
+// If hIcon is NULL, then the icon will not be changed.
+static void UpdateSystrayIcon(HICON hIcon, const wstring& infoTitle, const wstring& infoBody)
+{
+    if (!InitSystrayIcon() || g_htmlUiFinished)
+    {
+        return;
+    }
+
+    // The body isn't allowed to be an empty string, so set it to a space.
+    wstring infoBodyToUse = infoBody.empty() ? L" " : infoBody;
+
+    if (!infoTitle.empty())
+    {
+        _tcsncpy_s(
+            g_notifyIconData.szInfoTitle,
+            sizeof(g_notifyIconData.szInfoTitle) / sizeof(TCHAR),
+            infoTitle.c_str(),
+            _TRUNCATE);
+
+        _tcsncpy_s(
+            g_notifyIconData.szInfo,
+            sizeof(g_notifyIconData.szInfo) / sizeof(TCHAR),
+            infoBody.c_str(),
+            _TRUNCATE);
+
+        g_notifyIconData.uFlags |= NIF_INFO;
+    }
+    else
+    {
+        // We don't have the info text (yet)
+        g_notifyIconData.uFlags &= ~NIF_INFO;
+    }
+
+    if (hIcon != NULL)
+    {
+        g_notifyIconData.hIcon = hIcon;
+    }
+
+    (void)Shell_NotifyIcon(NIM_MODIFY, &g_notifyIconData);
+}
+
+// SystrayIconCleanup must be called when the application is exiting.
+static void SystrayIconCleanup()
+{
+    (void)Shell_NotifyIcon(NIM_DELETE, &g_notifyIconData);
+    g_notifyIconInitialized = false;
+}
+
+
+static INT_PTR g_handleMinimizeTimerID = 0;
+
+static VOID CALLBACK HandleMinimizeHelper(HWND hWnd, UINT, UINT_PTR idEvent, DWORD)
+{
+    assert(idEvent == g_handleMinimizeTimerID);
+
+    ::KillTimer(hWnd, idEvent);
+    g_handleMinimizeTimerID = 0;
+    
+    if (g_notifyIconInitialized)
+    {
+        ShowWindow(g_hWnd, SW_HIDE);
+
+        // Show a balloon letting the user know where the app went
+        wstring infoTitle, infoBody;
+        (void)GetStringTableEntry(STRING_KEY_MINIMIZED_TO_SYSTRAY_TITLE, infoTitle);
+        (void)GetStringTableEntry(STRING_KEY_MINIMIZED_TO_SYSTRAY_BODY, infoBody);
+
+        UpdateSystrayIcon(NULL, infoTitle, infoBody);
+    }
+}
+
+static void HandleMinimize()
+{
+    if (!Settings::SystrayMinimize())
+    {
+        return;
+    }
+
+    // The time on this is a rough guess at how long the minimize animation will take.
+    if (g_handleMinimizeTimerID == 0)
+    {
+        g_handleMinimizeTimerID = ::SetTimer(
+            g_hWnd, 
+            TIMER_ID_SYSTRAY_MINIMIZE, 
+            300, 
+            HandleMinimizeHelper);
+    }
+}
+
+
+/*
+The systray state updating is a bit complicated. We want to avoid this: 
+  When Psiphon quickly disconnects and reconnects, we don't want to spam the 
+  systray balloon text.
+What we want is:
+  When a disconnect occurs, we wait a bit before changing the systray state.
+  When that wait expires, if the state has gone back to connected, we don't 
+  show anything. If it has changed, we show the change.
+  (Unless the application window is foreground, because otherwise the UI and systray
+  state mismatch will be weird.)  
+*/
+
+static ConnectionManagerState g_UpdateSystrayConnectedState_LastState = (ConnectionManagerState)0xFFFFFFFF;
+
+static void UpdateSystrayConnectedStateHelper()
+{
+    if (g_htmlUiFinished)
+    {
+        return;
+    }
+
+    ConnectionManagerState currentState = g_connectionManager.GetState();
+
+    if (currentState == g_UpdateSystrayConnectedState_LastState)
+    {
+        return;
+    }
+    g_UpdateSystrayConnectedState_LastState = currentState;
+
+    wstring infoTitle, infoBody;
+    bool infoTitleFound = false, infoBodyFound = false;
+    HICON hIcon = NULL;
+
+    if (currentState == CONNECTION_MANAGER_STATE_CONNECTED)
+    {
+        hIcon = g_notifyIconConnected;
+        infoTitleFound = GetStringTableEntry(STRING_KEY_STATE_CONNECTED_TITLE, infoTitle);
+        infoBodyFound = GetStringTableEntry(STRING_KEY_STATE_CONNECTED_BODY, infoBody);
+    }
+    else if (currentState == CONNECTION_MANAGER_STATE_STARTING)
+    {
+        hIcon = g_notifyIconStopped;
+        infoTitleFound = GetStringTableEntry(STRING_KEY_STATE_STARTING_TITLE, infoTitle);
+        infoBodyFound = GetStringTableEntry(STRING_KEY_STATE_STARTING_BODY, infoBody);
+    }
+    else if (currentState == CONNECTION_MANAGER_STATE_STOPPING)
+    {
+        hIcon = g_notifyIconStopped;
+        infoTitleFound = GetStringTableEntry(STRING_KEY_STATE_STOPPING_TITLE, infoTitle);
+        infoBodyFound = GetStringTableEntry(STRING_KEY_STATE_STOPPING_BODY, infoBody);
+    }
+    else  // CONNECTION_MANAGER_STATE_STOPPED
+    {
+        hIcon = g_notifyIconStopped;
+        infoTitleFound = GetStringTableEntry(STRING_KEY_STATE_STOPPED_TITLE, infoTitle);
+        infoBodyFound = GetStringTableEntry(STRING_KEY_STATE_STOPPED_BODY, infoBody);
+    }
+
+    UpdateSystrayIcon(hIcon, infoTitle, infoBody);
+
+    // Set app icon to match
+    PostMessage(g_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+    PostMessage(g_hWnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+}
+
+static UINT_PTR g_updateSystrayConnectedStateTimerID = 0;
+
+static VOID CALLBACK UpdateSystrayConnectedStateTimer(HWND hWnd, UINT, UINT_PTR idEvent, DWORD)
+{
+    assert(g_updateSystrayConnectedStateTimerID == idEvent);
+    ::KillTimer(hWnd, idEvent);
+    g_updateSystrayConnectedStateTimerID = 0;
+
+    UpdateSystrayConnectedStateHelper();
+}
+
+static void UpdateSystrayConnectedState()
+{
+    if (g_UpdateSystrayConnectedState_LastState == CONNECTION_MANAGER_STATE_CONNECTED
+        && ::GetForegroundWindow() != g_hWnd)
+    {
+        // Don't keep resetting the timer once we've set it.
+        if (g_updateSystrayConnectedStateTimerID == 0)
+        {
+            g_updateSystrayConnectedStateTimerID = ::SetTimer(
+                g_hWnd, 
+                TIMER_ID_SYSTRAY_STATE_UPDATE, 
+                5000, 
+                UpdateSystrayConnectedStateTimer);
+        }
+    }
+    else
+    {
+        // Just update the state now.
+        UpdateSystrayConnectedStateHelper();
+    }
 }
 
 
@@ -273,6 +599,8 @@ static void HtmlUI_BeforeNavigateHandler(LPCTSTR url)
     // NOTE: Incoming query parameters will be URI-encoded
 
     const LPCTSTR appReady = PSIPHON_LINK_PREFIX _T("ready");
+    const LPCTSTR appStringTable = PSIPHON_LINK_PREFIX _T("stringtable?");
+    const size_t appStringTableLen = _tcslen(appStringTable);
     const LPCTSTR appStart = PSIPHON_LINK_PREFIX _T("start");
     const LPCTSTR appStop = PSIPHON_LINK_PREFIX _T("stop");
     const LPCTSTR appSaveSettings = PSIPHON_LINK_PREFIX _T("savesettings?");
@@ -288,6 +616,21 @@ static void HtmlUI_BeforeNavigateHandler(LPCTSTR url)
         my_print(NOT_SENSITIVE, true, _T("%s: Ready requested"), __TFUNCTION__);
         g_htmlUiReady = true;
         PostMessage(g_hWnd, WM_PSIPHON_CREATED, 0, 0);
+    }
+    else if (_tcsncmp(url, appStringTable, appStringTableLen) == 0
+        && _tcslen(url) > appStringTableLen)
+    {
+        my_print(NOT_SENSITIVE, true, _T("%s: String table addition requested"), __TFUNCTION__);
+
+        tstring urlDecoded = UrlDecode(url);
+        if (urlDecoded.length() < appStringTableLen + 1)
+        {
+            return;
+        }
+
+        string stringJSON(TStringToNarrow(urlDecoded).c_str() + appStringTableLen);
+
+        AddStringTableEntry(stringJSON);
     }
     else if (_tcscmp(url, appStart) == 0)
     {
@@ -383,6 +726,8 @@ static void HtmlUI_BeforeNavigateHandler(LPCTSTR url)
 
 void UI_SetStateStopped()
 {
+    UpdateSystrayConnectedState();
+
     Json::Value json;
     json["state"] = "stopped";
     Json::FastWriter jsonWriter;
@@ -392,6 +737,8 @@ void UI_SetStateStopped()
 
 void UI_SetStateStopping()
 {
+    UpdateSystrayConnectedState();
+
     Json::Value json;
     json["state"] = "stopping";
     Json::FastWriter jsonWriter;
@@ -401,6 +748,8 @@ void UI_SetStateStopping()
 
 void UI_SetStateStarting(const tstring& transportProtocolName)
 {
+    UpdateSystrayConnectedState();
+
     Json::Value json;
     json["state"] = "starting";
     json["transport"] = WStringToUTF8(transportProtocolName.c_str());
@@ -411,6 +760,8 @@ void UI_SetStateStarting(const tstring& transportProtocolName)
 
 void UI_SetStateConnected(const tstring& transportProtocolName, int socksPort, int httpPort)
 {
+    UpdateSystrayConnectedState();
+
     Json::Value json;
     json["state"] = "connected";
     json["transport"] = WStringToUTF8(transportProtocolName.c_str());
@@ -484,12 +835,16 @@ int APIENTRY _tWinMain(
             // arrives after the control is destroyed and will cause an app
             // crash if we let it through.
             if (msg.message == (WM_APP + 2) && g_htmlUiFinished)
+            {
                 continue;
+            }
 
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
     }
+
+    SystrayIconCleanup();
 
     mcHtml_Terminate();
     mc_StaticLibTerminate();
@@ -572,6 +927,7 @@ static void RestoreWindowPlacement()
     if (!parsingSuccessful)
     {
         my_print(NOT_SENSITIVE, false, _T("Failed to parse previous window placement"));
+        return;
     }
 
     try
@@ -587,6 +943,12 @@ static void RestoreWindowPlacement()
         }
 
         wp.showCmd = json.get("showCmd", SW_SHOWNORMAL).asUInt();
+        // Don't allow restoring minimized
+        if (wp.showCmd == SW_SHOWMINIMIZED)
+        {
+            wp.showCmd = SW_SHOWNORMAL;
+        }
+
         wp.rcNormalPosition.top = (LONG)json.get("rcNormalPosition.top", 0).asLargestInt();
         wp.rcNormalPosition.bottom = (LONG)json.get("rcNormalPosition.bottom", WINDOW_Y_START).asLargestInt();
         wp.rcNormalPosition.left = (LONG)json.get("rcNormalPosition.left", 0).asLargestInt();
@@ -644,8 +1006,17 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         HWND otherWindow = FindWindow(g_szWindowClass, g_szTitle);
         if (otherWindow)
         {
-            SetForegroundWindow(otherWindow);
+            // Un-minimize if necessary
+            WINDOWPLACEMENT wp = { 0 };
+            wp.length = sizeof(WINDOWPLACEMENT);
+            if (GetWindowPlacement(otherWindow, &wp) &&
+                wp.showCmd == SW_SHOWMINIMIZED || wp.showCmd == SW_HIDE)
+            {
+                ShowWindow(otherWindow, SW_RESTORE);
+            }
+
             ShowWindow(otherWindow, SW_SHOW);
+            SetForegroundWindow(otherWindow);
         }
         return FALSE;
     }
@@ -682,6 +1053,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         // Content is loaded, so show the window.
         RestoreWindowPlacement();
         ShowWindow(g_hWnd, SW_SHOW);
+        UpdateSystrayConnectedState();
 
         // Start a connection
         if (!Settings::SkipAutoConnect())
@@ -722,12 +1094,39 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     }
 
+    case WM_SYSCOMMAND:
+        if ((wParam & 0xFFF0) == SC_MINIMIZE)
+        {
+            HandleMinimize();
+        }
+        return DefWindowProc(hWnd, message, wParam, lParam);
+
     case WM_SETFOCUS:
         SetFocus(g_hHtmlCtrl);
         break;
 
     case WM_NOTIFY:
         return HandleNotify(hWnd, (NMHDR*)lParam);
+
+    case WM_PSIPHON_TRAY_ICON_NOTIFY:
+        // Restore/foreground the app on any kind of click
+        if (lParam == WM_LBUTTONUP || 
+            lParam == WM_LBUTTONDBLCLK ||
+            lParam == WM_RBUTTONUP ||
+            lParam == WM_RBUTTONDBLCLK ||
+            lParam == NIN_BALLOONUSERCLICK)
+        {
+            WINDOWPLACEMENT wp = { 0 };
+            wp.length = sizeof(WINDOWPLACEMENT);
+            if (GetWindowPlacement(g_hWnd, &wp) &&
+                wp.showCmd == SW_SHOWMINIMIZED || wp.showCmd == SW_HIDE)
+            {
+                ShowWindow(g_hWnd, SW_RESTORE);
+            }
+
+            ShowWindow(g_hWnd, SW_SHOW);
+            SetForegroundWindow(g_hWnd);
+        }
         break;
 
     case WM_PSIPHON_MY_PRINT:
