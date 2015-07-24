@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, Psiphon Inc.
+ * Copyright (c) 2015, Psiphon Inc.
  * All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,87 +19,55 @@
 
 package com.psiphon3.psiphonlibrary;
 
-import java.util.List;
-
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
 
 import android.annotation.TargetApi;
 import android.content.Intent;
 import android.net.VpnService;
-import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
-import android.util.Pair;
 
 @TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH)
-public class TunnelVpnService extends VpnService
-{
-    private TunnelManager m_Manager = new TunnelManager(this, this);
+public class TunnelVpnService extends VpnService {
+    private TunnelManager m_tunnelManager = new TunnelManager(this, this);
 
-    public class LocalBinder extends Binder
-    {
-        public TunnelVpnService getService()
-        {
-            return TunnelVpnService.this;
-        }
-    }
-    private final IBinder m_binder = new LocalBinder();
-    
     @Override
-    public IBinder onBind(Intent intent)
-    {
+    public IBinder onBind(Intent intent) {
         // Need to use super class behavior in specified cases:
         // http://developer.android.com/reference/android/net/VpnService.html#onBind%28android.content.Intent%29
-        
+
         String action = intent.getAction();
-        if (action != null && action.equals(SERVICE_INTERFACE))
-        {
+        if (action != null && action.equals(SERVICE_INTERFACE)) {
             return super.onBind(intent);
         }
-        
-        return m_binder;
+
+        return m_tunnelManager.onBind(intent);
     }
 
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId)
-    {
-        return m_Manager.onStartCommand(intent, flags, startId);
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        return m_tunnelManager.onStartCommand(intent, flags, startId);
     }
 
     @Override
-    public void onCreate()
-    {
-        PsiphonData.getPsiphonData().setCurrentTunnelManager(m_Manager);
-        m_Manager.onCreate();
+    public void onCreate() {
+        m_tunnelManager.onCreate();
     }
 
     @Override
-    public void onDestroy()
-    {
-        PsiphonData.getPsiphonData().setCurrentTunnelManager(null);
-        m_Manager.onDestroy();
+    public void onDestroy() {
+        m_tunnelManager.onDestroy();
     }
 
     @Override
-    public void onRevoke()
-    {
+    public void onRevoke() {
         MyLog.w(R.string.vpn_service_revoked, MyLog.Sensitivity.NOT_SENSITIVE);
-        // stopSelf will trigger onDestroy in the main thread, which will in turn invoke m_Core.onDestroy
+        // stopSelf will trigger onDestroy in the main thread, which will in
+        // turn invoke m_Core.onDestroy
         stopSelf();
     }
-    
-    public void setEventsInterface(IEvents eventsInterface)
-    {
-        m_Manager.setEventsInterface(eventsInterface);
-    }
-    
-    public void setExtraAuthParams(List<Pair<String,String>> extraAuthParams)
-    {
-        m_Manager.setExtraAuthParams(extraAuthParams);
-    }
 
-    public VpnService.Builder newBuilder()
-    {
+    public VpnService.Builder newBuilder() {
         return new VpnService.Builder();
     }
 }

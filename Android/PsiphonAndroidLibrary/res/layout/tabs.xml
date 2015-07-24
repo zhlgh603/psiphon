@@ -184,20 +184,6 @@
             </LinearLayout>
         </ScrollView>
 
-        <ScrollView
-            android:id="@+id/statisticsView"
-            android:layout_width="fill_parent"
-            android:layout_height="fill_parent"
-            android:orientation="vertical"
-            android:scrollbarAlwaysDrawVerticalTrack="false"
-            android:weightSum="1.0" >
-
-            <include
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                layout="@layout/statistics" />
-        </ScrollView>
-
         <LinearLayout
             android:id="@+id/logsTab"
             android:layout_width="fill_parent"

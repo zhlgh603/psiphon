@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, Psiphon Inc.
+ * Copyright (c) 2015, Psiphon Inc.
  * All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,58 +19,30 @@
 
 package com.psiphon3.psiphonlibrary;
 
-import java.util.List;
-
 import android.app.Service;
 import android.content.Intent;
-import android.os.Binder;
 import android.os.IBinder;
-import android.util.Pair;
 
-public class TunnelService extends Service
-{
-    private TunnelManager m_Manager = new TunnelManager(this, this);
+public class TunnelService extends Service {
+    private TunnelManager m_tunnelManager = new TunnelManager(this, this);
 
-    public class LocalBinder extends Binder
-    {
-        public TunnelService getService()
-        {
-            return TunnelService.this;
-        }
-    }
-    private final IBinder m_binder = new LocalBinder();
-    
     @Override
-    public IBinder onBind(Intent intent)
-    {
-        return m_binder;
+    public IBinder onBind(Intent intent) {
+        return m_tunnelManager.onBind(intent);
     }
 
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId)
-    {
-        return m_Manager.onStartCommand(intent, flags, startId);
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        return m_tunnelManager.onStartCommand(intent, flags, startId);
     }
 
     @Override
-    public void onCreate()
-    {
-        m_Manager.onCreate();
+    public void onCreate() {
+        m_tunnelManager.onCreate();
     }
 
     @Override
-    public void onDestroy()
-    {
-        m_Manager.onDestroy();
-    }
-
-    public void setEventsInterface(IEvents eventsInterface)
-    {
-        m_Manager.setEventsInterface(eventsInterface);
-    }
-    
-    public void setExtraAuthParams(List<Pair<String,String>> extraAuthParams)
-    {
-        m_Manager.setExtraAuthParams(extraAuthParams);
+    public void onDestroy() {
+        m_tunnelManager.onDestroy();
     }
 }
