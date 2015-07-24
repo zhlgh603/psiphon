@@ -408,15 +408,9 @@ public interface UpgradeManager
                         upgradeIntent,
                         PendingIntent.FLAG_UPDATE_CURRENT);
         
-            int iconID = PsiphonData.getPsiphonData().getNotificationIconUpgradeAvailable();
-            if (iconID == 0)
-            {
-                iconID = R.drawable.notification_icon_upgrade_available;
-            }
-            
             Notification notification =
                     new Notification(
-                            iconID,
+                            R.drawable.notification_icon_upgrade_available,
                             context.getText(R.string.UpgradeManager_UpgradePromptTitle),
                             System.currentTimeMillis());
 

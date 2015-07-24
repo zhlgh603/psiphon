@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, Psiphon Inc.
+ * Copyright (c) 2015, Psiphon Inc.
  * All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -24,11 +24,14 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 
 import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
@@ -40,7 +43,8 @@ import android.widget.ImageView;
 import android.widget.TabHost;
 
 import com.psiphon3.psiphonlibrary.EmbeddedValues;
-import com.psiphon3.psiphonlibrary.PsiphonData;
+import com.psiphon3.psiphonlibrary.TunnelManager;
+import com.psiphon3.psiphonlibrary.TunnelService;
 
 
 public class StatusActivity
@@ -51,12 +55,6 @@ public class StatusActivity
     private ImageView m_banner;
     private boolean m_tunnelWholeDevicePromptShown = false;
     private boolean m_loadedSponsorTab = false;
-
-    public StatusActivity()
-    {
-        super();
-        m_eventsInterface = new Events();
-    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -106,8 +104,6 @@ public class StatusActivity
             // Ignore failure
         }
 
-        PsiphonData.getPsiphonData().setDownloadUpgrades(true);
-
         // Auto-start on app first run
         if (m_firstRun)
         {
@@ -119,8 +115,7 @@ public class StatusActivity
         HandleCurrentIntent();
         
         // HandleCurrentIntent() may have already loaded the sponsor tab
-        if (PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
-                !m_loadedSponsorTab)
+        if (isTunnelConnected() && !m_loadedSponsorTab)
         {
             loadSponsorTab(false);
         }
@@ -146,6 +141,36 @@ public class StatusActivity
         HandleCurrentIntent();
     }
 
+    @Override
+    protected PendingIntent getHandshakePendingIntent() {
+        Intent intent = new Intent(
+                TunnelManager.INTENT_ACTION_HANDSHAKE,
+                null,
+                this,
+                com.psiphon3.StatusActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    @Override
+    protected PendingIntent getServiceNotificationPendingIntent() {
+        Intent intent = new Intent(
+                "ACTION_VIEW",
+                null,
+                this,
+                com.psiphon3.StatusActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
     protected void HandleCurrentIntent()
     {
         Intent intent = getIntent();
@@ -155,15 +180,17 @@ public class StatusActivity
             return;
         }
 
-        if (0 == intent.getAction().compareTo(HANDSHAKE_SUCCESS))
+        if (0 == intent.getAction().compareTo(TunnelManager.INTENT_ACTION_HANDSHAKE))
         {
+            getTunnelStateFromHandshakeIntent(intent);
+            
             // Show the home page. Always do this in browser-only mode, even
             // after an automated reconnect -- since the status activity was
             // brought to the front after an unexpected disconnect. In whole
             // device mode, after an automated reconnect, we don't re-invoke
             // the browser.
-            if (!PsiphonData.getPsiphonData().getTunnelWholeDevice()
-                || !intent.getBooleanExtra(HANDSHAKE_SUCCESS_IS_RECONNECT, false))
+            if (!getTunnelConfigWholeDevice()
+                    || !intent.getBooleanExtra(TunnelManager.DATA_HANDSHAKE_IS_RECONNECT, false))
             {
                 m_tabHost.setCurrentTabByTag("home");
                 loadSponsorTab(true);
@@ -191,7 +218,7 @@ public class StatusActivity
 
     public void onOpenBrowserClick(View v)
     {
-        m_eventsInterface.displayBrowser(this);
+        displayBrowser(this, null);
     }
 
     @Override
@@ -278,6 +305,68 @@ public class StatusActivity
             // No prompt, just start the tunnel (if not already running)
 
             startTunnel(this);
+        }
+    }
+
+    @Override
+    protected void displayBrowser(Context context, Uri uri)
+    {
+        try
+        {
+            if (getTunnelConfigWholeDevice())
+            {
+                // TODO: support multiple home pages in whole device mode. This is
+                // disabled due to the case where users haven't set a default browser
+                // and will get the prompt once per home page.
+                
+                if (uri == null)
+                {
+                    for (String homePage : getHomePages())
+                    {
+                        uri = Uri.parse(homePage);
+                        break;
+                    }
+                }
+                
+                if (uri != null)
+                {
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, uri);
+                    context.startActivity(browserIntent);
+                }
+            }
+            else
+            {
+                Intent intent = new Intent(
+                        "ACTION_VIEW",
+                        uri,
+                        context,
+                        org.zirco.ui.activities.MainActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        
+                // This intent displays the Zirco browser.
+                // We use "extras" to communicate Psiphon settings to Zirco, which
+                // is packaged as an independent component (so it's can't access,
+                // e.g., PsiphonConstants or PsiphonData). Note that the Zirco code
+                // is customized. When Zirco is first created, it will use the localProxyPort
+                // and homePages extras to set the proxy preference and open tabs for
+                // each home page, respectively. When the intent triggers an existing
+                // Zirco instance (and it's a singleton) the extras are ignored and the
+                // browser is displayed as-is.
+                // When a uri is specified, it will open as a new tab. This is
+                // independent of the home pages.
+                
+                intent.putExtra("localProxyPort", getListeningLocalHttpProxyPort());
+                intent.putExtra("homePages", getHomePages());
+                intent.putExtra("serviceClassName", TunnelService.class.getName());        
+                intent.putExtra("statusActivityClassName", StatusActivity.class.getName());
+                intent.putExtra("feedbackActivityClassName", FeedbackActivity.class.getName());
+                
+                context.startActivity(intent);
+            }
+        }
+        catch (ActivityNotFoundException e)
+        {
+            // Thrown by startActivity; in this case, we ignore and the URI isn't opened
         }
     }
 }
