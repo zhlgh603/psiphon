@@ -261,7 +261,7 @@ public class StatusActivity
                                 public void onClick(DialogInterface dialog, int whichButton) {
                                     // Persist the "on" setting
                                     updateWholeDevicePreference(true);
-                                    startTunnel(context);
+                                    startTunnel();
                                 }})
                     .setNegativeButton(R.string.StatusActivity_WholeDeviceTunnelNegativeButton,
                                 new DialogInterface.OnClickListener() {
@@ -270,14 +270,14 @@ public class StatusActivity
                                         // Turn off and persist the "off" setting
                                         m_tunnelWholeDeviceToggle.setChecked(false);
                                         updateWholeDevicePreference(false);
-                                        startTunnel(context);
+                                        startTunnel();
                                     }})
                     .setOnCancelListener(
                             new DialogInterface.OnCancelListener() {
                                 @Override
                                 public void onCancel(DialogInterface dialog) {
                                     // Don't change or persist preference (this prompt may reappear)
-                                    startTunnel(context);
+                                    startTunnel();
                                 }})
                     .show();
                 
@@ -304,7 +304,7 @@ public class StatusActivity
         {
             // No prompt, just start the tunnel (if not already running)
 
-            startTunnel(this);
+            startTunnel();
         }
     }
 

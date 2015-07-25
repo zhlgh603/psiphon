@@ -105,6 +105,7 @@
     <string name="compression_savings">%s saved</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
+    <string name="waiting">Waiting…</string>
     <string name="home_tab_name">Home</string>
     <string name="settings_tab_name">Options</string>
     <string name="statistics_tab_name">Stats</string>
