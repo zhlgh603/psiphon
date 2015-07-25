@@ -162,7 +162,8 @@ public abstract class MainBase {
         private TextView m_statusTabLogLine;
         private TextView m_statusTabVersionLine;
         private SponsorHomePage m_sponsorHomePage;
-        private Timer m_updateStatusTimer;
+        private Timer m_updateServiceStateUITimer;
+        private boolean m_restartTunnel = false;
         private RegionAdapter m_regionAdapter;
         private SpinnerHelper m_regionSelector;
         protected CheckBox m_tunnelWholeDeviceToggle;
@@ -478,7 +479,7 @@ public abstract class MainBase {
             // Set up the list view
             m_statusListManager = new StatusListViewManager(statusListView);
 
-            initToggleResources();
+            updateServiceStateUI();
 
             if (m_firstRun)
             {
@@ -575,12 +576,17 @@ public abstract class MainBase {
             super.onResume();
             updateProxySettingsFromPreferences();
 
-            // From: http://steve.odyfamily.com/?p=12
-            m_updateStatusTimer = new Timer();
-            m_updateStatusTimer.schedule(new TimerTask() {
+            m_updateServiceStateUITimer = new Timer();
+            m_updateServiceStateUITimer.schedule(new TimerTask() {
                 @Override
                 public void run() {
-                    updateStatusCallback();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            updateServiceStateUI();
+                            checkRestartTunnel();
+                        }
+                    });
                 }
             }, 0, 250);
 
@@ -588,7 +594,7 @@ public abstract class MainBase {
             getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
             
             if (isServiceRunning()) {
-                startTunnelService();
+                bindAndStartTunnelService();
             }
         }
 
@@ -598,18 +604,9 @@ public abstract class MainBase {
 
             cancelInvalidProxySettingsToast();
 
-            m_updateStatusTimer.cancel();
+            m_updateServiceStateUITimer.cancel();
 
             unbindTunnelService();
-        }
-
-        private void initToggleResources() {
-            // Only use this in onCreate. For updating the text when the
-            // activity
-            // is showing and the service is stopping, it's more reliable to
-            // use TunnelStoppingReceiver.
-            m_toggleButton.setText(isServiceRunning() ? getText(R.string.stop) : getText(R.string.start));
-            setStatusState(isServiceRunning() ? R.drawable.status_icon_connecting : R.drawable.status_icon_disconnected);
         }
 
         protected void doToggle() {
@@ -618,7 +615,7 @@ public abstract class MainBase {
             if (!isServiceRunning()) {
                 startUp();
             } else {
-                stopTunnel(this);
+                stopTunnel();
             }
         }
 
@@ -695,20 +692,14 @@ public abstract class MainBase {
                 return;
             }
 
-            boolean restart = false;
-
             // NOTE: reconnects even when Any is selected: we could select a
             // faster server
             if (isServiceRunning()) {
-                doToggle();
-                restart = true;
+                m_restartTunnel = true; 
+                stopTunnel();
             }
 
             updateEgressRegionPreference(selectedRegionCode);
-
-            if (restart && !isServiceRunning()) {
-                startTunnel(this);
-            }
         }
 
         protected void updateEgressRegionPreference(String egressRegionPreference) {
@@ -729,19 +720,13 @@ public abstract class MainBase {
                 return;
             }
 
-            boolean restart = false;
-
             if (isServiceRunning()) {
-                doToggle();
-                restart = true;
+                m_restartTunnel = true; 
+                stopTunnel();
             }
 
             boolean tunnelWholeDevicePreference = m_tunnelWholeDeviceToggle.isChecked();
             updateWholeDevicePreference(tunnelWholeDevicePreference);
-
-            if (restart && !isServiceRunning()) {
-                startTunnel(this);
-            }
         }
 
         protected void updateWholeDevicePreference(boolean tunnelWholeDevicePreference) {
@@ -761,17 +746,6 @@ public abstract class MainBase {
             return proxySettings != null && proxySettings.proxyHost.length() > 0 && proxySettings.proxyPort >= 1 && proxySettings.proxyPort <= 65535;
         }
 
-        private void updateStatusCallback() {
-            this.runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (isTunnelConnected()) {
-                        setStatusState(R.drawable.status_icon_connected);
-                    }
-                }
-            });
-        }
-
         private void cancelInvalidProxySettingsToast() {
             if (m_invalidProxySettingsToast != null) {
                 View toastView = m_invalidProxySettingsToast.getView();
@@ -783,7 +757,38 @@ public abstract class MainBase {
             }
         }
 
-        protected void startTunnel(Context context) {
+        private void updateServiceStateUI() {
+            if (!m_boundToTunnelService && !m_boundToTunnelVpnService) {
+                setStatusState(R.drawable.status_icon_disconnected);
+                if (!isServiceRunning()) {
+                    m_toggleButton.setText(getText(R.string.start));
+                    m_toggleButton.setEnabled(true);                           
+                } else {
+                    m_toggleButton.setText(getText(R.string.waiting));
+                    m_toggleButton.setEnabled(false);                           
+                }
+            } else {
+                if (isTunnelConnected()) {
+                    setStatusState(R.drawable.status_icon_connected);
+                } else {
+                    setStatusState(R.drawable.status_icon_connecting);                            
+                }
+                m_toggleButton.setText(getText(R.string.stop));
+                m_toggleButton.setEnabled(true);
+            }
+        }
+        
+        private void checkRestartTunnel() {
+            if (m_restartTunnel &&
+                    !m_boundToTunnelService &&
+                    !m_boundToTunnelVpnService &&
+                    !isServiceRunning()) {
+                m_restartTunnel = false;
+                startTunnel();
+            }
+        }
+
+        protected void startTunnel() {
             // Don't start if custom proxy settings is selected and values are
             // invalid
             boolean useHTTPProxyPreference = PsiphonData.getPsiphonData().getUseHTTPProxy();
@@ -791,7 +796,7 @@ public abstract class MainBase {
 
             if (useHTTPProxyPreference && useCustomProxySettingsPreference && !customProxySettingsValuesValid()) {
                 cancelInvalidProxySettingsToast();
-                m_invalidProxySettingsToast = Toast.makeText(context, R.string.network_proxy_connect_invalid_values, Toast.LENGTH_SHORT);
+                m_invalidProxySettingsToast = Toast.makeText(this, R.string.network_proxy_connect_invalid_values, Toast.LENGTH_SHORT);
                 m_invalidProxySettingsToast.show();
                 return;
             }
@@ -807,7 +812,7 @@ public abstract class MainBase {
                 waitingForPrompt = doVpnPrepare();
             }
             if (!waitingForPrompt) {
-                startTunnelService();
+                bindAndStartTunnelService();
             }
         }
 
@@ -924,18 +929,13 @@ public abstract class MainBase {
         @Override
         protected void onActivityResult(int request, int result, Intent data) {
             if (request == REQUEST_CODE_PREPARE_VPN && result == RESULT_OK) {
-                startTunnelService();
+                bindAndStartTunnelService();
             } else if (request == REQUEST_CODE_PREFERENCE) {
-                // detect if a restart needed due to proxy settings change
-                boolean restart = isProxySettingsRestartRequired() && isServiceRunning();
-                
-                if (restart) {
-                    stopTunnel(this);
+                if (isProxySettingsRestartRequired() && isServiceRunning()) {
+                    m_restartTunnel = true;
+                    stopTunnel();
                 }
                 updateProxySettingsFromPreferences();
-                if (restart && !isServiceRunning()) {
-                    startTunnel(this);
-                }
             }
         }
 
@@ -992,7 +992,7 @@ public abstract class MainBase {
             
         }
 
-        protected void startTunnelService() {
+        protected void bindAndStartTunnelService() {
             // TODO: onResume calls this and when there was only one kind of
             // service
             // it was safe to call through to bindService, which would start
@@ -1100,6 +1100,7 @@ public abstract class MainBase {
                 switch (msg.what) {
                 case TunnelManager.MSG_REGISTER_RESPONSE:
                     getTunnelStateFromBundle(data);
+                    updateServiceStateUI();
                     break;
 
                 case TunnelManager.MSG_KNOWN_SERVER_REGIONS:
@@ -1110,14 +1111,12 @@ public abstract class MainBase {
 
                 case TunnelManager.MSG_TUNNEL_STARTING:
                     m_tunnelState.isConnected = false;
-                    m_toggleButton.setText(getText(R.string.stop));
-                    setStatusState(R.drawable.status_icon_connecting);
+                    updateServiceStateUI();
                     break;
 
                 case TunnelManager.MSG_TUNNEL_STOPPING:
                     m_tunnelState.isConnected = false;
-                    m_toggleButton.setText(getText(R.string.start));
-                    setStatusState(R.drawable.status_icon_disconnected);
+                    updateServiceStateUI();
 
                     // When the tunnel self-stops, we also need to unbind to ensure
                     // the service is destroyed
@@ -1126,11 +1125,7 @@ public abstract class MainBase {
 
                 case TunnelManager.MSG_TUNNEL_CONNECTION_STATE:
                     m_tunnelState.isConnected = data.getBoolean(TunnelManager.DATA_TUNNEL_STATE_IS_CONNECTED);
-                    if (m_tunnelState.isConnected) {
-                        setStatusState(R.drawable.status_icon_connected);
-                    } else {
-                        setStatusState(R.drawable.status_icon_connecting);
-                    }
+                    updateServiceStateUI();
                     break;
 
                 case TunnelManager.MSG_LOGS:
@@ -1178,12 +1173,14 @@ public abstract class MainBase {
                 Intent intent = new Intent(TabbedActivityBase.this, TunnelService.class);
                 configureServiceIntent(intent);
                 startService(intent);
+                updateServiceStateUI();
             }
 
             @Override
             public void onServiceDisconnected(ComponentName arg0) {
                 m_outgoingMessenger = null;
                 m_boundToTunnelService = false;
+                updateServiceStateUI();
             }
         };
 
@@ -1202,12 +1199,14 @@ public abstract class MainBase {
                 Intent intent = new Intent(TabbedActivityBase.this, TunnelVpnService.class);
                 configureServiceIntent(intent);
                 startService(intent);
+                updateServiceStateUI();
             }
 
             @Override
             public void onServiceDisconnected(ComponentName arg0) {
                 m_outgoingMessenger = null;
                 m_boundToTunnelVpnService = false;
+                updateServiceStateUI();
             }
         };
 
@@ -1223,24 +1222,13 @@ public abstract class MainBase {
             m_regionSelector.setEnabled(true);
         }
         
-        private void stopTunnel(Context context) {
-            unbindTunnelService();
+        private void stopTunnel() {
             if (getTunnelConfigWholeDevice() && Utils.hasVpnService()) {
                 sendServiceMessage(TunnelManager.MSG_STOP_VPN_SERVICE);
+                unbindTunnelService();
             } else {
-                stopService(new Intent(context, TunnelService.class));
-            }
-
-            // Wait up to 5 seconds for the service to stop running before
-            // returning
-            for (int i = 0; i < 50; i++) {
-                if (!isServiceRunning()) {
-                    break;
-                }
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                }
+                unbindTunnelService();
+                stopService(new Intent(this, TunnelService.class));
             }
         }
 
@@ -1263,6 +1251,7 @@ public abstract class MainBase {
                 }
                 m_boundToTunnelVpnService = false;
             }
+            updateServiceStateUI();
         }
 
         /**
