@@ -1080,7 +1080,10 @@ public abstract class MainBase {
             }                    
             m_tunnelState.listeningLocalSocksProxyPort = data.getInt(TunnelManager.DATA_TUNNEL_STATE_LISTENING_LOCAL_SOCKS_PROXY_PORT);
             m_tunnelState.listeningLocalHttpProxyPort = data.getInt(TunnelManager.DATA_TUNNEL_STATE_LISTENING_LOCAL_HTTP_PROXY_PORT);
-            m_tunnelState.homePages = data.getStringArrayList(TunnelManager.DATA_TUNNEL_STATE_HOME_PAGES);
+            ArrayList<String> homePages = data.getStringArrayList(TunnelManager.DATA_TUNNEL_STATE_HOME_PAGES);
+            if (homePages != null) {
+                m_tunnelState.homePages = homePages;
+            }
         }
         
         private final Messenger m_incomingMessenger = new Messenger(new IncomingMessageHandler());
@@ -1133,8 +1136,10 @@ public abstract class MainBase {
                 case TunnelManager.MSG_LOGS:
                     // TODO-TUNNEL-CORE: temporary implementation only! neither robust nor functional.
                     ArrayList<String> logs = data.getStringArrayList(TunnelManager.DATA_LOGS);
-                    for (String log : logs) {
-                        MyLog.v(R.string.diagnostic, MyLog.Sensitivity.NOT_SENSITIVE, log);
+                    if (logs != null) {
+                        for (String log : logs) {
+                            MyLog.v(R.string.diagnostic, MyLog.Sensitivity.NOT_SENSITIVE, log);
+                        }
                     }
                     break;
 
