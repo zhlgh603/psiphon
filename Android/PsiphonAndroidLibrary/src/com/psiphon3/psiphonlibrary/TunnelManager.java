@@ -134,6 +134,7 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
     }
 
     public void onCreate() {
+        MyLog.setLogger(this);
         m_tunnel = PsiphonTunnel.newPsiphonVpn(this);
     }
 
@@ -141,6 +142,8 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
         m_serviceDestroyed = true;
 
         stopTunnel();
+        
+        MyLog.unsetLogger();
     }
 
     private void getTunnelConfig(Intent intent) {
@@ -629,7 +632,7 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
             logs.add(m_parentContext.getString(entry.id(), entry.formatArgs()));
         }
         Bundle data = new Bundle();
-        data.putStringArrayList("DATA_LOGS", logs);
+        data.putStringArrayList(DATA_LOGS, logs);
         sendClientMessage(MSG_LOGS, data);
     }
 }
