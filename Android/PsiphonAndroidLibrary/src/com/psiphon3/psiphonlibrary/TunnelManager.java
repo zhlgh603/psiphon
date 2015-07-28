@@ -124,13 +124,13 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
     }
 
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (m_firstStart) {
+        if (m_firstStart && intent != null) {
             getTunnelConfig(intent);
             doForeground();
             startTunnel();
             m_firstStart = false;
         }
-        return android.app.Service.START_NOT_STICKY;
+        return android.app.Service.START_REDELIVER_INTENT;
     }
 
     public void onCreate() {
@@ -241,9 +241,6 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
         @Override
         public void handleMessage(Message msg)
         {
-            // TODO-TUNNEL-CORE: temporary
-            android.util.Log.e("PSIPHON", "TunnelManager got message: " + Integer.toString(msg.what));
-
             switch (msg.what)
             {
             case TunnelManager.MSG_REGISTER:
@@ -276,12 +273,10 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
                 msg.setData(data);
             }
             m_outgoingMessenger.send(msg);
-
-            // TODO-TUNNEL-CORE: temporary
-            android.util.Log.e("PSIPHON", "TunnelManager sent message: " + Integer.toString(msg.what));
-
         } catch (RemoteException e) {
-            MyLog.g("sendClientMessage failed: %s", e.getMessage());
+            // NOTE: potential stack overflow since MyLog invokes
+            // statusEntryAdded which invokes sendClientMessage
+            // MyLog.g("sendClientMessage failed: %s", e.getMessage());
         }
     }
     
@@ -521,7 +516,7 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
     public void onDiagnosticMessage(String message) {
         // TODO-TUNNEL-CORE: temporary:
         //MyLog.g("diagnostic", "msg", message);
-        MyLog.v(R.string.diagnostic, MyLog.Sensitivity.NOT_SENSITIVE, message);
+        android.util.Log.e("PSIPHON-DIAGNOSTIC", message);
     }
 
     @Override

@@ -1092,10 +1092,6 @@ public abstract class MainBase {
         private class IncomingMessageHandler extends Handler {
             @Override
             public void handleMessage(Message msg) {
-
-                // TODO-TUNNEL-CORE: temporary
-                android.util.Log.e("PSIPHON", "MainBase got message: " + Integer.toString(msg.what));
-
                 Bundle data = msg.getData();
                 switch (msg.what) {
                 case TunnelManager.MSG_REGISTER_RESPONSE:
@@ -1133,7 +1129,7 @@ public abstract class MainBase {
                     ArrayList<String> logs = data.getStringArrayList(TunnelManager.DATA_LOGS);
                     if (logs != null) {
                         for (String log : logs) {
-                            MyLog.v(R.string.diagnostic, MyLog.Sensitivity.NOT_SENSITIVE, log);
+                            MyLog.v(R.string.remote_service_message, MyLog.Sensitivity.NOT_SENSITIVE, log);
                         }
                     }
                     break;
@@ -1153,9 +1149,6 @@ public abstract class MainBase {
                 Message msg = Message.obtain(null, what);
                 msg.replyTo = m_incomingMessenger;
                 m_outgoingMessenger.send(msg);
-
-                // TODO-TUNNEL-CORE: temporary
-                android.util.Log.e("PSIPHON", "MainBase sent message: " + Integer.toString(msg.what));
             } catch (RemoteException e) {
                 MyLog.g("sendServiceMessage failed: %s", e.getMessage());
             }
