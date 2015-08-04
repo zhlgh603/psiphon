@@ -48,6 +48,7 @@ Client/psiclient/embeddedvalues.h
 
 Automation/host_reports/staging
 Automation/host_reports/data
+Automation/transifex_conf.json
 
 node_modules/
 out/
@@ -86,3 +87,5 @@ Server/psi_health_check.py
 
 # Website generated files
 Website/_site
+# Website config files
+Website/sponsor_snippet_pull_conf.json
