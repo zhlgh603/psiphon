@@ -1096,6 +1096,10 @@ public abstract class MainBase {
                 switch (msg.what) {
                 case TunnelManager.MSG_REGISTER_RESPONSE:
                     getTunnelStateFromBundle(data);
+                    // An activity created while the service is already running will learn
+                    // the sponsor home page at this point, so now load it.
+                    // TODO-TUNNEL-CORE: ensure resetSponsorHomePage can always be called here
+                    resetSponsorHomePage(false);
                     updateServiceStateUI();
                     break;
 
@@ -1218,7 +1222,13 @@ public abstract class MainBase {
         private void stopTunnel() {
             if (getTunnelConfigWholeDevice() && Utils.hasVpnService()) {
                 sendServiceMessage(TunnelManager.MSG_STOP_VPN_SERVICE);
-                unbindTunnelService();
+                // MSG_STOP_VPN_SERVICE will cause the VpnService to stop itself,
+                // which will then cause an unbind to occur. Don't call
+                // unbindTunnelService() here, as its unnecessary and either
+                // the MSG_UNREGISTER or unbindService causes
+                // "Exception when unbinding service com.psiphon3/.psiphonlibrary.TunnelVpnService"
+                // TODO-TUNNEL-CORE: double check this logic
+                // unbindTunnelService();
             } else {
                 unbindTunnelService();
                 stopService(new Intent(this, TunnelService.class));
