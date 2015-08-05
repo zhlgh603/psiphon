@@ -124,7 +124,7 @@ public class StatusActivity
         if (isTunnelConnected() && !m_loadedSponsorTab)
         {
             loadSponsorTab(false);
-        }        
+        }
     }
 
     private void loadSponsorTab(boolean freshConnect)

@@ -1098,7 +1098,7 @@ public abstract class MainBase {
                     getTunnelStateFromBundle(data);
                     // An activity created while the service is already running will learn
                     // the sponsor home page at this point, so now load it.
-                    // TODO-TUNNEL-CORE: ensure resetSponsorHomePage can always be called here
+                    // TODO-TUNNEL-CORE: ensure restoreSponsorTab can always be called here
                     restoreSponsorTab();
                     updateServiceStateUI();
                     break;
