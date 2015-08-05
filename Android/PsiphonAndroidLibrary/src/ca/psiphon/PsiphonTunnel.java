@@ -46,6 +46,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import go.psi.Psi;
 
@@ -77,6 +78,7 @@ public class PsiphonTunnel extends Psi.PsiphonProvider.Stub {
     private ParcelFileDescriptor mTunFd;
     private int mLocalSocksProxyPort;
     private boolean mRoutingThroughTunnel;
+    private AtomicBoolean mTun2SocksRunning;
     private Thread mTun2SocksThread;
 
     // Only one PsiphonVpn instance may exist at a time, as the underlying
@@ -97,6 +99,7 @@ public class PsiphonTunnel extends Psi.PsiphonProvider.Stub {
         mHostService = hostService;
         mLocalSocksProxyPort = 0;
         mRoutingThroughTunnel = false;
+        mTun2SocksRunning = new AtomicBoolean(false);
     }
 
     public Object clone() throws CloneNotSupportedException {
@@ -396,6 +399,7 @@ public class PsiphonTunnel extends Psi.PsiphonProvider.Stub {
             final String udpgwServerAddress,
             final boolean udpgwTransparentDNS) {
         stopTun2Socks();
+        mTun2SocksRunning.set(true);
         mTun2SocksThread = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -407,6 +411,10 @@ public class PsiphonTunnel extends Psi.PsiphonProvider.Stub {
                         socksServerAddress,
                         udpgwServerAddress,
                         udpgwTransparentDNS ? 1 : 0);
+                
+                if (mTun2SocksRunning.get()) {
+                    mHostService.onDiagnosticMessage("tun2socks failed");
+                }
             }
         });
         mTun2SocksThread.start();
@@ -421,6 +429,7 @@ public class PsiphonTunnel extends Psi.PsiphonProvider.Stub {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+            mTun2SocksRunning.set(false);
             mTun2SocksThread = null;
             mHostService.onDiagnosticMessage("tun2socks stopped");
         }
