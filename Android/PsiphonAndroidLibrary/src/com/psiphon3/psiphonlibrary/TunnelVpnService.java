@@ -19,8 +19,6 @@
 
 package com.psiphon3.psiphonlibrary;
 
-import com.psiphon3.psiphonlibrary.Utils.MyLog;
-
 import android.annotation.TargetApi;
 import android.content.Intent;
 import android.net.VpnService;
@@ -35,7 +33,6 @@ public class TunnelVpnService extends VpnService {
     public IBinder onBind(Intent intent) {
         // Need to use super class behavior in specified cases:
         // http://developer.android.com/reference/android/net/VpnService.html#onBind%28android.content.Intent%29
-
         String action = intent.getAction();
         if (action != null && action.equals(SERVICE_INTERFACE)) {
             return super.onBind(intent);
@@ -61,10 +58,7 @@ public class TunnelVpnService extends VpnService {
 
     @Override
     public void onRevoke() {
-        MyLog.w(R.string.vpn_service_revoked, MyLog.Sensitivity.NOT_SENSITIVE);
-        // stopSelf will trigger onDestroy in the main thread, which will in
-        // turn invoke m_Core.onDestroy
-        stopSelf();
+        m_tunnelManager.onRevoke();
     }
 
     public VpnService.Builder newBuilder() {

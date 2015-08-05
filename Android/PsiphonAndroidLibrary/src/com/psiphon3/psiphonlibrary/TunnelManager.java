@@ -145,6 +145,16 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
         
         MyLog.unsetLogger();
     }
+    
+    public void onRevoke() {
+        MyLog.w(R.string.vpn_service_revoked, MyLog.Sensitivity.NOT_SENSITIVE);
+        
+        stopTunnel();
+
+        // Stop service
+        m_parentService.stopForeground(true);
+        m_parentService.stopSelf();
+    }
 
     private void getTunnelConfig(Intent intent) {
         m_tunnelConfig.handshakePendingIntent = (PendingIntent) intent
@@ -431,6 +441,8 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
 
         setIsConnected(false);
 
+        // TODO-TUNNEL-CORE: this log may not arrive when the activity
+        // unbinds in response to MSG_TUNNEL_STOPPING
         MyLog.v(R.string.stopped_tunnel, MyLog.Sensitivity.NOT_SENSITIVE);
 
         m_isTunnelStarted = false;
