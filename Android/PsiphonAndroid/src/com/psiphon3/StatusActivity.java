@@ -114,18 +114,24 @@ public class StatusActivity
         m_loadedSponsorTab = false;
         HandleCurrentIntent();
         
+        restoreSponsorTab();
+    }
+
+    @Override
+    protected void restoreSponsorTab()
+    {
         // HandleCurrentIntent() may have already loaded the sponsor tab
         if (isTunnelConnected() && !m_loadedSponsorTab)
         {
             loadSponsorTab(false);
-        }
+        }        
     }
 
     private void loadSponsorTab(boolean freshConnect)
     {
         resetSponsorHomePage(freshConnect);
     }
-
+    
     @Override
     protected void onNewIntent(Intent intent)
     {

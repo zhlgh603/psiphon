@@ -1099,7 +1099,7 @@ public abstract class MainBase {
                     // An activity created while the service is already running will learn
                     // the sponsor home page at this point, so now load it.
                     // TODO-TUNNEL-CORE: ensure resetSponsorHomePage can always be called here
-                    resetSponsorHomePage(false);
+                    restoreSponsorTab();
                     updateServiceStateUI();
                     break;
 
@@ -1428,6 +1428,9 @@ public abstract class MainBase {
         }
 
         protected void displayBrowser(Context context, Uri uri) {        
+        }
+        
+        protected void restoreSponsorTab() {
         }
     }
 }
