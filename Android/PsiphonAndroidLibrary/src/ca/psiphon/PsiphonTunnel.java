@@ -133,8 +133,8 @@ public class PsiphonTunnel extends Psi.PsiphonProvider.Stub {
     }
 
     public synchronized void stop() {
-        stopPsiphon();
         stopVpn();
+        stopPsiphon();
         mLocalSocksProxyPort = 0;
     }
 
