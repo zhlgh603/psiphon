@@ -47,6 +47,7 @@ import traceback
 import platform
 import redis
 from datetime import datetime
+from functools import wraps
 import psi_web_patch
 
 # ===== PSINET database ===================================================
@@ -78,7 +79,7 @@ def is_valid_ip_address(str):
     try:
         socket.inet_aton(str)
         return True
-    except socket.error:
+    except:
         return False
 
 
@@ -110,11 +111,23 @@ def safe_int(input):
     return return_value
 
 
+def exception_logger(function):
+    @wraps(function)
+    def wrapper(*args, **kwds):
+        try:
+            return function(*args, **kwds)
+        except:
+            for line in traceback.format_exc().split('\n'):
+                syslog.syslog(syslog.LOG_ERR, line)
+            raise
+    return wrapper
+    
+    
 # ===== Psiphon Web Server =====
 
 class ServerInstance(object):
 
-    def __init__(self, ip_address, server_secret, capabilities):
+    def __init__(self, ip_address, server_secret, capabilities, host_id):
         self.session_redis = redis.StrictRedis(
             host=psi_config.SESSION_DB_HOST,
             port=psi_config.SESSION_DB_PORT,
@@ -126,6 +139,7 @@ class ServerInstance(object):
         self.server_ip_address = ip_address
         self.server_secret = server_secret
         self.capabilities = capabilities
+        self.host_id = host_id
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
@@ -235,8 +249,23 @@ class ServerInstance(object):
     def _log_event(self, event_name, log_values):
         syslog.syslog(
             syslog.LOG_INFO,
-            ' '.join([event_name] + [str(value) for (_, value) in log_values]))
+            ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
+        if event_name not in ['status']:
+            json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
+            for key, value in log_values:
+                # convert a number in a string to a long
+                if (type(value) == str or type(value) == unicode) and value.isdigit():
+                    json_log[key] = long(value)
+                # encode unicode to utf8
+                elif type(value) == unicode:
+                    json_log[key] = str(value.encode('utf8'))
+                else:
+                    json_log[key] = value
+            syslog.syslog(
+                syslog.LOG_INFO | syslog.LOG_LOCAL0,
+                json.dumps(json_log))
 
+    @exception_logger
     def handshake(self, environ, start_response):
         request = Request(environ)
         inputs = self._get_inputs(request, 'handshake')
@@ -273,14 +302,17 @@ class ServerInstance(object):
         self._log_event('handshake', inputs)
         client_ip_address = request.remote_addr
 
+        client_session_id = None
+        if request.params.has_key('client_session_id'):
+            client_session_id = request.params['client_session_id']
+            
         # If the request is tunnelled, we should find a pre-computed
         # ip_address_strategy_value stored in redis by psi_auth.
 
         client_ip_address_strategy_value = None
         if self._is_request_tunnelled(client_ip_address):
             client_ip_address = None
-            if request.params.has_key('client_session_id'):
-                client_session_id = request.params['client_session_id']
+            if client_session_id != None:
                 record = self.discovery_redis.get(client_session_id)
                 if record:
                     self.discovery_redis.delete(client_session_id)
@@ -288,6 +320,10 @@ class ServerInstance(object):
                     client_ip_address_strategy_value = discovery_info['client_ip_address_strategy_value']
         else:
             client_ip_address_strategy_value = psi_ops_discovery.calculate_ip_address_strategy_value(client_ip_address)
+            if client_session_id != None:
+                if self.discovery_redis.get(client_session_id) == None:
+                    self.discovery_redis.set(client_session_id, json.dumps({'client_ip_address_strategy_value' : client_ip_address_strategy_value}))
+                    self.discovery_redis.expire(client_session_id, psi_config.DISCOVERY_EXPIRE_SECONDS)
 
         # logger callback will add log entry for each server IP address discovered
         def discovery_logger(server_ip_address):
@@ -360,6 +396,7 @@ class ServerInstance(object):
         start_response('200 OK', response_headers)
         return ['\n'.join(output)]
 
+    @exception_logger
     def download(self, environ, start_response):
         # NOTE: currently we ignore client_version and just download whatever
         # version is currently in place for the propagation channel ID and sponsor ID.
@@ -393,6 +430,7 @@ class ServerInstance(object):
         start_response('200 OK', response_headers)
         return [contents]
 
+    @exception_logger
     def routes(self, environ, start_response):
         request = Request(environ)
         additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
@@ -426,6 +464,7 @@ class ServerInstance(object):
             start_response('200 OK', [])
             return []
 
+    @exception_logger
     def connected(self, environ, start_response):
         request = Request(environ)
         # Peek at input to determine required parameters
@@ -460,6 +499,7 @@ class ServerInstance(object):
             start_response('200 OK', response_headers)
             return [json.dumps(connected_timestamp)]
 
+    @exception_logger
     def failed(self, environ, start_response):
         request = Request(environ)
         additional_inputs = [('error_code', lambda x: consists_of(x, string.digits))]
@@ -472,6 +512,7 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
+    @exception_logger
     def status(self, environ, start_response):
         request = Request(environ)
         additional_inputs = [('session_id', lambda x: is_valid_ip_address(x) or
@@ -525,6 +566,7 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
+    @exception_logger
     def speed(self, environ, start_response):
         request = Request(environ)
 
@@ -543,11 +585,13 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
+    @exception_logger
     def feedback(self, environ, start_response):
         # TODO: When enough people have upgraded, remove this handler completely
         start_response('200 OK', [])
         return []
 
+    @exception_logger
     def check(self, environ, start_response):
         # Just check the server secret; no logging or action for this request
         request = Request(environ)
@@ -558,6 +602,7 @@ class ServerInstance(object):
         start_response('200 OK', [])
         return []
 
+    @exception_logger
     def stats(self, environ, start_response):
         # Just check the server secret; no logging or action for this request
         request = Request(environ)
@@ -592,7 +637,8 @@ def get_servers():
                          server.web_server_secret,
                          server.web_server_certificate,
                          server.web_server_private_key,
-                         server.capabilities))
+                         server.capabilities,
+                         server.host_id))
         except ValueError as e:
             if str(e) != 'You must specify a valid interface name.':
                 raise
@@ -601,7 +647,7 @@ def get_servers():
 
 class WebServerThread(threading.Thread):
 
-    def __init__(self, ip_address, port, secret, certificate, private_key, capabilities, server_threads):
+    def __init__(self, ip_address, port, secret, certificate, private_key, capabilities, host_id, server_threads):
         #super(WebServerThread, self).__init__(self)
         threading.Thread.__init__(self)
         self.ip_address = ip_address
@@ -610,6 +656,7 @@ class WebServerThread(threading.Thread):
         self.certificate = certificate
         self.private_key = private_key
         self.capabilities = capabilities
+        self.host_id = host_id
         self.server = None
         self.certificate_temp_file = None
         self.private_key_temp_file = None
@@ -641,7 +688,7 @@ class WebServerThread(threading.Thread):
         # While loop is for recovery from 'unknown ca' issue.
         while True:
             try:
-                server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities)
+                server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities, self.host_id)
                 self.server = wsgiserver.CherryPyWSGIServer(
                                 (self.ip_address, int(self.port)),
                                 wsgiserver.WSGIPathInfoDispatcher(
@@ -720,6 +767,7 @@ class WebServerThread(threading.Thread):
 
 class GeoIPServerInstance(object):
 
+    @exception_logger
     def geoip(self, environ, start_response):
         request = Request(environ)
         geoip = psi_geoip.get_geoip(request.params['ip'])
