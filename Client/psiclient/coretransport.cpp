@@ -343,7 +343,11 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     // providing whole system tunneling).
     if (!g_connectionManager.IsWholeSystemTunneled())
     {
-        config["UpstreamHttpProxyAddress"] = GetUpstreamProxyAddress();
+        string proxyAddress = GetUpstreamProxyAddress();
+        if (proxyAddress.length() > 0)
+        {
+            config["UpstreamProxyUrl"] = "http://"+proxyAddress;
+        }
     }
 
     if (Settings::SplitTunnel())
@@ -449,7 +453,7 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     
 string CoreTransport::GetUpstreamProxyAddress()
 {
-    // Note: upstream SOCKS proxy and proxy auth currently not supported in core
+    // Note: upstream SOCKS proxy and proxy auth currently not supported
 
     if (Settings::SkipUpstreamProxy())
     {
@@ -790,12 +794,10 @@ void CoreTransport::HandleCoreProcessOutputLine(const char* line)
         my_print(NOT_SENSITIVE, false, _T("%s: core notice JSON parse exception: %S"), __TFUNCTION__, e.what());
     }
 
-    // Debug output
-
-    my_print(NOT_SENSITIVE, true, _T("core notice: %S"), line);
+    // Debug output, flag sensitive to exclude from feedback
+    my_print(SENSITIVE_LOG, true, _T("core notice: %S"), line);
 
     // Add to diagnostics
-
     if (logOutputToDiagnostics)
     {
         AddDiagnosticInfoYaml("CoreNotice", line);
