@@ -61,7 +61,8 @@ ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key
 #### Set up iptables
  * **NOTE** These rules assume `ethX` adjust for `venetX` if necessary
  * Add our default iptables.rules:
- ```
+ 
+   ```
  cat << EOF > /etc/iptables.rules
 *filter
   -A INPUT -i lo -j ACCEPT
@@ -114,8 +115,9 @@ COMMIT
 COMMIT
 
 EOF
- ```
- * Create a firewall script
+  ```
+ 
+* Create a firewall script
  ```
  cat << EOF > /etc/network/if-up.d/firewall
 #!/bin/sh
@@ -129,11 +131,11 @@ EOF
   * Default firewall rules are set by: `/etc/sysconfig/firewall`.  Allow mangement port, or remove the default rules: `rm /etc/sysconfig/firewall`
 
 #### IP Forwarding
- * Allow IP Forwarding:
+* Allow IP Forwarding:
  
-   ```
+  ```
 sed -i 's/^#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf`
-   ```
+  ```
 
 
 #### Restart modified services
@@ -150,11 +152,12 @@ apt-get update
 apt-get dist-upgrade
 apt-get install -y -f xinetd wondershaper fail2ban ntp
 ```
+
 As management SSH access is open to any source IP address, we recommend
 installing fail2ban to defend against brute-force SSH login attempts.
 
 * Create or edit `jail.local` file:
-```
+  ```
 cat << EOF > /etc/fail2ban/jail.local
 [ssh]
 port    = ssh,80,465,587,993,995,2222
@@ -163,12 +166,12 @@ port    = ssh,80,465,587,993,995,2222
 port    = ssh,80,465,587,993,995,2222
 
 EOF
-```
+  ```
 
 * Edit `/etc/fail2ban/filter.d/sshd.conf`.  Add following line to failregex list:
- ```
+  ```
         ^%(__prefix_line)spam_unix\(sshd:auth\): authentication failure; logname=\S* uid=\S* euid=\S* tty=\S* ruser=\S* rhost=<HOST>(?:\s+user=.*)?\s*$
- ```
+  ```
 
 * Set firewall script to restart fail2ban: `echo "/etc/init.d/fail2ban restart" >> /etc/network/if-up.d/firewall`
 
@@ -216,7 +219,7 @@ easy_install cherrypy webob xlrd portalocker netifaces jsonpickle
   vi /usr/local/lib/python2.7/dist-packages/CherryPy-3.8.0-py2.7.egg/cherrypy/wsgiserver/ssl_builtin.py`
   ```
 
-```
+  ```
     def wrap(self, sock):
         """Wrap and return the given socket, plus WSGI environ entries."""
         try:
@@ -256,11 +259,11 @@ easy_install cherrypy webob xlrd portalocker netifaces jsonpickle
 ##            SSL_VERSION_LIBRARY       string  The OpenSSL program version
             }
         return ssl_environ
-```
+  ```
 
 OR as a patch file:
 
-```
+  ```
 cat << EOF > CherryPy-3.8.0-py2.7_out.patch
 71,75c71
 <         environ = self.get_environ(s)
@@ -278,7 +281,7 @@ cat << EOF > CherryPy-3.8.0-py2.7_out.patch
 EOF
 
 patch /usr/local/lib/python2.7/dist-packages/CherryPy-3.8.0-py2.7.egg/cherrypy/wsgiserver/ssl_builtin.py < CherryPy-3.8.0-py2.7_out.patch
-```
+  ```
 
 ### 6. Get, patch and install Openswan and KLIPS kernel module
 
