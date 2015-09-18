@@ -8,15 +8,15 @@
 ## Add stats user for log collection
 
 * Generate a stats user
-```
-STATS_USER="stats-"$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-10};echo;)
-STATS_PASS=$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-24};echo;)
 
-echo $STATS_USER - $STATS_PASS
-
-useradd -g adm -d /var/log $STATS_USER
-echo "$STATS_USER:$STATS_PASS" | chpasswd
-```
+    STATS_USER="stats-"$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-10};echo;)
+    STATS_PASS=$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-24};echo;)
+    
+    echo $STATS_USER - $STATS_PASS
+    
+    useradd -g adm -d /var/log $STATS_USER
+    echo "$STATS_USER:$STATS_PASS" | chpasswd
+    
 
 ### 1. Configure SSH, Firewall, IP Forwarding
 
@@ -58,7 +58,7 @@ will need to be changed.
 * **NOTE** These rules assume `ethX` adjust for `venetX` if necessary
 
 * Add our default iptables.rules:
-    ```
+
     cat << EOF > /etc/iptables.rules
     *filter
       -A INPUT -i lo -j ACCEPT
@@ -111,16 +111,16 @@ will need to be changed.
     COMMIT
     
     EOF
-    ```
+    
  
 * Create a firewall script
-    ```
+
      cat << EOF > /etc/network/if-up.d/firewall
     #!/bin/sh
     
     iptables-restore < /etc/iptables.rules
     EOF
-    ```
+    
 
  * Make it executable: `chmod +x /etc/network/if-up.d/firewall`
 
