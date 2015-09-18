@@ -58,7 +58,7 @@ will need to be changed.
 * **NOTE** These rules assume `ethX` adjust for `venetX` if necessary
 
 * Add our default iptables.rules:
-
+    
     cat << EOF > /etc/iptables.rules
     *filter
       -A INPUT -i lo -j ACCEPT
@@ -114,7 +114,7 @@ will need to be changed.
     
  
 * Create a firewall script
-
+    
      cat << EOF > /etc/network/if-up.d/firewall
     #!/bin/sh
     
