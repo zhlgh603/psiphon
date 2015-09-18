@@ -90,7 +90,7 @@ will need to be changed.
       -A FORWARD -s 10.0.0.0/8 -j DROP 
       -A OUTPUT -p tcp -m multiport --dports 53,80,443,554,1935,7070,8000,8001,6971:6999 -j ACCEPT
       -A OUTPUT -p udp -m multiport --dports 53,80,443,554,1935,7070,8000,8001,6971:6999 -j ACCEPT
-      -A OUTPUT -p udp -m udp --dport 123 -j ACCEPTINSTALL_host.md edited online with Bitbucket
+      -A OUTPUT -p udp -m udp --dport 123 -j ACCEPT
       -A OUTPUT -p tcp -m tcp --sport 22 -j ACCEPT
       -A OUTPUT -p tcp -m tcp --sport 80 -j ACCEPT
       -A OUTPUT -p tcp -m tcp --sport 465 -j ACCEPT
