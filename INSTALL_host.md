@@ -109,16 +109,15 @@ will need to be changed.
       -A PREROUTING -i eth+ -p tcp --dport 443 -j DNAT --to-destination :8080
       -A POSTROUTING -s 10.0.0.0/8 -o eth+ -j MASQUERADE
     COMMIT
-
+    
     EOF
     ```
  
 * Create a firewall script
-
     ```
      cat << EOF > /etc/network/if-up.d/firewall
     #!/bin/sh
-
+    
     iptables-restore < /etc/iptables.rules
     EOF
     ```
