@@ -59,11 +59,11 @@ ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key
 
 
 #### Set up iptables
- * **NOTE** These rules assume `ethX` adjust for `venetX` if necessary
- * Add our default iptables.rules:
- 
-   ```
- cat << EOF > /etc/iptables.rules
+* **NOTE** These rules assume `ethX` adjust for `venetX` if necessary
+* Add our default iptables.rules:
+  
+  ```
+cat << EOF > /etc/iptables.rules
 *filter
   -A INPUT -i lo -j ACCEPT
   -A INPUT -d 127.0.0.0/8 ! -i lo -j REJECT --reject-with icmp-port-unreachable
@@ -118,16 +118,16 @@ EOF
   ```
  
 * Create a firewall script
- ```
+  ```
  cat << EOF > /etc/network/if-up.d/firewall
 #!/bin/sh
 
 iptables-restore < /etc/iptables.rules
 EOF
- ```
+  ```
  * Make it executable: `chmod +x /etc/network/if-up.d/firewall`
 
- * **Fasthosts Specific** 
+ * **Provider Specific** 
   * Default firewall rules are set by: `/etc/sysconfig/firewall`.  Allow mangement port, or remove the default rules: `rm /etc/sysconfig/firewall`
 
 #### IP Forwarding
