@@ -50,6 +50,9 @@ from datetime import datetime
 from functools import wraps
 import psi_web_patch
 
+import sessionStats
+ssManager = None
+
 # ===== PSINET database ===================================================
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
@@ -121,8 +124,8 @@ def exception_logger(function):
                 syslog.syslog(syslog.LOG_ERR, line)
             raise
     return wrapper
-    
-    
+
+
 # ===== Psiphon Web Server =====
 
 class ServerInstance(object):
@@ -305,7 +308,7 @@ class ServerInstance(object):
         client_session_id = None
         if request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
-            
+
         # If the request is tunnelled, we should find a pre-computed
         # ip_address_strategy_value stored in redis by psi_auth.
 
@@ -346,7 +349,7 @@ class ServerInstance(object):
                     event_logger=discovery_logger)
 
         # Report back client region in case client needs to fetch routes file
-        # for his region off a 3rd party 
+        # for his region off a 3rd party
         config['client_region'] = client_region
 
         config['preemptive_reconnect_lifetime_milliseconds'] = \
@@ -479,8 +482,11 @@ class ServerInstance(object):
         if not inputs:
             start_response('404 Not Found', [])
             return []
+
         self._log_event('connected', inputs)
         inputs_lookup = dict(inputs)
+
+	ssManager.onConnection(inputs_lookup)
 
         # For older Windows clients upon successful connection, we return
         # routing information for the user's country for split tunneling.
@@ -522,6 +528,9 @@ class ServerInstance(object):
         if not inputs:
             start_response('404 Not Found', [])
             return []
+
+	ssManager.onStatus(sessionId = dict(inputs)["session_id"])
+
         log_event = 'status' if request.params['connected'] == '1' else 'disconnected'
         self._log_event(log_event,
                          [('relay_protocol', request.params['relay_protocol']),
@@ -540,6 +549,11 @@ class ServerInstance(object):
                 if stats['bytes_transferred'] > 0:
                     self._log_event('bytes_transferred',
                                     inputs + [('bytes', stats['bytes_transferred'])])
+
+		    if request.params["connected"] == "1":
+		        ssManager.onStatus(sessionId = dict(inputs)["session_id"], newBytes = stats["bytes_transferred"])
+		    else:
+		        ssManager.onDisconnect(sessionId = dict(inputs)["session_id"], newBytes = stats["bytes_transferred"])
 
                 # Note: no input validation on page/domain.
                 # Any string is accepted (regex transform may result in arbitrary string).
@@ -689,6 +703,20 @@ class WebServerThread(threading.Thread):
         while True:
             try:
                 server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities, self.host_id)
+
+                ### START - SESSION STATS
+		class PsiWebSessionStatsManager(sessionStats.Manager):
+		    def handleFlushedFragment(self, fragment):
+			print("[PsiWeb FLUSH] %r" % (fragment))
+			ServerInstance._log_event(server_instance, "session", fragment.items())
+
+
+		global ssManager
+                ssManager = PsiWebSessionStatsManager(fragmentTtl=(60*15), redisHost="localhost", redisPort=6379, redisDb=2)
+                ssManager.startListener()
+                print("Redis expired event listener thread started on DB %d (fragment TTL is: %d seconds)" % (ssManager.redisDb, ssManager.fragmentTtl))
+                ### END - SESSION STATS
+
                 self.server = wsgiserver.CherryPyWSGIServer(
                                 (self.ip_address, int(self.port)),
                                 wsgiserver.WSGIPathInfoDispatcher(
@@ -849,6 +877,12 @@ def main():
     except KeyboardInterrupt as e:
         pass
     print 'Stopping...'
+
+    ### START - SESSION STATS
+    ssManager.stopListener()
+    print("Redis expired event listener thread stopped")
+    ### END - SESSION STATS
+
     for thread in threads:
         thread.stop_server()
         thread.join()
