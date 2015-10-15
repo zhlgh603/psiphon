@@ -403,6 +403,13 @@ func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessio
 	// still possible so "faked stats" is still a risk...?)
 	if dispatcher.config.ListenTLS {
 		if geoIpData == nil {
+			ipAddress = request.Header.Get("True-Client-IP")
+			if len(ipAddress) > 0 {
+				geoIpData = dispatcher.geoIpRequest(ipAddress)
+			}
+		}
+
+		if geoIpData == nil {
 			ipAddress = request.Header.Get("X-Forwarded-For")
 			if len(ipAddress) > 0 {
 				geoIpData = dispatcher.geoIpRequest(ipAddress)
