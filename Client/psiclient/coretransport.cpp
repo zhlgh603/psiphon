@@ -22,6 +22,7 @@
 #pragma comment(lib,"shlwapi.lib")
 #include "shlobj.h"
 
+#include "logging.h"
 #include "coretransport.h"
 #include "sessioninfo.h"
 #include "psiclient.h"
@@ -148,13 +149,6 @@ bool CoreTransport::IsWholeSystemTunneled() const
 }
 
 
-bool CoreTransport::IsSplitTunnelSupported() const
-{
-    // Currently unsupported in the core.
-    return false;
-}
-
-
 bool CoreTransport::ServerWithCapabilitiesExists()
 {
     // For now, we assume there are sufficient server entries for SSH/OSSH.
@@ -184,7 +178,7 @@ bool CoreTransport::RequiresStatsSupport() const
 
 tstring CoreTransport::GetSessionID(const SessionInfo& sessionInfo)
 {
-    return NarrowToTString(sessionInfo.GetSSHSessionID());
+    return UTF8ToWString(sessionInfo.GetSSHSessionID());
 }
 
 
@@ -333,8 +327,8 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     config["SponsorId"] = SPONSOR_ID;
     config["RemoteServerListUrl"] = string("https://") + REMOTE_SERVER_LIST_ADDRESS + "/" + REMOTE_SERVER_LIST_REQUEST_PATH;
     config["RemoteServerListSignaturePublicKey"] = REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY;
-    config["DataStoreDirectory"] = TStringToNarrow(shortDataStoreDirectory);
-    config["DataStoreTempDirectory"] = TStringToNarrow(shortTempPath);
+    config["DataStoreDirectory"] = WStringToUTF8(shortDataStoreDirectory);
+    config["DataStoreTempDirectory"] = WStringToUTF8(shortTempPath);
 
     // Don't use an upstream proxy when in VPN mode. If the proxy is on a private network,
     // we may not be able to route to it. If the proxy is on a public network we prefer not
@@ -343,7 +337,11 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     // providing whole system tunneling).
     if (!g_connectionManager.IsWholeSystemTunneled())
     {
-        config["UpstreamHttpProxyAddress"] = GetUpstreamProxyAddress();
+        string proxyAddress = GetUpstreamProxyAddress();
+        if (proxyAddress.length() > 0)
+        {
+            config["UpstreamProxyUrl"] = "http://"+proxyAddress;
+        }
     }
 
     if (Settings::SplitTunnel())
@@ -449,7 +447,7 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     
 string CoreTransport::GetUpstreamProxyAddress()
 {
-    // Note: upstream SOCKS proxy and proxy auth currently not supported in core
+    // Note: upstream SOCKS proxy and proxy auth currently not supported
 
     if (Settings::SkipUpstreamProxy())
     {
@@ -459,7 +457,9 @@ string CoreTransport::GetUpstreamProxyAddress()
 
     ostringstream upstreamProxyAddress;
 
-    if (Settings::UpstreamProxyHostname().length() > 0 && Settings::UpstreamProxyType() == "https")
+    if (Settings::UpstreamProxyHostname().length() > 0 && 
+        Settings::UpstreamProxyPort() &&
+        Settings::UpstreamProxyType() == "https")
     {
         // Use a custom, user-set upstream proxy
         upstreamProxyAddress << Settings::UpstreamProxyHostname() << ":" << Settings::UpstreamProxyPort();
@@ -473,7 +473,7 @@ string CoreTransport::GetUpstreamProxyAddress()
         if (!proxyConfig.httpsProxy.empty())
         {
             upstreamProxyAddress <<
-                TStringToNarrow(proxyConfig.httpsProxy) << ":" << proxyConfig.httpsProxyPort;
+				WStringToUTF8(proxyConfig.httpsProxy) << ":" << proxyConfig.httpsProxyPort;
         }
     }
 
@@ -676,8 +676,15 @@ void CoreTransport::HandleCoreProcessOutputLine(const char* line)
         string timestamp = notice["timestamp"].asString();
         Json::Value data = notice["data"];
 
+        // Let the UI know about it and decide if something needs to be shown to the user.
+        if (noticeType != "Info")
+        {
+            UI_Notice(line);
+        }
+
         if (noticeType == "Tunnels")
         {
+            // This notice is received when tunnels are connected and disconnected.
             int count = data["count"].asInt();
             if (count == 0)
             {
@@ -784,21 +791,24 @@ void CoreTransport::HandleCoreProcessOutputLine(const char* line)
             // within a certain amount of time and received many of these notices it should
             // suggest to the user that there might be a problem with the Upstream Proxy Settings.
         }
+        else if (noticeType == "AvailableEgressRegions")
+        {
+            string regions = data["regions"].toStyledString();
+            my_print(NOT_SENSITIVE, false, _T("Available egress regions: %S"), regions.c_str());
+        }
     }
     catch (exception& e)
     {
         my_print(NOT_SENSITIVE, false, _T("%s: core notice JSON parse exception: %S"), __TFUNCTION__, e.what());
     }
 
-    // Debug output
-
-    my_print(NOT_SENSITIVE, true, _T("core notice: %S"), line);
+    // Debug output, flag sensitive to exclude from feedback
+    my_print(SENSITIVE_LOG, true, _T("core notice: %S"), line);
 
     // Add to diagnostics
-
     if (logOutputToDiagnostics)
     {
-        AddDiagnosticInfoYaml("CoreNotice", line);
+        AddDiagnosticInfoJson("CoreNotice", line);
     }
 }
 
