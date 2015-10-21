@@ -529,8 +529,6 @@ class ServerInstance(object):
             start_response('404 Not Found', [])
             return []
 
-	ssManager.onStatus(sessionId = dict(inputs)["session_id"])
-
         log_event = 'status' if request.params['connected'] == '1' else 'disconnected'
         self._log_event(log_event,
                          [('relay_protocol', request.params['relay_protocol']),
@@ -542,6 +540,7 @@ class ServerInstance(object):
         # transferred per session by region/sponsor.
         # NOTE: The session_id isn't associated with any PII.
 
+        requestBytes = 0
         if request.body:
             try:
                 stats = json.loads(request.body)
@@ -550,10 +549,7 @@ class ServerInstance(object):
                     self._log_event('bytes_transferred',
                                     inputs + [('bytes', stats['bytes_transferred'])])
 
-		    if request.params["connected"] == "1":
-		        ssManager.onStatus(sessionId = dict(inputs)["session_id"], newBytes = stats["bytes_transferred"])
-		    else:
-		        ssManager.onDisconnect(sessionId = dict(inputs)["session_id"], newBytes = stats["bytes_transferred"])
+                    requestBytes = stats["bytes_transferred"]
 
                 # Note: no input validation on page/domain.
                 # Any string is accepted (regex transform may result in arbitrary string).
@@ -571,6 +567,11 @@ class ServerInstance(object):
             except:
                 start_response('403 Forbidden', [])
                 return []
+
+        if request.params["connected"] == "1":
+            ssManager.onStatus(sessionId = request.params["session_id"], newBytes = requestBytes)
+        else:
+            ssManager.onDisconnect(sessionId = request.params["session_id"], newBytes = requestBytes)
 
         # Clean up session data
         if request.params['connected'] == '0' and request.params.has_key('client_session_id'):
@@ -707,7 +708,6 @@ class WebServerThread(threading.Thread):
                 ### START - SESSION STATS
 		class PsiWebSessionStatsManager(sessionStats.Manager):
 		    def handleFlushedFragment(self, fragment):
-			print("[PsiWeb FLUSH] %r" % (fragment))
 			ServerInstance._log_event(server_instance, "session", fragment.items())
 
 
