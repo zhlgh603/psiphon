@@ -30,16 +30,7 @@ class Manager:
             "end_time": None,
             "duration": 0,
             "fragment_id": None,
-            "session_id": None,
-            "bytes": 0,
-            "relay_protocol": None,
-            "client_region": None,
-            "client_city": None,
-            "client_isp": None,
-            "client_version": None,
-            "client_platform": None,
-            "tunnel_whole_device": None,
-            "server_ip_address": None
+            "bytes": 0
         }
 
         try:
@@ -68,20 +59,21 @@ class Manager:
 
     # {{{ Fragment Methods
     def startSessionFragment(self, record = None, newBytes = 0):
-        print("[INFO] startSessionFragment - Creating fragment with key: %s" % (self.fragmentPrefix + record["session_id"]))
+        #print("[INFO] startSessionFragment - Creating fragment with key: %s" % (self.fragmentPrefix + record["session_id"]))
         fragment = self.sessionFragmentTemplate.copy()
 
         fragment["session_id"] = record["session_id"]
-        for key in record:
-            if key in fragment and not fragment[key]:
-                fragment[key] = record[key]
-
-        fragment["fragment_id"] = "".join(randomChoice('0123456789abcdef') for n in xrange(30))
+        fragment["fragment_id"] = "".join(randomChoice('0123456789abcdef') for n in xrange(16))
         fragment["start_time"] = datetime.utcnow()
         fragment["end_time"] = datetime.utcnow()
 
         if newBytes > 0:
             fragment["bytes"] = newBytes
+
+        # Add fields from connected record into session fragment
+        for key in record:
+            if key not in fragment:
+                fragment[key] = record[key]
 
         self.redisHandle.set(self.fragmentPrefix + record["session_id"], fragment)
         self.redisHandle.setex(self.fragmentExpiryPrefix + self.fragmentPrefix + record["session_id"], self.fragmentTtl, None)
@@ -89,19 +81,19 @@ class Manager:
     def updateSessionFragment(self, sessionId = "", newBytes = 0, forceExpiry = False):
         fragment = self.redisHandle.get(self.fragmentPrefix + sessionId)
         if fragment:
-            print("[INFO] updateSessionFragment - Updating session duration, and adding %d to session bytes to fragment with key: %s" % (newBytes, (self.fragmentPrefix + sessionId)))
+            #print("[INFO] updateSessionFragment - Updating session duration, and adding %d to session bytes to fragment with key: %s" % (newBytes, (self.fragmentPrefix + sessionId)))
 
             fragment["end_time"] = datetime.utcnow()
             fragment["bytes"] += newBytes
             self.redisHandle.set(self.fragmentPrefix + sessionId, fragment)
             if forceExpiry == True:
-                print("[DEBUG] updateSessionFragment - 'forceExpiry' was set to true. Setting TTL to 1 for key: %s" % (self.fragmentExpiryPrefix + self.fragmentPrefix + sessionId))
+                #print("[DEBUG] updateSessionFragment - 'forceExpiry' was set to true. Setting TTL to 1 for key: %s" % (self.fragmentExpiryPrefix + self.fragmentPrefix + sessionId))
                 self.redisHandle.expire(self.fragmentExpiryPrefix + self.fragmentPrefix + sessionId, 1)
             else:
-                print("[DEBUG] updateSessionFragment - 'forceExpiry' was set to false. Resetting TTL to %d for key: %s" % (self.fragmentTtl, self.fragmentExpiryPrefix + self.fragmentPrefix + sessionId))
+                #print("[DEBUG] updateSessionFragment - 'forceExpiry' was set to false. Resetting TTL to %d for key: %s" % (self.fragmentTtl, self.fragmentExpiryPrefix + self.fragmentPrefix + sessionId))
                 self.redisHandle.expire(self.fragmentExpiryPrefix + self.fragmentPrefix + sessionId, self.fragmentTtl)
         else:
-            print("[ERROR] updateSessionFragment - Could not retrieve fragment with key: %s" % (self.fragmentPrefix + sessionId))
+            #print("[ERROR] updateSessionFragment - Could not retrieve fragment with key: %s" % (self.fragmentPrefix + sessionId))
             return
 
     def flushSessionFragment(self, fragment):
@@ -130,11 +122,11 @@ class Manager:
 
         fragment = self.redisHandle.get(self.fragmentPrefix + record["session_id"])
         if fragment:
-            print("[INFO] onConnection - Reconnect detected. Flushing current fragment and starting a new fragment with key: %s" % (self.fragmentPrefix + record["session_id"]))
+            #print("[INFO] onConnection - Reconnect detected. Flushing current fragment and starting a new fragment with key: %s" % (self.fragmentPrefix + record["session_id"]))
             self.flushSessionFragment(fragment)
             self.startSessionFragment(record)
         else:
-            print("[INFO] onConnection - Creating new fragment with key: %s" % (self.fragmentPrefix + record["session_id"]))
+            #print("[INFO] onConnection - Creating new fragment with key: %s" % (self.fragmentPrefix + record["session_id"]))
             self.startSessionFragment(record)
 
     def onStatus(self, sessionId = "", newBytes = 0):
@@ -142,15 +134,15 @@ class Manager:
 
         fragment = self.redisHandle.get(self.fragmentPrefix + sessionId)
         if fragment:
-            print("[INFO] onStatus - Calling 'updateSessionFragment' with bytes: %d for fragment with key: %s" % (newBytes, self.fragmentPrefix + sessionId))
+            #print("[INFO] onStatus - Calling 'updateSessionFragment' with bytes: %d for fragment with key: %s" % (newBytes, self.fragmentPrefix + sessionId))
             self.updateSessionFragment(sessionId, newBytes)
         else:
-            print("[INFO] onStatus - Reconnect from a different server detected. Creating new fragment with key: %s" % (self.fragmentPrefix + sessionId))
+            #print("[INFO] onStatus - Reconnect from a different server detected. Creating new fragment with key: %s" % (self.fragmentPrefix + sessionId))
             # TODO: There will be no data besides these 2 fields in this case, is this the right way to handle it?
             self.startSessionFragment({"session_id": sessionId, "bytes": newBytes})
 
     def onDisconnect(self, sessionId = "", newBytes = 0):
-        print("[DEBUG] onDisconnect - Disconnection for session fragment: %s" % (self.fragmentPrefix + sessionId))
+        #print("[DEBUG] onDisconnect - Disconnection for session fragment: %s" % (self.fragmentPrefix + sessionId))
         self.updateSessionFragment(sessionId, newBytes, forceExpiry = True)
 
     def onExpiry(self, message):
@@ -161,12 +153,12 @@ class Manager:
 
                 fragment = self.redisHandle.get(fragmentKey)
                 if fragment:
-                    print("[%s] [INFO] onExpiry - Flushing expired fragment with key: %s" % (datetime.now(), (self.fragmentPrefix + fragment["session_id"])))
+                    #print("[%s] [INFO] onExpiry - Flushing expired fragment with key: %s" % (datetime.now(), (self.fragmentPrefix + fragment["session_id"])))
                     self.flushSessionFragment(fragment)
                 else:
-                    print("[%s] [ERROR] onExpiry - Cannot flush fragment (not found) with key: %s" % (datetime.now(), fragmentKey))
+                    #print("[%s] [ERROR] onExpiry - Cannot flush fragment (not found) with key: %s" % (datetime.now(), fragmentKey))
             else:
-                print("[WARNING] onExpiry - Ignoring expiry notification for an unknown key: %s" % (message["data"]))
+                #print("[WARNING] onExpiry - Ignoring expiry notification for an unknown key: %s" % (message["data"]))
                 return
         except Exception as e:
             raise e
