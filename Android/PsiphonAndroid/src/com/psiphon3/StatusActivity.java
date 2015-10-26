@@ -480,8 +480,11 @@ public class StatusActivity
             }
         };
         
-        m_iabHelper.launchSubscriptionPurchaseFlow(this, IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU,
-                IAB_REQUEST_CODE, purchaseFinishedListener);
+        if (m_iabHelper != null)
+        {
+            m_iabHelper.launchSubscriptionPurchaseFlow(this, IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU,
+                    IAB_REQUEST_CODE, purchaseFinishedListener);
+        }
     }
     
     protected void HandleCurrentIntent()
