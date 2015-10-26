@@ -424,34 +424,55 @@ public class StatusActivity
                         // try again next time
                         deInitIab();
                     }
+                    else
+                    {
+                        if (m_iabHelper != null && !m_validSubscription)
+                        {
+                            m_iabHelper.queryInventoryAsync(m_queryInventoryFinishedListener);
+                        }
+                    }
                 }
             });
         }
-            
-        if (m_iabHelper != null && !m_validSubscription)
-        {
-            IabHelper.QueryInventoryFinishedListener queryInventoryFinishedListener =
-                    new IabHelper.QueryInventoryFinishedListener()
-            {
-                @Override
-                public void onQueryInventoryFinished(
-                        IabResult result, Inventory inventory)
-                {
-                    if (result.isFailure())
-                    {
-                        // Do nothing
-                    }
-                    else
-                    {
-                        m_validSubscription = inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU);
-                        deInitAds();
-                    }
-                }
-            };
-            m_iabHelper.queryInventoryAsync(queryInventoryFinishedListener);
-        }
     }
+            
+    private IabHelper.QueryInventoryFinishedListener m_queryInventoryFinishedListener =
+                    new IabHelper.QueryInventoryFinishedListener()
+    {
+        @Override
+        public void onQueryInventoryFinished(IabResult result, Inventory inventory)
+        {
+            if (result.isFailure())
+            {
+                // try again next time
+                deInitIab();
+            }
+            else
+            {
+                m_validSubscription = inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU);
+                deInitAds();
+            }
+        }
+    };
     
+    private IabHelper.OnIabPurchaseFinishedListener m_purchaseFinishedListener = 
+            new IabHelper.OnIabPurchaseFinishedListener()
+    {
+        @Override
+        public void onIabPurchaseFinished(IabResult result, Purchase purchase) 
+        {
+            if (result.isFailure())
+            {
+                // Do nothing
+            }      
+            else if (purchase.getSku().equals(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
+            {
+                m_validSubscription = true;
+                deInitAds();
+            }
+        }
+    };
+
     private void deInitIab()
     {
         if (m_iabHelper != null)
@@ -463,27 +484,11 @@ public class StatusActivity
     
     private void launchIabSubscriptionPurchaseFlow()
     {
-        IabHelper.OnIabPurchaseFinishedListener purchaseFinishedListener = 
-                new IabHelper.OnIabPurchaseFinishedListener()
-        {
-            @Override
-            public void onIabPurchaseFinished(IabResult result, Purchase purchase) 
-            {
-                if (result.isFailure())
-                {
-                    return;
-                }      
-                else if (purchase.getSku().equals(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
-                {
-                    // do nothing. onResume() will check the purchase
-                }
-            }
-        };
         
         if (m_iabHelper != null)
         {
             m_iabHelper.launchSubscriptionPurchaseFlow(this, IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU,
-                    IAB_REQUEST_CODE, purchaseFinishedListener);
+                    IAB_REQUEST_CODE, m_purchaseFinishedListener);
         }
     }
     
@@ -515,41 +520,49 @@ public class StatusActivity
                 
                 m_tabHost.setCurrentTabByTag("home");
                 
-                new AlertDialog.Builder(this)
-                .setCancelable(false)
-                .setOnKeyListener(
-                        new DialogInterface.OnKeyListener() {
-                            @Override
-                            public boolean onKey(DialogInterface dialog, int keyCode, KeyEvent event) {
-                                // Don't dismiss when hardware search button is clicked (Android 2.3 and earlier)
-                                return keyCode == KeyEvent.KEYCODE_SEARCH;
-                            }})
-                .setTitle("Support Psiphon")
-                .setMessage("Please help keep the Psiphon network running.")
-                .setPositiveButton("OK!",
-                        new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int whichButton) {
-                                if (m_iabHelper != null)
-                                {
-                                    launchIabSubscriptionPurchaseFlow();
-                                }
-                            }})
-                .setNegativeButton("No thanks",
-                        new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int whichButton) {
-                                loadSponsorTab(true);
-                                m_loadedSponsorTab = true;
-                            }})
-                .setOnCancelListener(
-                        new DialogInterface.OnCancelListener() {
-                            @Override
-                            public void onCancel(DialogInterface dialog) {
-                                loadSponsorTab(true);
-                                m_loadedSponsorTab = true;
-                            }})
-                .show();
+                if (PsiphonData.getPsiphonData().getShowAds() && !m_validSubscription)
+                {
+                    new AlertDialog.Builder(this)
+                    .setCancelable(false)
+                    .setOnKeyListener(
+                            new DialogInterface.OnKeyListener() {
+                                @Override
+                                public boolean onKey(DialogInterface dialog, int keyCode, KeyEvent event) {
+                                    // Don't dismiss when hardware search button is clicked (Android 2.3 and earlier)
+                                    return keyCode == KeyEvent.KEYCODE_SEARCH;
+                                }})
+                    .setTitle("Support Psiphon")
+                    .setMessage("Please help keep the Psiphon network running.")
+                    .setPositiveButton("OK!",
+                            new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int whichButton) {
+                                    if (m_iabHelper != null)
+                                    {
+                                        launchIabSubscriptionPurchaseFlow();
+                                    }
+                                }})
+                    .setNegativeButton("No thanks",
+                            new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int whichButton) {
+                                    loadSponsorTab(true);
+                                    m_loadedSponsorTab = true;
+                                }})
+                    .setOnCancelListener(
+                            new DialogInterface.OnCancelListener() {
+                                @Override
+                                public void onCancel(DialogInterface dialog) {
+                                    loadSponsorTab(true);
+                                    m_loadedSponsorTab = true;
+                                }})
+                    .show();
+                }
+                else
+                {
+                    loadSponsorTab(true);
+                    m_loadedSponsorTab = true;
+                }
             }
 
             // We only want to respond to the HANDSHAKE_SUCCESS action once,
