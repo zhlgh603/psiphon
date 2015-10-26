@@ -426,29 +426,29 @@ public class StatusActivity
                     }
                 }
             });
+        }
             
-            if (m_iabHelper != null && !m_validSubscription)
+        if (m_iabHelper != null && !m_validSubscription)
+        {
+            IabHelper.QueryInventoryFinishedListener queryInventoryFinishedListener =
+                    new IabHelper.QueryInventoryFinishedListener()
             {
-                IabHelper.QueryInventoryFinishedListener queryInventoryFinishedListener =
-                        new IabHelper.QueryInventoryFinishedListener()
+                @Override
+                public void onQueryInventoryFinished(
+                        IabResult result, Inventory inventory)
                 {
-                    @Override
-                    public void onQueryInventoryFinished(
-                            IabResult result, Inventory inventory)
+                    if (result.isFailure())
                     {
-                        if (result.isFailure())
-                        {
-                            // Do nothing
-                        }
-                        else
-                        {
-                            m_validSubscription = inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU);
-                            deInitAds();
-                        }
+                        // Do nothing
                     }
-                };
-                m_iabHelper.queryInventoryAsync(queryInventoryFinishedListener);
-            }
+                    else
+                    {
+                        m_validSubscription = inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU);
+                        deInitAds();
+                    }
+                }
+            };
+            m_iabHelper.queryInventoryAsync(queryInventoryFinishedListener);
         }
     }
     
