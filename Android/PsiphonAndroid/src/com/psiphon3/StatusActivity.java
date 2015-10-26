@@ -447,9 +447,9 @@ public class StatusActivity
                 // try again next time
                 deInitIab();
             }
-            else
+            else if (inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
             {
-                m_validSubscription = inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU);
+                m_validSubscription = true;
                 deInitAds();
             }
         }
