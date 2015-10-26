@@ -52,6 +52,10 @@ import com.mopub.mobileads.MoPubView;
 import com.mopub.mobileads.MoPubView.BannerAdListener;
 import com.psiphon3.psiphonlibrary.EmbeddedValues;
 import com.psiphon3.psiphonlibrary.PsiphonData;
+import com.psiphon3.util.IabHelper;
+import com.psiphon3.util.IabResult;
+import com.psiphon3.util.Inventory;
+import com.psiphon3.util.Purchase;
 
 
 public class StatusActivity
@@ -71,6 +75,8 @@ public class StatusActivity
     private boolean m_tunnelWholeDevicePromptShown = false;
     private boolean m_loadedSponsorTab = false;
     private boolean m_temporarilyDisableInterstitial = false;
+    private IabHelper m_iabHelper = null;
+    private boolean m_validSubscription = false;
 
     public StatusActivity()
     {
@@ -168,6 +174,7 @@ public class StatusActivity
     {
         super.onResume();
         m_temporarilyDisableInterstitial = false;
+        initIab();
         initAds();
     }
     
@@ -176,6 +183,7 @@ public class StatusActivity
     {
         deInitAds();
         super.onDestroy();
+        deInitIab();
     }
     
     private void loadSponsorTab(boolean freshConnect)
@@ -231,7 +239,8 @@ public class StatusActivity
         // probably set and webviews won't load successfully when the tunnel is not connected
         return PsiphonData.getPsiphonData().getShowAds() &&
                 PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
-                Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO;
+                Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO &&
+                !m_validSubscription;
     }
     
     private void showFullScreenAd()
@@ -396,6 +405,85 @@ public class StatusActivity
         }
     }
     
+    static final String IAB_PUBLIC_KEY = "";
+    static final String IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU = "";
+    static final int IAB_REQUEST_CODE = 10001;
+    
+    private void initIab()
+    {
+        if (PsiphonData.getPsiphonData().getShowAds() && m_iabHelper == null)
+        {
+            m_iabHelper = new IabHelper(this, IAB_PUBLIC_KEY);
+            m_iabHelper.startSetup(new IabHelper.OnIabSetupFinishedListener()
+            {
+                @Override
+                public void onIabSetupFinished(IabResult result)
+                {
+                    if (!result.isSuccess())
+                    {
+                        // try again next time
+                        deInitIab();
+                    }
+                }
+            });
+            
+            if (m_iabHelper != null && !m_validSubscription)
+            {
+                IabHelper.QueryInventoryFinishedListener queryInventoryFinishedListener =
+                        new IabHelper.QueryInventoryFinishedListener()
+                {
+                    @Override
+                    public void onQueryInventoryFinished(
+                            IabResult result, Inventory inventory)
+                    {
+                        if (result.isFailure())
+                        {
+                            // Do nothing
+                        }
+                        else
+                        {
+                            m_validSubscription = inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU);
+                            deInitAds();
+                        }
+                    }
+                };
+                m_iabHelper.queryInventoryAsync(queryInventoryFinishedListener);
+            }
+        }
+    }
+    
+    private void deInitIab()
+    {
+        if (m_iabHelper != null)
+        {
+            m_iabHelper.dispose();
+            m_iabHelper = null;
+        }
+    }
+    
+    private void launchIabSubscriptionPurchaseFlow()
+    {
+        IabHelper.OnIabPurchaseFinishedListener purchaseFinishedListener = 
+                new IabHelper.OnIabPurchaseFinishedListener()
+        {
+            @Override
+            public void onIabPurchaseFinished(IabResult result, Purchase purchase) 
+            {
+                if (result.isFailure())
+                {
+                    return;
+                }      
+                else if (purchase.getSku().equals(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
+                {
+                    // do nothing. onResume() will check the purchase
+                }
+            }
+        };
+        
+        m_iabHelper.launchSubscriptionPurchaseFlow(this, IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU,
+                IAB_REQUEST_CODE, purchaseFinishedListener);
+    }
+    
     protected void HandleCurrentIntent()
     {
         Intent intent = getIntent();
@@ -423,8 +511,42 @@ public class StatusActivity
                 m_fullScreenAdPending = true;
                 
                 m_tabHost.setCurrentTabByTag("home");
-                loadSponsorTab(true);
-                m_loadedSponsorTab = true;
+                
+                new AlertDialog.Builder(this)
+                .setCancelable(false)
+                .setOnKeyListener(
+                        new DialogInterface.OnKeyListener() {
+                            @Override
+                            public boolean onKey(DialogInterface dialog, int keyCode, KeyEvent event) {
+                                // Don't dismiss when hardware search button is clicked (Android 2.3 and earlier)
+                                return keyCode == KeyEvent.KEYCODE_SEARCH;
+                            }})
+                .setTitle("Support Psiphon")
+                .setMessage("Please help keep the Psiphon network running.")
+                .setPositiveButton("OK!",
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int whichButton) {
+                                if (m_iabHelper != null)
+                                {
+                                    launchIabSubscriptionPurchaseFlow();
+                                }
+                            }})
+                .setNegativeButton("No thanks",
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int whichButton) {
+                                loadSponsorTab(true);
+                                m_loadedSponsorTab = true;
+                            }})
+                .setOnCancelListener(
+                        new DialogInterface.OnCancelListener() {
+                            @Override
+                            public void onCancel(DialogInterface dialog) {
+                                loadSponsorTab(true);
+                                m_loadedSponsorTab = true;
+                            }})
+                .show();
             }
 
             // We only want to respond to the HANDSHAKE_SUCCESS action once,
