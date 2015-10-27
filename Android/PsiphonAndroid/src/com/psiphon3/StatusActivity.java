@@ -544,6 +544,22 @@ public class StatusActivity
         .show();
     }
     
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data)
+    {
+        if (requestCode == IAB_REQUEST_CODE)
+        {
+            if (m_iabHelper != null)
+            {
+                m_iabHelper.handleActivityResult(requestCode, resultCode, data);
+            }
+        }
+        else
+        {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
+    }
+    
     protected void HandleCurrentIntent()
     {
         Intent intent = getIntent();
