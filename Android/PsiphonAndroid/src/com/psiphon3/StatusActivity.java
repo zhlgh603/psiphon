@@ -39,6 +39,7 @@ import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -175,6 +176,10 @@ public class StatusActivity
         m_temporarilyDisableInterstitial = false;
         initIab();
         initAds();
+        if (PsiphonData.getPsiphonData().getShowAds())
+        {
+            findViewById(R.id.showAdsToggle).setVisibility(View.VISIBLE);
+        }
     }
     
     @Override
@@ -502,6 +507,43 @@ public class StatusActivity
         }
     }
     
+    private void askForSubscription(boolean launchHomepage)
+    {
+        final boolean shouldLaunchHomepage = launchHomepage;
+        
+        new AlertDialog.Builder(this)
+        .setCancelable(false)
+        .setOnKeyListener(
+                new DialogInterface.OnKeyListener() {
+                    @Override
+                    public boolean onKey(DialogInterface dialog, int keyCode, KeyEvent event) {
+                        // Don't dismiss when hardware search button is clicked (Android 2.3 and earlier)
+                        return keyCode == KeyEvent.KEYCODE_SEARCH;
+                    }})
+        .setTitle("Support Psiphon")
+        .setMessage("Please help keep the Psiphon network running.")
+        .setPositiveButton("OK!",
+                new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        if (m_iabHelper != null)
+                        {
+                            launchIabSubscriptionPurchaseFlow();
+                        }
+                    }})
+        .setNegativeButton("No thanks",
+                new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        if (shouldLaunchHomepage)
+                        {
+                            loadSponsorTab(true);
+                            m_loadedSponsorTab = true;
+                        }
+                    }})
+        .show();
+    }
+    
     protected void HandleCurrentIntent()
     {
         Intent intent = getIntent();
@@ -532,41 +574,7 @@ public class StatusActivity
                 
                 if (PsiphonData.getPsiphonData().getShowAds() && !PsiphonData.getPsiphonData().getHasValidSubscription())
                 {
-                    new AlertDialog.Builder(this)
-                    .setCancelable(false)
-                    .setOnKeyListener(
-                            new DialogInterface.OnKeyListener() {
-                                @Override
-                                public boolean onKey(DialogInterface dialog, int keyCode, KeyEvent event) {
-                                    // Don't dismiss when hardware search button is clicked (Android 2.3 and earlier)
-                                    return keyCode == KeyEvent.KEYCODE_SEARCH;
-                                }})
-                    .setTitle("Support Psiphon")
-                    .setMessage("Please help keep the Psiphon network running.")
-                    .setPositiveButton("OK!",
-                            new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface dialog, int whichButton) {
-                                    if (m_iabHelper != null)
-                                    {
-                                        launchIabSubscriptionPurchaseFlow();
-                                    }
-                                }})
-                    .setNegativeButton("No thanks",
-                            new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface dialog, int whichButton) {
-                                    loadSponsorTab(true);
-                                    m_loadedSponsorTab = true;
-                                }})
-                    .setOnCancelListener(
-                            new DialogInterface.OnCancelListener() {
-                                @Override
-                                public void onCancel(DialogInterface dialog) {
-                                    loadSponsorTab(true);
-                                    m_loadedSponsorTab = true;
-                                }})
-                    .show();
+                    askForSubscription(true);
                 }
                 else
                 {
@@ -602,6 +610,28 @@ public class StatusActivity
     {
         Intent feedbackIntent = new Intent(this, FeedbackActivity.class);
         startActivity(feedbackIntent);
+    }
+    
+    public void onShowAdsToggle(View v)
+    {
+        CheckBox toggleView = (CheckBox)v;
+        if (!PsiphonData.getPsiphonData().getHasValidSubscription())
+        {
+            toggleView.setChecked(!toggleView.isChecked());
+            askForSubscription(false);
+        }
+        else
+        {
+            if (toggleView.isChecked())
+            {
+                // TODO: set preference
+            }
+            else
+            {
+                // TODO: set preference
+                deInitAds();
+            }
+        }
     }
 
     @Override
