@@ -29,6 +29,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences.Editor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
@@ -77,6 +78,7 @@ public class StatusActivity
     private boolean m_loadedSponsorTab = false;
     private boolean m_temporarilyDisableInterstitial = false;
     private IabHelper m_iabHelper = null;
+    private CheckBox m_showAdsToggle = null;
 
     public StatusActivity()
     {
@@ -95,6 +97,11 @@ public class StatusActivity
         m_logLine = (TextView)findViewById(R.id.lastlogline);
         m_tabHost = (TabHost)findViewById(R.id.tabHost);
         m_toggleButton = (Button)findViewById(R.id.toggleButton);
+        m_showAdsToggle = (CheckBox)findViewById(R.id.showAdsToggle);
+        
+        boolean showAdsPreference = PreferenceManager.getDefaultSharedPreferences(this).getBoolean(
+                SHOW_ADS_PREFERENCE, true);
+        m_showAdsToggle.setChecked(showAdsPreference);
 
         // NOTE: super class assumes m_tabHost is initialized in its onCreate
 
@@ -178,7 +185,7 @@ public class StatusActivity
         initAds();
         if (PsiphonData.getPsiphonData().getShowAds())
         {
-            findViewById(R.id.showAdsToggle).setVisibility(View.VISIBLE);
+            m_showAdsToggle.setVisibility(View.VISIBLE);
         }
     }
     
@@ -192,10 +199,7 @@ public class StatusActivity
     
     private void loadSponsorTab(boolean freshConnect)
     {
-        if (!PsiphonData.getPsiphonData().getSkipHomePage())
-        {
-            resetSponsorHomePage(freshConnect);
-        }
+        resetSponsorHomePage(freshConnect);
     }
 
     @Override
@@ -243,7 +247,8 @@ public class StatusActivity
         // probably set and webviews won't load successfully when the tunnel is not connected
         return PsiphonData.getPsiphonData().getShowAds() &&
                 PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
-                Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO;
+                Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO &&
+                !disabledAdsWithSubscription();
     }
     
     private void showFullScreenAd()
@@ -640,11 +645,18 @@ public class StatusActivity
         {
             if (toggleView.isChecked())
             {
-                // TODO: set preference
+                Editor editor = PreferenceManager.getDefaultSharedPreferences(this).edit();
+                editor.putBoolean(SHOW_ADS_PREFERENCE, true);
+                editor.commit();
+                
+                initAds();
             }
             else
             {
-                // TODO: set preference
+                Editor editor = PreferenceManager.getDefaultSharedPreferences(this).edit();
+                editor.putBoolean(SHOW_ADS_PREFERENCE, false);
+                editor.commit();
+
                 deInitAds();
             }
         }
