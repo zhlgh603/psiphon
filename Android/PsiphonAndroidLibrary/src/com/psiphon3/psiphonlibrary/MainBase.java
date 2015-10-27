@@ -160,6 +160,7 @@ public abstract class MainBase {
         public static final String TUNNEL_WHOLE_DEVICE_PREFERENCE = "tunnelWholeDevicePreference";
         public static final String WDM_FORCE_IPTABLES_PREFERENCE = "wdmForceIptablesPreference";
         public static final String SHARE_PROXIES_PREFERENCE = "shareProxiesPreference";
+        public static final String SHOW_ADS_PREFERENCE = "showAdsPreference";
 
         protected static final int REQUEST_CODE_PREPARE_VPN = 100;
         protected static final int REQUEST_CODE_PREFERENCE = 101;
@@ -224,7 +225,8 @@ public abstract class MainBase {
 
                 // Show the sponsor web view, but only if there's a home page to
                 // show and it's isn't excluded from being embedded.
-                if (PsiphonData.getPsiphonData().showFirstHomePageInApp() && statusShowing) {
+                if (PsiphonData.getPsiphonData().showFirstHomePageInApp() && statusShowing &&
+                        !disabledAdsWithSubscription()) {
                     m_sponsorViewFlipper.showNext();
                 }
             } else {
@@ -670,6 +672,13 @@ public abstract class MainBase {
             }
         }
 
+        protected boolean disabledAdsWithSubscription()
+        {
+            return PsiphonData.getPsiphonData().getHasValidSubscription() && 
+                   !PreferenceManager.getDefaultSharedPreferences(this).getBoolean(
+                            SHOW_ADS_PREFERENCE, true);
+        }
+        
         /**
          * Show the sponsor home page, either in the embedded view web view or
          * in the external browser.
@@ -680,7 +689,7 @@ public abstract class MainBase {
          *            time the activity is created.
          */
         protected void resetSponsorHomePage(boolean freshConnect) {
-            if (PsiphonData.getPsiphonData().getSkipHomePage())
+            if (PsiphonData.getPsiphonData().getSkipHomePage() || disabledAdsWithSubscription())
             {
                 return;
             }
