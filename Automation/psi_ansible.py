@@ -239,44 +239,44 @@ def process_playbook_setup_cache(playbook):
 
 
 def process_playbook_apt_update_cache(host_output, setup_cache):
-    register_var = 'response0'  # This is the variable set in the ansible playbook and should be handled more gracefully:
-    # register: response
     package_upgrade_line = 'The following packages will be upgraded:'
     # '26 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.' 
     # '87 to upgrade, 0 to newly install, 0 to remove and 9 not to upgrade.
     if len(host_output) == 0:
         print "No hosts found"
         return
-    
+
     # for each host, go through the log and check what is ready for upgrade
     lines_of_interest = list()
     for host_id in host_output:
         lines_of_interest = []
         of_interest_flag = False
         
-        # Check each output line and determine if it should be kept.
-        for line in host_output[host_id][register_var]['stdout_lines']:
-            if package_upgrade_line in line:    # Set a flag to denote we want to start keeping lines
-                of_interest_flag = True
-                lines_of_interest.append(line)
-                print line
-                continue
-            
-            if 'upgrade' and 'newly install' and 'remove' in line:  # TODO: Regex probably
-                print line
-                lines_of_interest.insert(0, line)   # Put the summary line first
-                of_interest_flag = False    # Assume we want to discard any further lines
-            
-            if of_interest_flag:    # While True, keep the line
-                if setup_cache[host_id]['ansible_distribution'].lower() == 'debian':
-                    line = add_pkg_link(line)
-                lines_of_interest.append(line)
-        
-        if lines_of_interest > 0:
-            host_output[host_id][register_var]['stdout_lines'] = lines_of_interest
-    
-    return host_output
+        responses = [response for response in host_output[host_id]]
+        for response in responses:
+            if 'stdout_lines' in host_output[host_id][response]:
+                # Check each output line and determine if it should be kept.
+                for line in host_output[host_id][response]['stdout_lines']:
+                    if package_upgrade_line in line:    # Set a flag to denote we want to start keeping lines
+                        of_interest_flag = True
+                        lines_of_interest.append(line)
+                        print line
+                        continue
+                    
+                    if 'upgrade' and 'newly install' and 'remove' in line:  # TODO: Regex probably
+                        print line
+                        lines_of_interest.insert(0, line)   # Put the summary line first
+                        of_interest_flag = False    # Assume we want to discard any further lines
+                    
+                    if of_interest_flag:    # While True, keep the line
+                        if setup_cache[host_id]['ansible_distribution'].lower() == 'debian':
+                            line = add_pkg_link(line)
+                        lines_of_interest.append(line)
+                
+                if lines_of_interest > 0:
+                    host_output[host_id][response]['stdout_lines'] = lines_of_interest
 
+    return host_output
 
 # Adds a package link to the end of a package string.
 def add_pkg_link(line):
