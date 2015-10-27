@@ -528,6 +528,7 @@ public abstract class MainBase {
             findViewById(R.id.settingsView).setOnTouchListener(onTouchListener);
             findViewById(R.id.regionSelector).setOnTouchListener(onTouchListener);
             findViewById(R.id.tunnelWholeDeviceToggle).setOnTouchListener(onTouchListener);
+            findViewById(R.id.showAdsToggle).setOnTouchListener(onTouchListener);
             findViewById(R.id.feedbackButton).setOnTouchListener(onTouchListener);
             findViewById(R.id.aboutButton).setOnTouchListener(onTouchListener);
             ListView statusListView = (ListView) findViewById(R.id.statusList);

@@ -158,5 +158,6 @@
     <string name="proxy_password_summary">Password for proxy authentication</string>
     <string name="proxy_domain_title">Proxy domain</string>
     <string name="proxy_domain_summary">Domain for proxy authentication</string>
+    <string name="show_ads_toggle">Show ads</string>
 
 </resources>

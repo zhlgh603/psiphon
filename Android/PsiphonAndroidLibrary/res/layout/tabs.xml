@@ -153,6 +153,17 @@
                         android:onClick="onWdmForceIptablesToggle"
                         android:text="@string/wdm_force_iptables_toggle"
                         android:textAppearance="?android:attr/textAppearanceSmall" />
+                    
+                    <CheckBox
+                        android:id="@+id/showAdsToggle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="left"
+                        android:onClick="onShowAdsToggle"
+                        android:text="@string/show_ads_toggle"
+                        android:textAppearance="?android:attr/textAppearanceSmall"
+                        android:visibility="gone" />
+                    
                 </LinearLayout>
 
                 <LinearLayout
