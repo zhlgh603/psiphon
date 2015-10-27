@@ -64,6 +64,7 @@ public class PsiphonData
     }
 
     private boolean m_showAds;
+    private boolean m_hasValidSubscription;
     private boolean m_skipHomePage;
     private ArrayList<String> m_homePages;
     private long m_nextFetchRemoteServerList;
@@ -109,6 +110,7 @@ public class PsiphonData
     private PsiphonData()
     {
         m_showAds = false;
+        m_hasValidSubscription = false;
         m_skipHomePage = false;
         m_homePages = new ArrayList<String>();
         m_nextFetchRemoteServerList = -1;
@@ -136,6 +138,16 @@ public class PsiphonData
     public synchronized boolean getShowAds()
     {
         return m_showAds;
+    }
+    
+    public synchronized void setHasValidSubscription()
+    {
+        m_hasValidSubscription = true;
+    }
+    
+    public synchronized boolean getHasValidSubscription()
+    {
+        return m_hasValidSubscription;
     }
     
     public synchronized void setSkipHomePage()

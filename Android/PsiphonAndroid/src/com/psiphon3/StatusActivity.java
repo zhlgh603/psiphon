@@ -76,7 +76,6 @@ public class StatusActivity
     private boolean m_loadedSponsorTab = false;
     private boolean m_temporarilyDisableInterstitial = false;
     private IabHelper m_iabHelper = null;
-    private boolean m_validSubscription = false;
 
     public StatusActivity()
     {
@@ -239,8 +238,7 @@ public class StatusActivity
         // probably set and webviews won't load successfully when the tunnel is not connected
         return PsiphonData.getPsiphonData().getShowAds() &&
                 PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
-                Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO &&
-                !m_validSubscription;
+                Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO;
     }
     
     private void showFullScreenAd()
@@ -411,6 +409,12 @@ public class StatusActivity
     
     private void initIab()
     {
+        if (PsiphonData.getPsiphonData().getHasValidSubscription())
+        {
+            // Don't need to do anything if we already know we have a valid subscription
+            return;
+        }
+        
         if (PsiphonData.getPsiphonData().getShowAds() && m_iabHelper == null)
         {
             m_iabHelper = new IabHelper(this, IAB_PUBLIC_KEY);
@@ -426,7 +430,7 @@ public class StatusActivity
                     }
                     else
                     {
-                        if (m_iabHelper != null && !m_validSubscription)
+                        if (m_iabHelper != null)
                         {
                             m_iabHelper.queryInventoryAsync(m_queryInventoryFinishedListener);
                         }
@@ -449,8 +453,7 @@ public class StatusActivity
             }
             else if (inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
             {
-                m_validSubscription = true;
-                deInitAds();
+                PsiphonData.getPsiphonData().setHasValidSubscription();
             }
         }
     };
@@ -467,8 +470,16 @@ public class StatusActivity
             }      
             else if (purchase.getSku().equals(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
             {
-                m_validSubscription = true;
-                deInitAds();
+                PsiphonData.getPsiphonData().setHasValidSubscription();
+                new AlertDialog.Builder(StatusActivity.this)
+                .setTitle("Thank you")
+                .setMessage("Thanks for supporting freedom!")
+                .setPositiveButton("You're welcome",
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int whichButton) {
+                            }})
+                .show();
             }
         }
     };
@@ -484,7 +495,6 @@ public class StatusActivity
     
     private void launchIabSubscriptionPurchaseFlow()
     {
-        
         if (m_iabHelper != null)
         {
             m_iabHelper.launchSubscriptionPurchaseFlow(this, IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU,
@@ -520,7 +530,7 @@ public class StatusActivity
                 
                 m_tabHost.setCurrentTabByTag("home");
                 
-                if (PsiphonData.getPsiphonData().getShowAds() && !m_validSubscription)
+                if (PsiphonData.getPsiphonData().getShowAds() && !PsiphonData.getPsiphonData().getHasValidSubscription())
                 {
                     new AlertDialog.Builder(this)
                     .setCancelable(false)
