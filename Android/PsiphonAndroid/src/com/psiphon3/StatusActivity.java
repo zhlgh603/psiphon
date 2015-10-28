@@ -450,6 +450,15 @@ public class StatusActivity
         }
     }
             
+    private void updateStateHasValidSubscription()
+    {
+        PsiphonData.getPsiphonData().setHasValidSubscription();
+        if (disabledAdsWithSubscription())
+        {
+            deInitAds();
+        }
+    }
+    
     private IabHelper.QueryInventoryFinishedListener m_queryInventoryFinishedListener =
                     new IabHelper.QueryInventoryFinishedListener()
     {
@@ -463,7 +472,7 @@ public class StatusActivity
             }
             else if (inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
             {
-                PsiphonData.getPsiphonData().setHasValidSubscription();
+                updateStateHasValidSubscription();
             }
         }
     };
@@ -480,7 +489,7 @@ public class StatusActivity
             }      
             else if (purchase.getSku().equals(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
             {
-                PsiphonData.getPsiphonData().setHasValidSubscription();
+                updateStateHasValidSubscription();
                 new AlertDialog.Builder(StatusActivity.this)
                 .setTitle("Thank you")
                 .setMessage("Thanks for supporting freedom!")
