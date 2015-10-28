@@ -79,6 +79,7 @@ public class StatusActivity
     private boolean m_temporarilyDisableInterstitial = false;
     private IabHelper m_iabHelper = null;
     private CheckBox m_showAdsToggle = null;
+    private boolean m_subscriptionPromptPending = false;
 
     public StatusActivity()
     {
@@ -253,7 +254,7 @@ public class StatusActivity
     
     private void showFullScreenAd()
     {
-        if (shouldShowAds() && !m_temporarilyDisableInterstitial)
+        if (shouldShowAds() && !m_temporarilyDisableInterstitial && !PsiphonData.getPsiphonData().getHasValidSubscription())
         {
             m_fullScreenAdCounter++;
 
@@ -392,6 +393,11 @@ public class StatusActivity
         }
         m_moPubBannerLargeAdView = null;
 
+        deInitInterstitialAd();
+    }
+    
+    private void deInitInterstitialAd()
+    {
         if (m_moPubInterstitial != null)
         {
             m_moPubInterstitial.destroy();
@@ -453,6 +459,8 @@ public class StatusActivity
     private void updateStateHasValidSubscription()
     {
         PsiphonData.getPsiphonData().setHasValidSubscription();
+        // Don't show full screen ads when there is a valid subscription
+        deInitInterstitialAd();
         if (disabledAdsWithSubscription())
         {
             deInitAds();
@@ -473,6 +481,11 @@ public class StatusActivity
             else if (inventory.hasPurchase(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
             {
                 updateStateHasValidSubscription();
+            }
+            else if (m_subscriptionPromptPending)
+            {
+                m_subscriptionPromptPending = false;
+                askForSubscription(true);
             }
         }
     };
@@ -604,7 +617,9 @@ public class StatusActivity
                 
                 if (PsiphonData.getPsiphonData().getShowAds() && !PsiphonData.getPsiphonData().getHasValidSubscription())
                 {
-                    askForSubscription(true);
+                    // Show the subscription prompt after OnResume() has initialized IAB
+                    // and only if it determined that there is no valid subscription
+                    m_subscriptionPromptPending = true;
                 }
                 else
                 {
