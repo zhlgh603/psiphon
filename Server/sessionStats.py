@@ -156,6 +156,7 @@ class Manager:
                     #print("[%s] [INFO] onExpiry - Flushing expired fragment with key: %s" % (datetime.now(), (self.fragmentPrefix + fragment["session_id"])))
                     self.flushSessionFragment(fragment)
                 else:
+                    pass
                     #print("[%s] [ERROR] onExpiry - Cannot flush fragment (not found) with key: %s" % (datetime.now(), fragmentKey))
             else:
                 #print("[WARNING] onExpiry - Ignoring expiry notification for an unknown key: %s" % (message["data"]))
