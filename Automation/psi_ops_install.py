@@ -539,7 +539,7 @@ def install_host(host, servers, existing_server_ids, plugins):
     cron_file = '/etc/cron.d/psi-restart-services'
     ssh.exec_command('echo "SHELL=/bin/sh" > %s;' % (cron_file,) +
                      'echo "PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin" >> %s;' % (cron_file,) +
-                     'echo "1 * * * * root %s restart" >> %s;' % ('/etc/init.d/xinetd', cron_file) +
+                     'echo "1 * * * * root systemctl stop xinetd.service && systemctl start xinetd.service" >> %s;' % (cron_file) +
                      'echo "2 * * * * root killall -9 %s && %s restart" >> %s' % ('badvpn-udpgw', '/etc/init.d/badvpn-udpgw', cron_file))
 
     #
