@@ -388,7 +388,7 @@ class ServerInstance(object):
             config['l2tp_ipsec_psk'] = psk
             output.append('PSK: %s' % (psk,))
 
-        config["server_timestamp"] now.strftime('%Y-%m-%dT%H:00:00.000Z')
+        config["server_timestamp"] = now.strftime('%Y-%m-%dT%H:00:00.000Z')
 
         # The entire config is JSON encoded and included as well.
 
