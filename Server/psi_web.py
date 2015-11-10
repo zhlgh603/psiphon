@@ -50,9 +50,6 @@ from datetime import datetime
 from functools import wraps
 import psi_web_patch
 
-import sessionStats
-ssManager = None
-
 # ===== PSINET database ===================================================
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
@@ -391,6 +388,8 @@ class ServerInstance(object):
             config['l2tp_ipsec_psk'] = psk
             output.append('PSK: %s' % (psk,))
 
+        config["server_timestamp"] now.strftime('%Y-%m-%dT%H:00:00.000Z')
+
         # The entire config is JSON encoded and included as well.
 
         output.append('Config: ' + json.dumps(config))
@@ -486,8 +485,6 @@ class ServerInstance(object):
         self._log_event('connected', inputs)
         inputs_lookup = dict(inputs)
 
-	ssManager.onConnection(inputs_lookup)
-
         # For older Windows clients upon successful connection, we return
         # routing information for the user's country for split tunneling.
         # There is no need to do Android check since older clients ignore
@@ -540,7 +537,6 @@ class ServerInstance(object):
         # transferred per session by region/sponsor.
         # NOTE: The session_id isn't associated with any PII.
 
-        requestBytes = 0
         if request.body:
             try:
                 stats = json.loads(request.body)
@@ -548,8 +544,6 @@ class ServerInstance(object):
                 if stats['bytes_transferred'] > 0:
                     self._log_event('bytes_transferred',
                                     inputs + [('bytes', stats['bytes_transferred'])])
-
-                    requestBytes = stats["bytes_transferred"]
 
                 # Note: no input validation on page/domain.
                 # Any string is accepted (regex transform may result in arbitrary string).
@@ -564,14 +558,20 @@ class ServerInstance(object):
                     self._log_event('https_requests',
                                     inputs + [('domain', https_req['domain']),
                                               ('count', safe_int(https_req['count']))])
+
+                for tunnel in stats['tunnel_stats']:
+                    self._log_event('session', inputs + [
+                        ('session_id', tunnel['session_id']),
+                        ('tunnel_number', tunnel['tunnel_number']),
+                        ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),
+                        ('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
+                        ('duration', tunnel['duration']),
+                        ('total_bytes_sent', tunnel['total_bytes_sent']),
+                        ('total_bytes_received', tunnel['total_bytes_received'])
+                    ])
             except:
                 start_response('403 Forbidden', [])
                 return []
-
-        if request.params["connected"] == "1":
-            ssManager.onStatus(sessionId = request.params["session_id"], newBytes = requestBytes)
-        else:
-            ssManager.onDisconnect(sessionId = request.params["session_id"], newBytes = requestBytes)
 
         # Clean up session data
         if request.params['connected'] == '0' and request.params.has_key('client_session_id'):
@@ -704,18 +704,6 @@ class WebServerThread(threading.Thread):
         while True:
             try:
                 server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities, self.host_id)
-
-                ### START - SESSION STATS
-		class PsiWebSessionStatsManager(sessionStats.Manager):
-		    def handleFlushedFragment(self, fragment):
-			ServerInstance._log_event(server_instance, "session", fragment.items())
-
-
-		global ssManager
-                ssManager = PsiWebSessionStatsManager(fragmentTtl=(60*15), redisHost="localhost", redisPort=6379, redisDb=2)
-                ssManager.startListener()
-                print("Redis expired event listener thread started on DB %d (fragment TTL is: %d seconds)" % (ssManager.redisDb, ssManager.fragmentTtl))
-                ### END - SESSION STATS
 
                 self.server = wsgiserver.CherryPyWSGIServer(
                                 (self.ip_address, int(self.port)),
@@ -877,11 +865,6 @@ def main():
     except KeyboardInterrupt as e:
         pass
     print 'Stopping...'
-
-    ### START - SESSION STATS
-    ssManager.stopListener()
-    print("Redis expired event listener thread stopped")
-    ### END - SESSION STATS
 
     for thread in threads:
         thread.stop_server()
