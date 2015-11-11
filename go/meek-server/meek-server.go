@@ -134,6 +134,14 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		return
 	}
 
+	for key, value := range request.Header {
+		if strings.Contains(strings.ToLower(key), "x-online-host") {
+			log.Printf("X-Online-Host: %s %+v", key, value)
+			dispatcher.terminateConnection(responseWriter, request)
+			return
+		}
+	}
+
 	sessionKey, session, err := dispatcher.GetSession(request, clientCookie.Value)
 	if err != nil {
 		log.Printf("GetSession: %s", err)
@@ -402,6 +410,13 @@ func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessio
 	// self signed keys in TLS mode, so man-in-the-middle is technically
 	// still possible so "faked stats" is still a risk...?)
 	if dispatcher.config.ListenTLS {
+		if geoIpData == nil {
+			ipAddress = request.Header.Get("True-Client-IP")
+			if len(ipAddress) > 0 {
+				geoIpData = dispatcher.geoIpRequest(ipAddress)
+			}
+		}
+
 		if geoIpData == nil {
 			ipAddress = request.Header.Get("X-Forwarded-For")
 			if len(ipAddress) > 0 {
