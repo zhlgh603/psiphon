@@ -566,7 +566,8 @@ class ServerInstance(object):
                         ('tunnel_number', tunnel['tunnel_number']),
                         ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),
                         ('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
-                        ('duration', tunnel['duration']),
+                        # Tunnel Core sends durations in nanoseconds, divide to get to milliseconds
+                        ('duration', (int(tunnel['duration']) / 1000000)),
                         ('total_bytes_sent', tunnel['total_bytes_sent']),
                         ('total_bytes_received', tunnel['total_bytes_received'])
                     ])
