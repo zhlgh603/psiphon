@@ -560,17 +560,19 @@ class ServerInstance(object):
                                     inputs + [('domain', https_req['domain']),
                                               ('count', safe_int(https_req['count']))])
 
-                for tunnel in stats['tunnel_stats']:
-                    self._log_event('session', inputs + [
-                        ('session_id', tunnel['session_id']),
-                        ('tunnel_number', tunnel['tunnel_number']),
-                        ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),
-                        ('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
-                        # Tunnel Core sends durations in nanoseconds, divide to get to milliseconds
-                        ('duration', (int(tunnel['duration']) / 1000000)),
-                        ('total_bytes_sent', tunnel['total_bytes_sent']),
-                        ('total_bytes_received', tunnel['total_bytes_received'])
-                    ])
+                # Older clients will not send this key in the message body
+                if 'tunnel_stats' in stats.keys():
+                    for tunnel in stats['tunnel_stats']:
+                        self._log_event('session', inputs + [
+                            ('session_id', tunnel['session_id']),
+                            ('tunnel_number', tunnel['tunnel_number']),
+                            ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),
+                            ('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
+                            # Tunnel Core sends durations in nanoseconds, divide to get to milliseconds
+                            ('duration', (int(tunnel['duration']) / 1000000)),
+                            ('total_bytes_sent', tunnel['total_bytes_sent']),
+                            ('total_bytes_received', tunnel['total_bytes_received'])
+                        ])
             except:
                 start_response('403 Forbidden', [])
                 return []
