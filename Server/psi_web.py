@@ -121,8 +121,8 @@ def exception_logger(function):
                 syslog.syslog(syslog.LOG_ERR, line)
             raise
     return wrapper
-    
-    
+
+
 # ===== Psiphon Web Server =====
 
 class ServerInstance(object):
@@ -305,7 +305,7 @@ class ServerInstance(object):
         client_session_id = None
         if request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
-            
+
         # If the request is tunnelled, we should find a pre-computed
         # ip_address_strategy_value stored in redis by psi_auth.
 
@@ -346,7 +346,7 @@ class ServerInstance(object):
                     event_logger=discovery_logger)
 
         # Report back client region in case client needs to fetch routes file
-        # for his region off a 3rd party 
+        # for his region off a 3rd party
         config['client_region'] = client_region
 
         config['preemptive_reconnect_lifetime_milliseconds'] = \
@@ -387,6 +387,9 @@ class ServerInstance(object):
             psk = psi_psk.set_psk(self.server_ip_address)
             config['l2tp_ipsec_psk'] = psk
             output.append('PSK: %s' % (psk,))
+
+
+        config["server_timestamp"] = datetime.utcnow().strftime('%Y-%m-%dT%H:00:00.000Z')
 
         # The entire config is JSON encoded and included as well.
 
@@ -479,6 +482,7 @@ class ServerInstance(object):
         if not inputs:
             start_response('404 Not Found', [])
             return []
+
         self._log_event('connected', inputs)
         inputs_lookup = dict(inputs)
 
@@ -522,6 +526,7 @@ class ServerInstance(object):
         if not inputs:
             start_response('404 Not Found', [])
             return []
+
         log_event = 'status' if request.params['connected'] == '1' else 'disconnected'
         self._log_event(log_event,
                          [('relay_protocol', request.params['relay_protocol']),
@@ -554,6 +559,20 @@ class ServerInstance(object):
                     self._log_event('https_requests',
                                     inputs + [('domain', https_req['domain']),
                                               ('count', safe_int(https_req['count']))])
+
+                # Older clients will not send this key in the message body
+                if 'tunnel_stats' in stats.keys():
+                    for tunnel in stats['tunnel_stats']:
+                        self._log_event('session', inputs + [
+                            ('session_id', tunnel['session_id']),
+                            ('tunnel_number', tunnel['tunnel_number']),
+                            ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),
+                            ('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
+                            # Tunnel Core sends durations in nanoseconds, divide to get to milliseconds
+                            ('duration', (int(tunnel['duration']) / 1000000)),
+                            ('total_bytes_sent', tunnel['total_bytes_sent']),
+                            ('total_bytes_received', tunnel['total_bytes_received'])
+                        ])
             except:
                 start_response('403 Forbidden', [])
                 return []
@@ -689,6 +708,7 @@ class WebServerThread(threading.Thread):
         while True:
             try:
                 server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities, self.host_id)
+
                 self.server = wsgiserver.CherryPyWSGIServer(
                                 (self.ip_address, int(self.port)),
                                 wsgiserver.WSGIPathInfoDispatcher(
@@ -849,6 +869,7 @@ def main():
     except KeyboardInterrupt as e:
         pass
     print 'Stopping...'
+
     for thread in threads:
         thread.stop_server()
         thread.join()
