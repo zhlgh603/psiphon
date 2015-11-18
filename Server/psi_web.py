@@ -389,7 +389,7 @@ class ServerInstance(object):
             output.append('PSK: %s' % (psk,))
 
 
-        config["server_timestamp"] = datetime.utcnow().strftime('%Y-%m-%dT%H:00:00.000Z')
+        config["server_timestamp"] = datetime.utcnow().isoformat() + 'Z'
 
         # The entire config is JSON encoded and included as well.
 
