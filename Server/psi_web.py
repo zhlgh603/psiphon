@@ -250,7 +250,7 @@ class ServerInstance(object):
         syslog.syslog(
             syslog.LOG_INFO,
             ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
-        if event_name not in ['status']:
+        if event_name not in ['status', 'speed', 'routes', 'download']:
             json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
             for key, value in log_values:
                 # convert a number in a string to a long
