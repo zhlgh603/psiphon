@@ -168,7 +168,12 @@ class ServerInstance(object):
         # database
         # Update: now we also cache GeoIP lookups done outside the tunnel
         client_ip_address = request.remote_addr
-        geoip = psi_geoip.get_unknown()
+        #geoip = psi_geoip.get_unknown()
+        # Use a distinct "Unknown" value to distinguish these cases:
+        # - tunneled and the connected request failed, or
+        # - tunneled and the session redis has expired
+        # from the case where the session has been logged with an unknown ('None') region
+        geoip = {'region': 'Unknown', 'city': 'Unknown', 'isp': 'Unknown'}
         if request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
             if not consists_of(client_session_id, string.hexdigits):
