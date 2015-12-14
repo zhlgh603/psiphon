@@ -37,6 +37,48 @@
     
     table#stdoutTable td.message {
         font-size: smaller;
+        width: 100%;
+    }
+    
+    .module_command {
+        font-family: courier;
+        font-size: smaller;
+    }
+    
+    .stderr_text {
+        color: red;
+        font-family: courier;
+        font-size: smaller;
+    }
+    
+    .stdout_text {
+        color:  green;
+        font-family: courier;
+        font-size:  smaller;
+    }
+    
+    .playbook_module {
+        width: 10%;
+    }
+    
+    .playbook_command {
+        width: 20%;
+    }
+    
+    .playbook_stdout {
+        width: 35%;
+    }
+    
+    .playbook_stderr {
+        width: 35%;
+    }
+    
+    .output_host {
+        width: 10%;
+    }
+    
+    .output_os_release {
+        width: 10%;
     }
     
 </style>
@@ -66,18 +108,18 @@ endif
 <h2>Playbook: ${playbook_file}</h2>
 
 <p>
-	Start Time: ${start_time}<br>
-	End Time: ${end_time}<br>
-	Elapsed: ${elapsed_time}<br>
+    Start Time: ${start_time}<br>
+    End Time: ${end_time}<br>
+    Elapsed: ${elapsed_time}<br>
 </p>
 
 <h3>Host Stats</h3>
 <ul>
-	<li>Unreachable: ${count_unreachable}</li>
-	<li>Processed: ${count_processed} </li>
-	<li>Failed: ${count_failed}</li>
-	<li>Changed: ${count_changed}</li>
-	<li>Skipped: ${count_skipped}</li>
+    <li>Unreachable: ${count_unreachable}</li>
+    <li>Processed: ${count_processed} </li>
+    <li>Failed: ${count_failed}</li>
+    <li>Changed: ${count_changed}</li>
+    <li>Skipped: ${count_skipped}</li>
 </ul>
 
 <hr>
@@ -85,18 +127,18 @@ endif
 
 <h3>Unreachable Hosts: ${count_unreachable}</h3>
 % if count_unreachable > 0:
-	<tbody>
-	% for c in hosts_dark:
-		<tr>${c}</tr>
-	% endfor
-	</tbody>
+    <tbody>
+    % for c in hosts_dark:
+        <tr>${c}</tr>
+    % endfor
+    </tbody>
 % endif
 <hr>
 
 <h3>Host STDERR: ${len(hosts_errs)}</h3>
 % if len(hosts_errs) > 0:
     <table>
-	<thead>
+    <thead>
     <tr>
         <th width="20%">Host</th>
         <th width="33%">Message</th>
@@ -104,8 +146,8 @@ endif
     </tr>
     </thead>
     <tbody>
-	% for c in hosts_errs:
-		<tr>
+    % for c in hosts_errs:
+        <tr>
             <td>${c}</td>
             % if 'response' in hosts_errs[c]:
                 <td>
@@ -116,8 +158,8 @@ endif
             % endif
             <td>${hosts_info[c]['ansible_lsb']['codename']}</td>
         </tr>
-	% endfor
-	</tbody>
+    % endfor
+    </tbody>
     </table>
 % endif
 <hr>
@@ -125,22 +167,31 @@ endif
 % if len(hosts_output) > 0:
 <h3>Host STDOUT_LINES: ${len(hosts_output)}</h3>
     <table id="stdoutTable">
-	<thead>
+    <thead>
     <tr>
-        <th width="20%">Host</th>
+        <th class="output_host">Host</th>
         <th>Message</th>
-        <th width="15%">OS Release</th>
+        <th class="output_os_release">OS Release</th>
     </tr>
     </thead>
     <tbody>
-	% for c in hosts_output:
-		<tr>
+    % for c in hosts_output:
+        <tr>
             <td class="default">${c}</td>
             <td class="message">
+                <table>
+                <thead><tr>
+                <th class="playbook_module">Module</th>
+                <th class="playbook_command">Command</th>
+                <th class="playbook_stdout">STDOUT</th>
+                <th class="playbook_stderr">STDERR</th>
+                </tr></thead>
+                <tbody>
                 % for details in hosts_output[c]:
-                    <p>
-                    Module: ${details['module_name']} : ${details['module_details']}<br>
-                    Result:<br>
+                    <tr>
+                    <td class="module_details">${details['module_name']}</td>
+                    <td class="module_command">${details['module_details']}</td>
+                    <td class="stdout_text">
                     % for line in details['stdout_lines']:
                         <%
                             link = ''
@@ -153,13 +204,21 @@ endif
                         %>
                         ${line} ${link | n}<br>
                     % endfor
-                    <hr></p>
+                    </td>
+                    <td class="stderr_text">
+                    % if len(details['stderr']) > 0:
+                        STDERR: ${details['stderr']}
+                    % endif
+                    </td>
+                    </tr>
                 % endfor
+                </tbody>
+                </table>
             </td>
             <td>${hosts_info[c]['ansible_lsb']['codename']}</td>
         </tr>
-	% endfor
-	</tbody>
+    % endfor
+    </tbody>
     </table>
 % endif
 
