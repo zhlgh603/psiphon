@@ -221,7 +221,10 @@ def process_playbook_vars_cache(playbook, keywords=['response0', 'cmd_result']):
                     for k in cache[host][keyword].keys():
                         if k == 'stat':
                             host_output[host] = cache[host]
-                            host_output[host][keyword]['stdout_lines'] = ['size: ' + str(cache[host][keyword][k]['size'])]
+                            if not cache[host][keyword][k]['exists']:
+                                host_output[host][keyword]['stdout_lines'] = ['size: ' + str(0)]
+                            else:
+                                host_output[host][keyword]['stdout_lines'] = ['size: ' + str(cache[host][keyword][k]['size'])]
                         if k == 'stderr' and len(cache[host][keyword][k]) > 0:
                             host_errs[host] = cache[host]
                         elif k == 'stdout':
@@ -316,11 +319,13 @@ def massage_responses(host_output):
                 module_name = host_output[host][response_key]['invocation']['module_name'] if 'invocation' in host_output[host][response_key] else ''
                 module_details = host_output[host][response_key]['invocation']['module_args'] if 'invocation' in host_output[host][response_key] else ''
                 stdout_lines = host_output[host][response_key]['stdout_lines'] if 'stdout_lines' in host_output[host][response_key] else ''
+                stderr_lines = host_output[host][response_key]['stderr'] if 'stderr' in host_output[host][response_key] else ''
                 # print host + ' -> ' + module_name + ' : ' + module_details + ' -> ' + str(stdout_lines)
                 h_o[host].append({'module_name': module_name,
                                   'module_details': module_details,
-                                  'stdout_lines': stdout_lines}
-                                 )
+                                  'stdout_lines': stdout_lines,
+                                  'stderr': stderr_lines,
+                                 })
     return h_o
 
 # Formats record using a mako template and sends email
