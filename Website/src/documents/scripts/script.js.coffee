@@ -16,10 +16,12 @@
 
 $ ->
 
-  # Make the language switcher maintain the current anchor (if any).
-  if window.location.hash
-    $('.languages .dropdown-menu > li > a').each ->
-      $(@).prop('href', $(@).prop('href') + window.location.hash)
+  #
+  # Make the language switcher maintain the current query parameters and
+  # anchor (if any).
+  #
+  $('.languages .dropdown-menu > li > a').each ->
+    $(@).prop('href', $(@).prop('href') + window.location.search + window.location.hash)
 
   #
   # Where indicated by a class name, equalize the height of elements in a row.
