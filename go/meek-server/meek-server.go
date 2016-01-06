@@ -134,6 +134,14 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		return
 	}
 
+	for key, value := range request.Header {
+		if strings.Contains(strings.ToLower(key), "x-online-host") {
+			log.Printf("X-Online-Host: %s %+v", key, value)
+			dispatcher.terminateConnection(responseWriter, request)
+			return
+		}
+	}
+
 	sessionKey, session, err := dispatcher.GetSession(request, clientCookie.Value)
 	if err != nil {
 		log.Printf("GetSession: %s", err)
