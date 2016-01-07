@@ -577,6 +577,15 @@ class ServerInstance(object):
                             ('total_bytes_sent', tunnel['total_bytes_sent']),
                             ('total_bytes_received', tunnel['total_bytes_received'])
                         ])
+
+                # Older clients do not send this key
+                if 'host_bytes' in stats.keys():
+                    for domain, bytes in stats['host_bytes'].iteritems():
+                        self._log_event('domain_bytes', inputs + [
+                            ('domain', domain),
+                            ('bytes', bytes)
+                        ])
+
             except:
                 start_response('403 Forbidden', [])
                 return []
