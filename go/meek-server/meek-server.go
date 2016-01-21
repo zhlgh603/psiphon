@@ -77,6 +77,7 @@ type Config struct {
 	ThrottleSleepMilliseconds           int
 	ThrottleMaxPayloadSizeMultiple      float64
 	ThrottleRegions                     map[string]bool
+	ForcePsiphonServerAddress           string
 }
 
 type ClientSessionData struct {
@@ -358,7 +359,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return
 	}
 
-	clientSessionData, err := parseCookieJSON(cookieJson)
+	clientSessionData, err := dispatcher.parseCookieJSON(cookieJson)
 	if err != nil {
 		return
 	}
@@ -393,10 +394,13 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 	return
 }
 
-func parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, err error) {
+func (dispatcher *Dispatcher) parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, err error) {
 	err = json.Unmarshal(cookieJson, &clientSessionData)
 	if err != nil {
 		err = fmt.Errorf("parseCookieJSON error decoding '%s'", string(cookieJson))
+	}
+	if dispatcher.config.ForcePsiphonServerAddress != "" {
+		clientSessionData.PsiphonServerAddress = dispatcher.config.ForcePsiphonServerAddress
 	}
 	return
 }
