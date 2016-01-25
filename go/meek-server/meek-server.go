@@ -62,6 +62,7 @@ const DEFAULT_REDIS_DISCOVERY_EXPIRE_SECONDS = 60 * 5
 type Config struct {
 	Port                                int
 	ListenTLS                           bool
+	Fronted                             bool
 	CookiePrivateKeyBase64              string
 	ObfuscatedKeyword                   string
 	LogFilename                         string
@@ -413,7 +414,7 @@ func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessio
 	// Only use headers when sent through TLS (although we're using
 	// self signed keys in TLS mode, so man-in-the-middle is technically
 	// still possible so "faked stats" is still a risk...?)
-	if dispatcher.config.ListenTLS {
+	if dispatcher.config.ListenTLS || dispatcher.config.Fronted {
 		if geoIpData == nil {
 			ipAddress = request.Header.Get("True-Client-IP")
 			if len(ipAddress) > 0 {
