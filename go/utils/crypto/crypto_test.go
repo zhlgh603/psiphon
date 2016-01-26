@@ -3,7 +3,7 @@ package crypto
 import "testing"
 import "crypto/rand"
 import mrand "math/rand"
-import "code.google.com/p/go.crypto/nacl/box"
+import "golang.org/x/crypto/nacl/box"
 import "bytes"
 
 func TestCrypto(t *testing.T) {
