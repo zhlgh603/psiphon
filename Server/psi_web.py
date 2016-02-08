@@ -110,7 +110,7 @@ def is_valid_server_entry_source(str):
     return str in ['EMBEDDED', 'REMOTE', 'DISCOVERY', 'TARGET']
 
 
-is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})\.(?P<fraction>[0-9]+)(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
+is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})[\.(?P<fraction>[0-9]+)](?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
 def is_valid_iso8601_date(str):
     return is_valid_iso8601_date_regex.match(str) != None
 
