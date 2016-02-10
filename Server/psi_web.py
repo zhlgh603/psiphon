@@ -90,7 +90,7 @@ def is_valid_ip_address(str):
 #    * consists only of allowed characters
 #    * doesn't begin or end with a hyphen"
 #
-def is_valid_domain(str):
+def is_valid_domain(hostname):
     if len(hostname) > 255:
         return False
     if hostname[-1] == ".":
