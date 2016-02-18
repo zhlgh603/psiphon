@@ -174,7 +174,7 @@ class ServerInstance(object):
 
         self.OPTIONAL_COMMON_INPUTS = [
             ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
-            ('fronting_host', lambda x: consists_of(x, string.letters + string.digits + '-.')),
+            ('fronting_host', lambda x: is_valid_domain(x)),
             ('fronting_address', lambda x: is_valid_ip_address(x) or is_valid_domain(x)),
             ('fronting_resolved_ip_address', is_valid_ip_address),
             ('fronting_enabled_sni', is_valid_boolean_str),
