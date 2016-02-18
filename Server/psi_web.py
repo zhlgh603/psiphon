@@ -103,7 +103,7 @@ EMPTY_VALUE = '(NONE)'
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-HTTPS-OSSH', EMPTY_VALUE]
+    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'FRONTED-MEEK-HTTP-OSSH', 'UNFRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-HTTPS-OSSH', EMPTY_VALUE]
 
 
 def is_valid_server_entry_source(str):
@@ -174,6 +174,7 @@ class ServerInstance(object):
 
         self.OPTIONAL_COMMON_INPUTS = [
             ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('fronting_host', lambda x: consists_of(x, string.letters + string.digits + '-.')),
             ('fronting_address', lambda x: is_valid_ip_address(x) or is_valid_domain(x)),
             ('fronting_resolved_ip_address', is_valid_ip_address),
             ('fronting_enabled_sni', is_valid_boolean_str),
