@@ -177,6 +177,7 @@ class ServerInstance(object):
             ('fronting_address', lambda x: is_valid_ip_address(x) or is_valid_domain(x)),
             ('fronting_resolved_ip_address', is_valid_ip_address),
             ('fronting_enabled_sni', is_valid_boolean_str),
+            ('fronting_use_http', is_valid_boolean_str),
             ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
             ('server_entry_source', is_valid_server_entry_source),
             ('server_entry_timestamp', is_valid_iso8601_date)]
