@@ -174,11 +174,13 @@ class ServerInstance(object):
 
         self.OPTIONAL_COMMON_INPUTS = [
             ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
-            ('fronting_host', lambda x: is_valid_domain(x)),
+            ('fronting_host', is_valid_domain),
             ('fronting_address', lambda x: is_valid_ip_address(x) or is_valid_domain(x)),
             ('fronting_resolved_ip_address', is_valid_ip_address),
             ('fronting_enabled_sni', is_valid_boolean_str),
             ('fronting_use_http', is_valid_boolean_str),
+            ('substitute_server_name', is_valid_domain),
+            ('substitute_host_header', is_valid_domain),
             ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
             ('server_entry_source', is_valid_server_entry_source),
             ('server_entry_timestamp', is_valid_iso8601_date)]
