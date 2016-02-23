@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright (c) 2011, Psiphon Inc.
+# Copyright (c) 2016, Psiphon Inc.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -83,19 +83,41 @@ def is_valid_ip_address(str):
         return False
 
 
+# From: http://stackoverflow.com/questions/2532053/validate-a-hostname-string
+#
+# "ensures that each segment
+#    * contains at least one character and a maximum of 63 characters
+#    * consists only of allowed characters
+#    * doesn't begin or end with a hyphen"
+#
+def is_valid_domain(hostname):
+    if len(hostname) > 255:
+        return False
+    if hostname[-1] == ".":
+        hostname = hostname[:-1] # strip exactly one dot from the right, if present
+    allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in hostname.split("."))
+
+
 EMPTY_VALUE = '(NONE)'
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-OSSH', EMPTY_VALUE]
+    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'FRONTED-MEEK-HTTP-OSSH', 'UNFRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-HTTPS-OSSH', EMPTY_VALUE]
 
 
-is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})\.(?P<fraction>[0-9]+)(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
+def is_valid_server_entry_source(str):
+    return str in ['EMBEDDED', 'REMOTE', 'DISCOVERY', 'TARGET']
+
+
+is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})(\.(?P<fraction>[0-9]+))?(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
 def is_valid_iso8601_date(str):
     return is_valid_iso8601_date_regex.match(str) != None
 
+
 def is_valid_boolean_str(str):
     return str in ['0', '1']
+
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
@@ -140,6 +162,7 @@ class ServerInstance(object):
         self.server_secret = server_secret
         self.capabilities = capabilities
         self.host_id = host_id
+
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
@@ -148,6 +171,21 @@ class ServerInstance(object):
             ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()')),
             ('relay_protocol', is_valid_relay_protocol),
             ('tunnel_whole_device', is_valid_boolean_str)]
+
+        self.OPTIONAL_COMMON_INPUTS = [
+            ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('fronting_host', is_valid_domain),
+            ('fronting_address', lambda x: is_valid_ip_address(x) or is_valid_domain(x)),
+            ('fronting_resolved_ip_address', is_valid_ip_address),
+            ('fronting_enabled_sni', is_valid_boolean_str),
+            ('fronting_use_http', is_valid_boolean_str),
+            ('substitute_server_name', is_valid_domain),
+            ('substitute_host_header', is_valid_domain),
+            ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('server_entry_source', is_valid_server_entry_source),
+            ('server_entry_timestamp', is_valid_iso8601_date)]
+
+        self.OPTIONAL_COMMON_INPUT_NAMES = [x for (x, _) in self.OPTIONAL_COMMON_INPUTS]
 
     def _is_request_tunnelled(self, client_ip_address):
         return client_ip_address in ['localhost', '127.0.0.1', self.server_ip_address]
@@ -208,7 +246,7 @@ class ServerInstance(object):
         input_values.append(('client_isp', geoip['isp'].replace(' ', '_')))
 
         # Check for each expected input
-        for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
+        for (input_name, validator) in self.COMMON_INPUTS + self.OPTIONAL_COMMON_INPUTS + additional_inputs:
             try:
                 value = request.params[input_name]
             except KeyError as e:
@@ -231,6 +269,9 @@ class ServerInstance(object):
                     value = 'Unknown'
                 elif input_name == 'tunnel_whole_device':
                     value = '0'
+                elif input_name in self.OPTIONAL_COMMON_INPUT_NAMES:
+                    # Skip this input
+                    continue
                 else:
                     syslog.syslog(
                         syslog.LOG_ERR,
@@ -251,20 +292,33 @@ class ServerInstance(object):
         return input_values
 
     def _log_event(self, event_name, log_values):
+        # Note: OPTIONAL_COMMON_INPUTS are excluded from legacy stats
         syslog.syslog(
             syslog.LOG_INFO,
-            ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
+            ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value)
+                                     for (name, value) in log_values if name not in self.OPTIONAL_COMMON_INPUT_NAMES]))
+
         if event_name not in ['status', 'speed', 'routes', 'download']:
             json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
             for key, value in log_values:
                 # convert a number in a string to a long
                 if (type(value) == str or type(value) == unicode) and value.isdigit():
-                    json_log[key] = long(value)
+                    normalizedValue = long(value)
                 # encode unicode to utf8
                 elif type(value) == unicode:
-                    json_log[key] = str(value.encode('utf8'))
+                    normalizedValue = str(value.encode('utf8'))
                 else:
-                    json_log[key] = value
+                    normalizedValue = value
+
+                # Special case: for ELK performance we record fronting_address as one of two different values based on type
+                if key == 'fronting_address':
+                    if is_valid_ip_address(normalizedValue):
+                        json_log['fronting_ip_address'] = normalizedValue
+                    else:
+                        json_log['fronting_domain'] = normalizedValue
+                else:
+                    json_log[key] = normalizedValue
+
             syslog.syslog(
                 syslog.LOG_INFO | syslog.LOG_LOCAL0,
                 json.dumps(json_log))
@@ -577,6 +631,15 @@ class ServerInstance(object):
                             ('total_bytes_sent', tunnel['total_bytes_sent']),
                             ('total_bytes_received', tunnel['total_bytes_received'])
                         ])
+
+                # Older clients do not send this key
+                if 'host_bytes' in stats.keys():
+                    for domain, bytes in stats['host_bytes'].iteritems():
+                        self._log_event('domain_bytes', inputs + [
+                            ('domain', domain),
+                            ('bytes', bytes)
+                        ])
+
             except:
                 start_response('403 Forbidden', [])
                 return []
