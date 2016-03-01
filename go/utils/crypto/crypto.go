@@ -1,12 +1,12 @@
 package crypto
 
 import (
-	"code.google.com/p/go.crypto/nacl/box"
 	"crypto/rand"
 	"crypto/rc4"
 	"crypto/sha1"
 	"encoding/binary"
 	"errors"
+	"golang.org/x/crypto/nacl/box"
 	mrand "math/rand"
 	"time"
 )
