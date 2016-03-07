@@ -89,3 +89,14 @@ Server/psi_health_check.py
 Website/_site
 # Website config files
 Website/sponsor_snippet_pull_conf.json
+
+# Android Studio
+*.iml
+.gradle
+Android/local.properties
+/.idea/workspace.xml
+/.idea/libraries
+.DS_Store
+Android/build
+Android/app/build
+Android/captures
