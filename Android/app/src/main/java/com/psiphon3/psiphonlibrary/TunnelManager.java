@@ -76,13 +76,18 @@ public class TunnelManager implements PsiphonTunnel.HostService {
         m_isReconnect = new AtomicBoolean(false);
         m_isStopping = new AtomicBoolean(false);
         m_tunnel = PsiphonTunnel.newPsiphonTunnel(this);
-
-        mNotificationManager = (NotificationManager)parentService.getSystemService(Context.NOTIFICATION_SERVICE);
-        mNotificationBuilder = new NotificationCompat.Builder(parentService);
     }
 
     // Implementation of android.app.Service.onStartCommand
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (mNotificationManager == null) {
+            mNotificationManager = (NotificationManager) m_parentService.getSystemService(Context.NOTIFICATION_SERVICE);
+        }
+
+        if (mNotificationBuilder == null) {
+            mNotificationBuilder = new NotificationCompat.Builder(m_parentService);
+        }
+
         if (m_firstStart) {
             m_parentService.startForeground(R.string.psiphon_service_notification_id, this.createNotification(false));
             MyLog.v(R.string.client_version, MyLog.Sensitivity.NOT_SENSITIVE, EmbeddedValues.CLIENT_VERSION);
@@ -290,7 +295,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
     
     private void runTunnel() {
 
-        Utils.checkSecureRandom();
+        Utils.initializeSecureRandom();
 
         m_isStopping.set(false);
         m_isReconnect.set(false);
@@ -485,7 +490,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
     public void onUpstreamProxyError(String message) {
         // Display the error message only once, and continue trying to connect in
         // case the issue is temporary.
-        if (m_lastUpstreamProxyErrorMessage != null && !m_lastUpstreamProxyErrorMessage.equals(message)) {
+        if (m_lastUpstreamProxyErrorMessage == null || !m_lastUpstreamProxyErrorMessage.equals(message)) {
             MyLog.v(R.string.upstream_proxy_error, MyLog.Sensitivity.SENSITIVE_FORMAT_ARGS, message);
             m_lastUpstreamProxyErrorMessage = message;
         }        
