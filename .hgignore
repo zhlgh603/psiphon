@@ -43,8 +43,8 @@ Android/PsiphonAndroidLibrary/obj
 Android/PsiphonProxiedWebApp/bin
 Android/PsiphonProxiedWebApp/gen
 
-Android/PsiphonAndroidLibrary/src/com/psiphon3/psiphonlibrary/EmbeddedValues.java
-Client/psiclient/embeddedvalues.h
+EmbeddedValues.java
+embeddedvalues.h
 
 Automation/host_reports/staging
 Automation/host_reports/data
