@@ -99,6 +99,29 @@ def is_valid_domain(hostname):
     return all(allowed.match(x) for x in hostname.split("."))
 
 
+# "<host>:<port>", where <host> is a domain or IP address
+def is_valid_dial_address(str):
+    strs = string.split(str, ':')
+    if len(strs) != 2:
+        return False
+    if not is_valid_ip_address(strs[0]) and not is_valid_domain(strs[0]):
+        return False
+    if not strs[1].isdigit():
+        return False
+    port = int(strs[1])
+    return port > 0 and port < 65536
+
+
+# "<host>:<port>", where <host> is a domain or IP address and ":<port>" is optional
+def is_valid_host_header(str):
+    return is_valid_dial_address(str) or is_valid_domain(str) or is_valid_ip_address(str)
+
+
+# takes "<host>:<port>" and returns "<host>"
+def get_host(str):
+    return string.split(str, ':', 1)[0]
+
+
 EMPTY_VALUE = '(NONE)'
 
 
@@ -174,16 +197,24 @@ class ServerInstance(object):
 
         self.OPTIONAL_COMMON_INPUTS = [
             ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('meek_dial_address', is_valid_dial_address),
+            ('meek_resolved_ip_address', is_valid_ip_address),
+            ('meek_sni_server_name', is_valid_domain),
+            ('meek_host_header', is_valid_host_header),
+            ('meek_transformed_host_name', is_valid_boolean_str),
+            ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('server_entry_source', is_valid_server_entry_source),
+            ('server_entry_timestamp', is_valid_iso8601_date),
+
+            # Obsolete
             ('fronting_host', is_valid_domain),
             ('fronting_address', lambda x: is_valid_ip_address(x) or is_valid_domain(x)),
             ('fronting_resolved_ip_address', is_valid_ip_address),
             ('fronting_enabled_sni', is_valid_boolean_str),
             ('fronting_use_http', is_valid_boolean_str),
             ('substitute_server_name', is_valid_domain),
-            ('substitute_host_header', is_valid_domain),
-            ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
-            ('server_entry_source', is_valid_server_entry_source),
-            ('server_entry_timestamp', is_valid_iso8601_date)]
+            ('substitute_host_header', is_valid_domain)]
+
 
         self.OPTIONAL_COMMON_INPUT_NAMES = [x for (x, _) in self.OPTIONAL_COMMON_INPUTS]
 
@@ -310,12 +341,23 @@ class ServerInstance(object):
                 else:
                     normalizedValue = value
 
-                # Special case: for ELK performance we record fronting_address as one of two different values based on type
+                # Special cases: for ELK performance we record these domain-or-IP
+                # fields as one of two different values based on type; we also
+                # omit port from host:port fields for now.
                 if key == 'fronting_address':
                     if is_valid_ip_address(normalizedValue):
                         json_log['fronting_ip_address'] = normalizedValue
                     else:
                         json_log['fronting_domain'] = normalizedValue
+                elif key == 'meek_dial_address':
+                    normalizedValue = get_host(normalizedValue)
+                    if is_valid_ip_address(normalizedValue):
+                        json_log['meek_dial_ip_address'] = normalizedValue
+                    else:
+                        json_log['meek_dial_domain'] = normalizedValue
+                elif key == 'meek_host_header':
+                    normalizedValue = get_host(normalizedValue)
+                    json_log['meek_host_header'] = normalizedValue
                 else:
                     json_log[key] = normalizedValue
 

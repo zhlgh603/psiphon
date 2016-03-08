@@ -443,6 +443,8 @@ public class TunnelManager implements PsiphonTunnel.HostService {
             MyLog.g("EgressRegion", "regionCode", egressRegion);
             json.put("EgressRegion", egressRegion);
             
+            json.put("EmitDiagnosticNotices", true);
+            
             return json.toString();
 
         } catch (JSONException e) {
