@@ -62,6 +62,7 @@ const DEFAULT_REDIS_DISCOVERY_EXPIRE_SECONDS = 60 * 5
 type Config struct {
 	Port                                int
 	ListenTLS                           bool
+	Fronted                             bool
 	CookiePrivateKeyBase64              string
 	ObfuscatedKeyword                   string
 	LogFilename                         string
@@ -77,6 +78,7 @@ type Config struct {
 	ThrottleSleepMilliseconds           int
 	ThrottleMaxPayloadSizeMultiple      float64
 	ThrottleRegions                     map[string]bool
+	ForcePsiphonServerAddress           string
 }
 
 type ClientSessionData struct {
@@ -358,7 +360,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return
 	}
 
-	clientSessionData, err := parseCookieJSON(cookieJson)
+	clientSessionData, err := dispatcher.parseCookieJSON(cookieJson)
 	if err != nil {
 		return
 	}
@@ -393,10 +395,13 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 	return
 }
 
-func parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, err error) {
+func (dispatcher *Dispatcher) parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, err error) {
 	err = json.Unmarshal(cookieJson, &clientSessionData)
 	if err != nil {
 		err = fmt.Errorf("parseCookieJSON error decoding '%s'", string(cookieJson))
+	}
+	if dispatcher.config.ForcePsiphonServerAddress != "" {
+		clientSessionData.PsiphonServerAddress = dispatcher.config.ForcePsiphonServerAddress
 	}
 	return
 }
@@ -409,7 +414,7 @@ func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessio
 	// Only use headers when sent through TLS (although we're using
 	// self signed keys in TLS mode, so man-in-the-middle is technically
 	// still possible so "faked stats" is still a risk...?)
-	if dispatcher.config.ListenTLS {
+	if dispatcher.config.ListenTLS || dispatcher.config.Fronted {
 		if geoIpData == nil {
 			ipAddress = request.Header.Get("True-Client-IP")
 			if len(ipAddress) > 0 {
