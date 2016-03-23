@@ -324,10 +324,11 @@ class ServerInstance(object):
 
     def _log_event(self, event_name, log_values):
         # Note: OPTIONAL_COMMON_INPUTS are excluded from legacy stats
-        syslog.syslog(
-            syslog.LOG_INFO,
-            ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value)
-                                     for (name, value) in log_values if name not in self.OPTIONAL_COMMON_INPUT_NAMES]))
+        if event_name not in ['domain_bytes', 'session']:
+            syslog.syslog(
+                syslog.LOG_INFO,
+                ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value)
+                                        for (name, value) in log_values if name not in self.OPTIONAL_COMMON_INPUT_NAMES]))
 
         if event_name not in ['status', 'speed', 'routes', 'download']:
             json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
