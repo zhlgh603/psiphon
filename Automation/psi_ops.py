@@ -578,7 +578,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         if cmp(parse_version(self.version), parse_version('0.36')) < 0:
             self.__vpsnet_account = VPSNetAccount()
             self.version = '0.36'
- 
+
     def initialize_plugins(self):
         for plugin in plugins:
             if hasattr(plugin, 'initialize'):
@@ -3157,11 +3157,9 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
     def __test_server(self, server, test_cases, version, test_propagation_channel_id, executable_path):
 
         return psi_ops_test_windows.test_server(
-                                server.ip_address,
-                                server.capabilities,
-                                server.web_server_port,
-                                server.web_server_secret,
-                                [self.__get_encoded_server_entry(server)],
+                                server,
+                                self.__hosts[server.host_id],
+                                self.__get_encoded_server_entry(server),
                                 self.__split_tunnel_url_format(),
                                 self.__split_tunnel_signature_public_key(),
                                 self.__split_tunnel_dns_server(),
@@ -3189,7 +3187,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         executable_path = None
         # We will need a build if no test_cases are specified (run all tests) or if at least one of the following are requested
         if ((not build_with_embedded_servers) and
-            (not test_cases or set(test_cases).intersection(set(['VPN', 'OSSH', 'SSH'])))):
+            (not test_cases or set(test_cases).intersection(set(['VPN'])))):
             executable_path = psi_ops_build_windows.build_client(
                                     test_propagation_channel_id,
                                     '0',        # sponsor_id
