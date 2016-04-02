@@ -164,6 +164,11 @@ def exception_logger(function):
         except:
             for line in traceback.format_exc().split('\n'):
                 syslog.syslog(syslog.LOG_ERR, line)
+
+            syslog.syslog(
+                syslog.LOG_INFO | syslog.LOG_LOCAL0,
+                json.dumps({'event_name': 'exception', 'thrown_by': 'psi_web', 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id, 'exception':  traceback.format_exc().split("\n")})
+            )
             raise
     return wrapper
 

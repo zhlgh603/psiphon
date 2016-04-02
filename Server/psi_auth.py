@@ -44,8 +44,8 @@ try:
         plugins.append(__import__(plugin))
 except ImportError as error:
     print error
-    
-    
+
+
 def handle_auth(pam_user, pam_rhost):
 
     # Read parameters tunneled through password field
@@ -70,7 +70,7 @@ def handle_auth(pam_user, pam_rhost):
         expected_authtok_length = (
             2*(psi_config.SESSION_ID_BYTE_LENGTH +
                psi_config.SSH_PASSWORD_BYTE_LENGTH))
-            
+
         if len(authtok) == expected_authtok_length:
             session_id = authtok[0:psi_config.SESSION_ID_BYTE_LENGTH*2]
             password = authtok[psi_config.SESSION_ID_BYTE_LENGTH*2:]
@@ -185,6 +185,11 @@ def main():
     except Exception as e:
         for line in traceback.format_exc().split('\n'):
             syslog.syslog(syslog.LOG_ERR, line)
+
+        syslog.syslog(
+            syslog.LOG_INFO | syslog.LOG_LOCAL0,
+            json.dumps({'event_name': 'exception', 'thrown_by': 'psi_auth', 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id, 'exception':  traceback.format_exc().split("\n")})
+        )
         sys.exit(1)
     sys.exit(0)
 
