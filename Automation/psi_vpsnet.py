@@ -36,13 +36,12 @@ try:
 except ImportError as error:
     raise error
 
-libcloud.security.CA_CERTS_PATH = ['./libcloud/cacerts/ca-bundle.crt']
-
 
 def check_libcloud_cert():
     ''' 
         Check to see if the libcloud certificate exists before continuing
     '''
+    libcloud.security.CA_CERTS_PATH = [os.path.join('.', 'libcloud', 'cacerts', 'ca-bundle.crt')]
     if not os.path.exists(libcloud.security.CA_CERTS_PATH[0]):
         raise '''
         Could not find valid certificate path.
