@@ -1,4 +1,4 @@
-## Copyright (c) 2014, Psiphon Inc.
+## Copyright (c) 2016, Psiphon Inc.
 ## All rights reserved.
 ##
 ## This program is free software: you can redistribute it and/or modify
@@ -64,7 +64,7 @@ pruned_hosts_count = len(pruned_hosts)
         % for host_id in added_hosts:
             <tr>
                 <td>${host_id}</td>
-                % if host_id.startswith('do-''):
+                % if host_id.startswith('do-'):
                     <td>digitalocean</td>
                 % elif host_id.startswith('li'):
                     <td>linode</td>
@@ -94,13 +94,13 @@ pruned_hosts_count = len(pruned_hosts)
         % for host_id in pruned_hosts:
             <tr>
                 <td>${host_id}</td>
-                % if 'do-' in host_id:
+                % if host_id.startswith('do-'):
                     <td>digitalocean</td>
-                % elif 'li-' in host_id:
+                % elif host_id.startswith('li'):
                     <td>linode</td>
-                % elif 'vn-' in host_id:
+                % elif host_id.startswith('vn-'):
                     <td>vps.net</td>
-                % elif 'fh-' in host_id:
+                % elif host_id.startswith('fh-'):
                     <td>fasthosts</td>
                 % else:
                     <td>unknown</td>
