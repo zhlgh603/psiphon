@@ -84,6 +84,8 @@ public class PsiphonData
     private boolean m_downloadUpgrades;
     private String m_egressRegion;
     private String m_clientRegion;
+    private boolean m_hasValidSubscription;
+    private boolean m_freeTrialActive;
     
     public int m_notificationIconConnecting = 0;
     public int m_notificationIconConnected = 0;
@@ -106,6 +108,8 @@ public class PsiphonData
         m_displayDataTransferStats = false;
         m_downloadUpgrades = false;
         m_egressRegion = PsiphonConstants.REGION_CODE_ANY;
+        m_hasValidSubscription = false;
+        m_freeTrialActive = false;
     }
 
     public synchronized void clearHomePages()
@@ -932,5 +936,20 @@ public class PsiphonData
             copy = new ArrayList<DiagnosticEntry>(m_diagnosticHistory);
         }
         return copy;
+    }
+    
+    public synchronized void setHasValidSubscription()
+    {
+        m_hasValidSubscription = true;
+    }
+    
+    public synchronized boolean getHasValidSubscription()
+    {
+        return m_hasValidSubscription || m_freeTrialActive;
+    }
+    
+    public synchronized void startFreeTrial()
+    {
+        m_freeTrialActive = true;
     }
 }

@@ -204,7 +204,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
 
         notification.setLatestEventInfo(
             m_parentService,
-            m_parentService.getText(R.string.app_name),
+            m_parentService.getText(R.string.app_name_psiphon_pro),
             m_parentService.getText(contentTextID),
             invokeActivityIntent);
 
