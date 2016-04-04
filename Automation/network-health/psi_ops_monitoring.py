@@ -38,6 +38,47 @@ import psi_ops
 
 PSI_OPS_DB_FILENAME = os.path.join(os.path.abspath(automation_dir), 'psi_ops.dat')
 
+import pynliner
+from mako.template import Template
+from mako.lookup import TemplateLookup
+from mako import exceptions
+
+MAKO_TEMPLATE = 'psi_mail_nagios_template.mako'
+
+# Using the FeedbackDecryptor's mail capabilities
+sys.path.append(os.path.abspath(os.path.join('..', '..', 'EmailResponder')))
+sys.path.append(os.path.abspath(os.path.join('..', '..', 'EmailResponder', 'FeedbackDecryptor')))
+
+import sender
+from config import config
+
+
+def prep_mail_record(added_hosts, pruned_hosts, nagios_failed):
+    runtime = datetime.datetime.now()
+    record = (added_hosts, pruned_hosts, nagios_failed, runtime)
+    send_mail(record)
+
+
+# Formats record using a mako template and sends email
+def send_mail(record, subject='Nagios Host Monitoring', 
+              template_filename=MAKO_TEMPLATE):
+    
+    if not os.path.isfile(template_filename):
+        raise
+    
+    template_lookup = TemplateLookup(directories=[os.path.dirname(os.path.abspath('__file__'))])
+    template = Template(filename=template_filename, default_filters=['unicode', 'h'], lookup=template_lookup)
+    
+    try:
+        rendered = template.render(data=record)
+    except:
+        raise Exception(exceptions.text_error_template().render())
+    
+    # CSS in email HTML must be inline
+    rendered = pynliner.fromString(rendered)
+    
+    sender.send(config['emailRecipients'], config['emailUsername'], subject, None, rendered)
+
 
 def update_dat():
     '''
@@ -355,9 +396,13 @@ def main():
         with open(active_hostgroup_providers_cfg, 'w') as file_out:
             file_out.write(hostgroup_providers)
         
+        nagios_failed = False
         nagios_reload = call(['sudo', 'service', 'nagios', 'reload'])
         if nagios_reload != 0:
-            raise
+            nagios_failed = True
+        
+        if len(added_hosts) > 0 or len(pruned_hosts) > 0 or nagios_failed:
+            prep_mail_record(added_hosts, pruned_hosts, nagios_failed)
     except IOError, e:
         print str(e)
     except OSError, e:
