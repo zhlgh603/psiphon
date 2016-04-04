@@ -37,11 +37,17 @@ except ImportError as error:
     raise error
 
 libcloud.security.CA_CERTS_PATH = ['./libcloud/cacerts/ca-bundle.crt']
-if not os.path.exists(libcloud.security.CA_CERTS_PATH[0]):
-    print '''
-    Could not find valid certificate path.
-    See: https://libcloud.readthedocs.org/en/latest/other/ssl-certificate-validation.html
+
+
+def check_libcloud_cert():
+    ''' 
+        Check to see if the libcloud certificate exists before continuing
     '''
+    if not os.path.exists(libcloud.security.CA_CERTS_PATH[0]):
+        raise '''
+        Could not find valid certificate path.
+        See: https://libcloud.readthedocs.org/en/latest/other/ssl-certificate-validation.html
+        '''
 
 
 def get_vpsnet_connection(vpsnet_account):
@@ -137,6 +143,7 @@ def remove_server(vpsnet_account, node_id):
         remove_server destroys a node using vps.net API calls
     '''
     try:
+        check_libcloud_cert()
         vpsnet_conn = get_vpsnet_connection(vpsnet_account)
         node = vpsnet_conn.get_ssd_node(node_id)
         result = vpsnet_conn.delete_ssd_node(node)
@@ -151,6 +158,7 @@ def launch_new_server(vpsnet_account, _):
         launch_new_server is called from psi_ops.py to create a new server.
     """
     try:
+        check_libcloud_cert()
         VPSNetHost = collections.namedtuple('VPSNetHost',
                                             ['ssd_vps_plan', 'fqdn', 
                                              'system_template_id',
