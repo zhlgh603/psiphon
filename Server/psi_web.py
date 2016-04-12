@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright (c) 2011, Psiphon Inc.
+# Copyright (c) 2016, Psiphon Inc.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -49,6 +49,7 @@ import redis
 from datetime import datetime
 from functools import wraps
 import psi_web_patch
+import multiprocessing
 
 # ===== PSINET database ===================================================
 
@@ -75,6 +76,10 @@ def consists_of(str, characters):
     return 0 == len(filter(lambda x : x not in characters, str))
 
 
+def contains(str, characters):
+    return True in [character in str for character in characters]
+
+
 def is_valid_ip_address(str):
     try:
         socket.inet_aton(str)
@@ -83,19 +88,64 @@ def is_valid_ip_address(str):
         return False
 
 
+# From: http://stackoverflow.com/questions/2532053/validate-a-hostname-string
+#
+# "ensures that each segment
+#    * contains at least one character and a maximum of 63 characters
+#    * consists only of allowed characters
+#    * doesn't begin or end with a hyphen"
+#
+def is_valid_domain(hostname):
+    if len(hostname) > 255:
+        return False
+    if hostname[-1] == ".":
+        hostname = hostname[:-1] # strip exactly one dot from the right, if present
+    allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in hostname.split("."))
+
+
+# "<host>:<port>", where <host> is a domain or IP address
+def is_valid_dial_address(str):
+    strs = string.split(str, ':')
+    if len(strs) != 2:
+        return False
+    if not is_valid_ip_address(strs[0]) and not is_valid_domain(strs[0]):
+        return False
+    if not strs[1].isdigit():
+        return False
+    port = int(strs[1])
+    return port > 0 and port < 65536
+
+
+# "<host>:<port>", where <host> is a domain or IP address and ":<port>" is optional
+def is_valid_host_header(str):
+    return is_valid_dial_address(str) or is_valid_domain(str) or is_valid_ip_address(str)
+
+
+# takes "<host>:<port>" and returns "<host>"
+def get_host(str):
+    return string.split(str, ':', 1)[0]
+
+
 EMPTY_VALUE = '(NONE)'
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-OSSH', EMPTY_VALUE]
+    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'FRONTED-MEEK-HTTP-OSSH', 'UNFRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-HTTPS-OSSH', EMPTY_VALUE]
 
 
-is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})\.(?P<fraction>[0-9]+)(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
+def is_valid_server_entry_source(str):
+    return str in ['EMBEDDED', 'REMOTE', 'DISCOVERY', 'TARGET']
+
+
+is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})(\.(?P<fraction>[0-9]+))?(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
 def is_valid_iso8601_date(str):
     return is_valid_iso8601_date_regex.match(str) != None
 
+
 def is_valid_boolean_str(str):
     return str in ['0', '1']
+
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
@@ -140,14 +190,38 @@ class ServerInstance(object):
         self.server_secret = server_secret
         self.capabilities = capabilities
         self.host_id = host_id
+
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('client_version', lambda x: consists_of(x, string.digits) or x == EMPTY_VALUE),
-            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()')),
+            ('client_platform', lambda x: not contains(x, string.whitespace)),
             ('relay_protocol', is_valid_relay_protocol),
             ('tunnel_whole_device', is_valid_boolean_str)]
+
+        self.OPTIONAL_COMMON_INPUTS = [
+            ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('meek_dial_address', is_valid_dial_address),
+            ('meek_resolved_ip_address', is_valid_ip_address),
+            ('meek_sni_server_name', is_valid_domain),
+            ('meek_host_header', is_valid_host_header),
+            ('meek_transformed_host_name', is_valid_boolean_str),
+            ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('server_entry_source', is_valid_server_entry_source),
+            ('server_entry_timestamp', is_valid_iso8601_date),
+
+            # Obsolete
+            ('fronting_host', is_valid_domain),
+            ('fronting_address', lambda x: is_valid_ip_address(x) or is_valid_domain(x)),
+            ('fronting_resolved_ip_address', is_valid_ip_address),
+            ('fronting_enabled_sni', is_valid_boolean_str),
+            ('fronting_use_http', is_valid_boolean_str),
+            ('substitute_server_name', is_valid_domain),
+            ('substitute_host_header', is_valid_domain)]
+
+
+        self.OPTIONAL_COMMON_INPUT_NAMES = [x for (x, _) in self.OPTIONAL_COMMON_INPUTS]
 
     def _is_request_tunnelled(self, client_ip_address):
         return client_ip_address in ['localhost', '127.0.0.1', self.server_ip_address]
@@ -208,7 +282,7 @@ class ServerInstance(object):
         input_values.append(('client_isp', geoip['isp'].replace(' ', '_')))
 
         # Check for each expected input
-        for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
+        for (input_name, validator) in self.COMMON_INPUTS + self.OPTIONAL_COMMON_INPUTS + additional_inputs:
             try:
                 value = request.params[input_name]
             except KeyError as e:
@@ -231,6 +305,9 @@ class ServerInstance(object):
                     value = 'Unknown'
                 elif input_name == 'tunnel_whole_device':
                     value = '0'
+                elif input_name in self.OPTIONAL_COMMON_INPUT_NAMES:
+                    # Skip this input
+                    continue
                 else:
                     syslog.syslog(
                         syslog.LOG_ERR,
@@ -251,20 +328,45 @@ class ServerInstance(object):
         return input_values
 
     def _log_event(self, event_name, log_values):
-        syslog.syslog(
-            syslog.LOG_INFO,
-            ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
+        # Note: OPTIONAL_COMMON_INPUTS are excluded from legacy stats
+        if event_name not in ['domain_bytes', 'session']:
+            syslog.syslog(
+                syslog.LOG_INFO,
+                ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value)
+                                        for (name, value) in log_values if name not in self.OPTIONAL_COMMON_INPUT_NAMES]))
+
         if event_name not in ['status', 'speed', 'routes', 'download']:
             json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
             for key, value in log_values:
                 # convert a number in a string to a long
                 if (type(value) == str or type(value) == unicode) and value.isdigit():
-                    json_log[key] = long(value)
+                    normalizedValue = long(value)
                 # encode unicode to utf8
                 elif type(value) == unicode:
-                    json_log[key] = str(value.encode('utf8'))
+                    normalizedValue = str(value.encode('utf8'))
                 else:
-                    json_log[key] = value
+                    normalizedValue = value
+
+                # Special cases: for ELK performance we record these domain-or-IP
+                # fields as one of two different values based on type; we also
+                # omit port from host:port fields for now.
+                if key == 'fronting_address':
+                    if is_valid_ip_address(normalizedValue):
+                        json_log['fronting_ip_address'] = normalizedValue
+                    else:
+                        json_log['fronting_domain'] = normalizedValue
+                elif key == 'meek_dial_address':
+                    normalizedValue = get_host(normalizedValue)
+                    if is_valid_ip_address(normalizedValue):
+                        json_log['meek_dial_ip_address'] = normalizedValue
+                    else:
+                        json_log['meek_dial_domain'] = normalizedValue
+                elif key == 'meek_host_header':
+                    normalizedValue = get_host(normalizedValue)
+                    json_log['meek_host_header'] = normalizedValue
+                else:
+                    json_log[key] = normalizedValue
+
             syslog.syslog(
                 syslog.LOG_INFO | syslog.LOG_LOCAL0,
                 json.dumps(json_log))
@@ -577,6 +679,15 @@ class ServerInstance(object):
                             ('total_bytes_sent', tunnel['total_bytes_sent']),
                             ('total_bytes_received', tunnel['total_bytes_received'])
                         ])
+
+                # Older clients do not send this key
+                if 'host_bytes' in stats.keys():
+                    for domain, bytes in stats['host_bytes'].iteritems():
+                        self._log_event('domain_bytes', inputs + [
+                            ('domain', domain),
+                            ('bytes', bytes)
+                        ])
+
             except:
                 start_response('403 Forbidden', [])
                 return []
@@ -850,7 +961,7 @@ def main():
     # (presently web server-per-entry since each has its own certificate;
     #  we could, in principle, run one web server that presents a different
     #  cert per IP address)
-    threads_per_server = 60
+    threads_per_server = 30 * multiprocessing.cpu_count()
     if '32bit' in platform.architecture():
         # Only 381 threads can run on 32-bit Linux
         # Assuming 361 to allow for some extra overhead, plus the additional overhead
