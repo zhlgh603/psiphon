@@ -49,6 +49,7 @@ import redis
 from datetime import datetime
 from functools import wraps
 import psi_web_patch
+import multiprocessing
 
 # ===== PSINET database ===================================================
 
@@ -73,6 +74,10 @@ def constant_time_compare(a, b):
 
 def consists_of(str, characters):
     return 0 == len(filter(lambda x : x not in characters, str))
+
+
+def contains(str, characters):
+    return True in [character in str for character in characters]
 
 
 def is_valid_ip_address(str):
@@ -191,7 +196,7 @@ class ServerInstance(object):
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('client_version', lambda x: consists_of(x, string.digits) or x == EMPTY_VALUE),
-            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()')),
+            ('client_platform', lambda x: not contains(x, string.whitespace)),
             ('relay_protocol', is_valid_relay_protocol),
             ('tunnel_whole_device', is_valid_boolean_str)]
 
@@ -956,7 +961,7 @@ def main():
     # (presently web server-per-entry since each has its own certificate;
     #  we could, in principle, run one web server that presents a different
     #  cert per IP address)
-    threads_per_server = 60
+    threads_per_server = 30 * multiprocessing.cpu_count()
     if '32bit' in platform.architecture():
         # Only 381 threads can run on 32-bit Linux
         # Assuming 361 to allow for some extra overhead, plus the additional overhead
