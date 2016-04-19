@@ -95,49 +95,92 @@
 
 <h1>Psiphon 3 Stats</h1>
 
+<h2> Connections Stats </h2>
 ## Iterate through the tables
-% for tablename, tableinfo in data.iteritems():
-  <h2>${tablename}</h2>
+% for key, connections_data in data['connections']['platform'].iteritems():
+  % for platform_key, platform_data in connections_data.iteritems():
+    <h3>${platform_key}</h3>
+    <p>Total connections: ${platform_data['doc_count']}</p>
 
-  <table>
+    <table>
 
-    <thead>
-      <tr>
-        % for header in tableinfo['headers']:
-          <th>${header}</th>
-        % endfor
-      </tr>
-    </thead>
-
-    <tbody>
-      % for row_index, row in enumerate(tableinfo['data']):
-        <tr class="row-${'odd' if row_index%2 else 'even'}">
-          <%
-            # A row is of the form: ('Total', defaultdict(int, {'Past Week': 46400L, 'Yesterday': 0L, '1 week ago': 6406L}))
-            row_head, row_vals = row
-          %>
-
-
-          ## First column is the region (or Total)
-          <th>${row_head}</th>
-
-          ## The headers indicate the order we need to output the data
-          % for col_index, col_name in enumerate(tableinfo['headers'][1:]):
-            <%
-              change = ''
-              # Note that this loop starts at tableinfo['headers'][1], so col_index == 0 is tableinfo['headers'][1]
-              if col_index == 0:
-                target_value = row_vals[tableinfo['headers'][1]]
-                compartor = row_vals[tableinfo['headers'][2]]
-                change = 'better' if target_value > compartor else 'worse'
-            %>
-            <td class="numcompare ${change}">
-              ${'{:,}'.format(row_vals[col_name] or 0)}
-            </td>
-          % endfor
+      <thead>
+        <tr>
+          <th>Region</th>
+          <th>Yesterday</th>
+          <th>Past Week</th>
+          <th>One Week Ago</th>
         </tr>
-      % endfor
-    </tbody>
+      </thead>
 
-  </table>
+      <tbody>
+        % for row_index, row_data in enumerate(platform_data['region']['buckets']):
+          <tr class="row-${'odd' if row_index%2 else 'even'}">
+            <%
+              # A row is of the form: ('Total', defaultdict(int, {'Past Week': 46400L, 'Yesterday': 0L, '1 week ago': 6406L}))
+              row_head = row_data['key']
+            %>
+
+
+            ## First column is the region
+            <th>${row_head}</th>
+
+            ## Data
+            % for col_index, col_data in enumerate(row_data['time_range']['buckets']):
+              <td>${col_data['doc_count']}</td>
+            % endfor
+
+
+          </tr>
+        % endfor
+      </tbody>
+
+    </table>
+  %endfor
+% endfor
+
+<h2> Unique Users Stats </h2>
+## Iterate through the tables
+% for key, connections_data in data['unique_users']['platform'].iteritems():
+  % for platform_key, platform_data in connections_data.iteritems():
+    <h3>${platform_key}</h3>
+    <p>Total connections: ${platform_data['doc_count']}</p>
+
+    <table>
+
+      <thead>
+        <tr>
+          <th>Region</th>
+          <th>Yesterday</th>
+          <th>Past Week</th>
+          <th>One Week Ago</th>
+          <th>Past Two Weeks</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        % for row_index, row_data in enumerate(platform_data['region']['buckets']):
+          <tr class="row-${'odd' if row_index%2 else 'even'}">
+            <%
+              # A row is of the form: ('Total', defaultdict(int, {'Past Week': 46400L, 'Yesterday': 0L, '1 week ago': 6406L}))
+              row_head = row_data['key']
+            %>
+
+
+            ## First column is the region
+            <th>${row_head}</th>
+
+            ## Data
+            % for col_index, col_data in enumerate(row_data['time_range']['buckets']):
+              <td>${col_data['unique_daily']['value']}</td>
+              <td>${col_data['unique_weekly']['value']}</td>
+            % endfor
+
+
+          </tr>
+        % endfor
+      </tbody>
+
+    </table>
+  %endfor
 % endfor
