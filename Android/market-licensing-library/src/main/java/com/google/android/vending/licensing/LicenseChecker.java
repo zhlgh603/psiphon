@@ -291,7 +291,7 @@ public class LicenseChecker implements ServiceConnection {
      * disconnections or timeouts.
      */
     private synchronized void handleServiceConnectionError(LicenseValidator validator) {
-        mPolicy.processServerResponse(Policy.RETRY, null);
+        mPolicy.processServerResponse(Policy.RETRY, null, null, null);
 
         if (mPolicy.allowAccess()) {
             validator.getCallback().allow(Policy.RETRY);

@@ -163,22 +163,22 @@ class LicenseValidator {
             case LICENSED:
             case LICENSED_OLD_KEY:
                 int limiterResponse = mDeviceLimiter.isDeviceAllowed(userId);
-                handleResponse(limiterResponse, data);
+                handleResponse(limiterResponse, data, signedData, signature);
                 break;
             case NOT_LICENSED:
-                handleResponse(Policy.NOT_LICENSED, data);
+                handleResponse(Policy.NOT_LICENSED, data, signedData, signature);
                 break;
             case ERROR_CONTACTING_SERVER:
                 Log.w(TAG, "Error contacting licensing server.");
-                handleResponse(Policy.RETRY, data);
+                handleResponse(Policy.RETRY, data, signedData, signature);
                 break;
             case ERROR_SERVER_FAILURE:
                 Log.w(TAG, "An error has occurred on the licensing server.");
-                handleResponse(Policy.RETRY, data);
+                handleResponse(Policy.RETRY, data, signedData, signature);
                 break;
             case ERROR_OVER_QUOTA:
                 Log.w(TAG, "Licensing server is refusing to talk to this device, over quota.");
-                handleResponse(Policy.RETRY, data);
+                handleResponse(Policy.RETRY, data, signedData, signature);
                 break;
             case ERROR_INVALID_PACKAGE_NAME:
                 handleApplicationError(LicenseCheckerCallback.ERROR_INVALID_PACKAGE_NAME);
@@ -200,10 +200,12 @@ class LicenseValidator {
      *
      * @param response
      * @param rawData
+     * @param signedData
+     * @param signature
      */
-    private void handleResponse(int response, ResponseData rawData) {
+    private void handleResponse(int response, ResponseData rawData, String signedData, String signature) {
         // Update policy data and increment retry counter (if needed)
-        mPolicy.processServerResponse(response, rawData);
+        mPolicy.processServerResponse(response, rawData, signedData, signature);
 
         // Given everything we know, including cached data, ask the policy if we should grant
         // access.
