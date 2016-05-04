@@ -125,9 +125,11 @@ public class APKExpansionPolicy implements Policy {
      * 
      * @param response the result from validating the server response
      * @param rawData the raw server response data
+     * @param signedData raw server response to verify signature against
+     * @param signature raw server response signature
      */
     public void processServerResponse(int response,
-            com.google.android.vending.licensing.ResponseData rawData) {
+            com.google.android.vending.licensing.ResponseData rawData, String signedData, String signature) {
 
         // Update retry counter
         if (response != Policy.RETRY) {

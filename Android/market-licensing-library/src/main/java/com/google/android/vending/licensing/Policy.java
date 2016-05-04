@@ -49,8 +49,10 @@ public interface Policy {
      * 
      * @param response the result from validating the server response
      * @param rawData the raw server response data, can be null for RETRY
+     * @param signedData raw server response to verify signature against
+     * @param signature raw server response signature
      */
-    void processServerResponse(int response, ResponseData rawData);
+    void processServerResponse(int response, ResponseData rawData, String signedData, String signature);
 
     /**
      * Check if the user should be allowed access to the application.

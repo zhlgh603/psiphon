@@ -45,8 +45,10 @@ public class StrictPolicy implements Policy {
      *
      * @param response the result from validating the server response
      * @param rawData the raw server response data
+     * @param signedData raw server response to verify signature against
+     * @param signature raw server response signature
      */
-    public void processServerResponse(int response, ResponseData rawData) {
+    public void processServerResponse(int response, ResponseData rawData, String signedData, String signature) {
         mLastResponse = response;
     }
 

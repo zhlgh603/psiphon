@@ -86,6 +86,11 @@ import com.psiphon3.psiphonlibrary.StatusList.StatusListViewManager;
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
 import com.psiphon3.psiphonlibrary.MoreOptionsPreferenceActivity;
 
+import com.google.android.vending.licensing.LicenseChecker;
+import com.google.android.vending.licensing.LicenseCheckerCallback;
+import com.google.android.vending.licensing.ServerManagedPolicy;
+import com.google.android.vending.licensing.AESObfuscator;
+
 import com.psiphon3.R;
 
 public abstract class MainBase {

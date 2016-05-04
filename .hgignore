@@ -100,3 +100,4 @@ Android/local.properties
 Android/build
 Android/app/build
 Android/captures
+Android/market-licensing-library/build

@@ -43,6 +43,7 @@ import android.util.Log;
  * Developers who need more fine grained control over their application's
  * licensing policy should implement a custom Policy.
  */
+
 public class ServerManagedPolicy implements Policy {
 
     private static final String TAG = "ServerManagedPolicy";
@@ -52,6 +53,8 @@ public class ServerManagedPolicy implements Policy {
     private static final String PREF_RETRY_UNTIL = "retryUntil";
     private static final String PREF_MAX_RETRIES = "maxRetries";
     private static final String PREF_RETRY_COUNT = "retryCount";
+    private static final String PREF_SIGNED_DATA = "signedData";
+    private static final String PREF_SIGNATURE = "signature";
     private static final String DEFAULT_VALIDITY_TIMESTAMP = "0";
     private static final String DEFAULT_RETRY_UNTIL = "0";
     private static final String DEFAULT_MAX_RETRIES = "0";
@@ -65,6 +68,8 @@ public class ServerManagedPolicy implements Policy {
     private long mRetryCount;
     private long mLastResponseTime = 0;
     private int mLastResponse;
+    private String mSignedData = "";
+    private String mSignature = "";
     private PreferenceObfuscator mPreferences;
 
     /**
@@ -82,6 +87,8 @@ public class ServerManagedPolicy implements Policy {
         mRetryUntil = Long.parseLong(mPreferences.getString(PREF_RETRY_UNTIL, DEFAULT_RETRY_UNTIL));
         mMaxRetries = Long.parseLong(mPreferences.getString(PREF_MAX_RETRIES, DEFAULT_MAX_RETRIES));
         mRetryCount = Long.parseLong(mPreferences.getString(PREF_RETRY_COUNT, DEFAULT_RETRY_COUNT));
+        mSignedData = mPreferences.getString(PREF_SIGNED_DATA, "");
+        mSignature = mPreferences.getString(PREF_SIGNATURE, "");
     }
 
     /**
@@ -98,8 +105,10 @@ public class ServerManagedPolicy implements Policy {
      *
      * @param response the result from validating the server response
      * @param rawData the raw server response data
+     * @param signedData raw server response to verify signature against
+     * @param signature raw server response signature
      */
-    public void processServerResponse(int response, ResponseData rawData) {
+    public void processServerResponse(int response, ResponseData rawData,String signedData, String signature) {
 
         // Update retry counter
         if (response != Policy.RETRY) {
@@ -115,6 +124,8 @@ public class ServerManagedPolicy implements Policy {
             setValidityTimestamp(extras.get("VT"));
             setRetryUntil(extras.get("GT"));
             setMaxRetries(extras.get("GR"));
+            setSignedData(signedData);
+            setSignature(signature);
         } else if (response == Policy.NOT_LICENSED) {
             // Clear out stale policy data
             setValidityTimestamp(DEFAULT_VALIDITY_TIMESTAMP);
@@ -232,6 +243,21 @@ public class ServerManagedPolicy implements Policy {
         return mMaxRetries;
     }
 
+    private void setSignedData(String signedData) {
+        mSignedData = signedData;
+        mPreferences.putString(PREF_SIGNED_DATA, signedData);
+    }
+    public String getSignedData() {
+        return mSignedData;
+    }
+
+    private void setSignature(String signature) {
+        mSignature = signature;
+        mPreferences.putString(PREF_SIGNATURE, signature);
+    }
+    public String getSignature() {
+        return mSignature;
+    }
     /**
      * {@inheritDoc}
      *

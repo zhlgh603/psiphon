@@ -35,4 +35,8 @@ public class PsiphonConstants
     public final static String ROOTED = "_rooted";
 
     public final static String PLAY_STORE_BUILD = "_playstore";
+
+    public final static String GOOGLE_PLAY_LICENSING_PUBLIC_KEY = "";
+
+    public final static byte[] GOOGLE_PLAY_LICENSING_SALT ={};
 }
