@@ -33,6 +33,9 @@ from cogapp import Cog
 SOURCE_ROOT = os.path.join(os.path.abspath('..'), 'Android')
 
 GRADLE_WRAPPER = os.path.join(SOURCE_ROOT, 'gradlew')
+PLAY_SERVICES_LIB_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'google-play-services_lib')
+MOPUB_LIB_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'mopub-sdk')
+MM_LIB_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'mm-ad-sdk')
 
 PSIPHON_SOURCE_ROOT = os.path.join(SOURCE_ROOT, 'app', 'src', 'main')
 
@@ -82,6 +85,12 @@ KEY_PASSWORD=%s
     commands = [
         '%s clean' %  GRADLE_WRAPPER,
         '%s assembleRelease' %  GRADLE_WRAPPER,
+        'android update lib-project -p "%s"' % (PLAY_SERVICES_LIB_SOURCE_ROOT,),
+        'android update lib-project -p "%s"' % (MOPUB_LIB_SOURCE_ROOT,),
+        'android update lib-project -p "%s"' % (MM_LIB_SOURCE_ROOT,),
+        'ant -q -f "%s" clean' % (os.path.join(PLAY_SERVICES_LIB_SOURCE_ROOT, 'build.xml'),),
+        'ant -q -f "%s" clean' % (os.path.join(MOPUB_LIB_SOURCE_ROOT, 'build.xml'),),
+        'ant -q -f "%s" clean' % (os.path.join(MM_LIB_SOURCE_ROOT, 'build.xml'),),
         ]
 
     prev_dir = os.getcwd()
