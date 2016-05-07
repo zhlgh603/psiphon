@@ -109,7 +109,6 @@ public class ServerManagedPolicy implements Policy {
      * @param signature raw server response signature
      */
     public void processServerResponse(int response, ResponseData rawData,String signedData, String signature) {
-
         // Update retry counter
         if (response != Policy.RETRY) {
             setRetryCount(0);
