@@ -36,7 +36,7 @@ public class PsiphonConstants
 
     public final static String PLAY_STORE_BUILD = "_playstore";
 
-    public final static String GOOGLE_PLAY_LICENSING_PUBLIC_KEY = "";
+    public final static String GOOGLE_PLAY_LICENSING_PUBLIC_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6Ng/B/vTGijsipqy6Cmwtgt7ah3lePQPVCmOZNvwf+aBAMoRXeHVjVQgTu/acbc1IMnuQo62vNgcTUV8LE7v6vB1oxvnOHz3aFGuQ+ZgwsnzGD6G9RzBUW1UdzjX6RpdjHSjg2LREdD6K8JnVCapvCbzHmVgTHL/OOKQQS8vIwB1nr/gemxrE0WzCuYUE5uQHYKyHLvGmQEI5jO/RLKvCT/E/1v3n9wHfNQZhAUV3+0eb2EiU0QCh/sjwK6920Hwvpm/fAqeBTNDCkklIZxxPzoDyZyLw+t/K6z7IJHFDzgPquoMLPs9IM/In51828o2b7/PccUZWmuCuB/Vz8NskwIDAQAB";
 
-    public final static byte[] GOOGLE_PLAY_LICENSING_SALT ={};
+    public final static byte[] GOOGLE_PLAY_LICENSING_SALT ={-46, 65, 30, -128, -103, -57, 74, -64, 51, 88, -95, -45, 77, -117, -36, -113, -11, 32, -64, 89};
 }

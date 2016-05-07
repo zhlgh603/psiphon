@@ -48,6 +48,7 @@ import android.net.VpnService;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.content.LocalBroadcastManager;
 import android.view.GestureDetector;
@@ -251,6 +252,10 @@ public abstract class MainBase {
         private View m_previousView;
         private View m_currentView;
         private GestureDetector m_gestureDetector;
+
+        private LicenseCheckerCallback mLicenseCheckerCallback;
+        private LicenseChecker mChecker;
+
 
         /**
          * A gesture listener that listens for a left or right swipe and uses
@@ -579,9 +584,19 @@ public abstract class MainBase {
 
             String msg = getContext().getString(R.string.client_version, EmbeddedValues.CLIENT_VERSION);
             m_statusTabVersionLine.setText(msg);
-
             // Restore messages previously posted by the service.
             MyLog.restoreLogHistory();
+
+            //License check
+            String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+            // Library calls this when it's done.
+            mLicenseCheckerCallback = new MyLicenseCheckerCallback();
+            // Construct the LicenseChecker with a policy.
+            mChecker = new LicenseChecker(
+                    this, new ServerManagedPolicy(this,
+                    new AESObfuscator(PsiphonConstants.GOOGLE_PLAY_LICENSING_SALT, getPackageName(), deviceId)),
+                    PsiphonConstants.GOOGLE_PLAY_LICENSING_PUBLIC_KEY);
+            mChecker.checkAccess(mLicenseCheckerCallback);
         }
 
         @Override
@@ -592,6 +607,7 @@ public abstract class MainBase {
                 m_sponsorHomePage.stop();
                 m_sponsorHomePage = null;
             }
+            mChecker.onDestroy();
         }
 
         /**
@@ -1370,5 +1386,39 @@ public abstract class MainBase {
                 mWebView.loadUrl(url);
             }
         }
+
+        private class MyLicenseCheckerCallback implements LicenseCheckerCallback {
+            public void allow(int policyReason) {
+                if (isFinishing()) {
+                    // Don't update UI if Activity is finishing.
+                    return;
+                }
+                // Should allow user access.
+            }
+
+            public void dontAllow(int policyReason) {
+                if (isFinishing()) {
+                    // Don't update UI if Activity is finishing.
+                    return;
+                }
+                // Should not allow access. In most cases, the app should assume
+                // the user has access unless it encounters this. If it does,
+                // the app should inform the user of their unlicensed ways
+                // and then either shut down the app or limit the user to a
+                // restricted set of features.
+                // In this example, we show a dialog that takes the user to Market.
+                // If the reason for the lack of license is that the service is
+                // unavailable or there is another problem, we display a
+                // retry button on the dialog and a different message.
+            }
+
+            public void applicationError(int errorCode) {
+                if (isFinishing()) {
+                    // Don't update UI if Activity is finishing.
+                    return;
+                }
+            }
+        }
+
     }
 }
