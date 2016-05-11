@@ -792,12 +792,12 @@ class ServerInstance(object):
 
                 # verify signature
                 try:
-                    valid_signature = verify(leaf_cert, signature, jwt_parts[0] + '.' + jwt_parts[1], 'sha256')
+                    signature_errors = verify(leaf_cert, signature, jwt_parts[0] + '.' + jwt_parts[1], 'sha256')
                 except Exception as e:
-                    valid_signature = e
+                    signature_errors = e
 
                 # verify apkCertificateDigest
-                valid_apk_cert = jwt_payload_obj['apkCertificateDigestSha256'] == PSIPHON3_BASE64_CERTHASH
+                valid_apk_cert = jwt_payload_obj['apkCertificateDigestSha256'][0] == PSIPHON3_BASE64_CERTHASH
 
                 # verify packagename
                 valid_apk_packagename = jwt_payload_obj['apkPackageName'] == PSIPHON3_APKPACKAGENAME
@@ -807,7 +807,7 @@ class ServerInstance(object):
 
                 # both will be error type otherwise
                 is_valid_certchain = valid_certchain == None
-                is_valid_sig = valid_signature == None
+                is_valid_sig = signature_errors == None
 
                 self._log_event("client_verification", inputs + [('status', str(status)),
                                                       ('status_string', status_string),
@@ -816,12 +816,13 @@ class ServerInstance(object):
                                                       ('certchain_errors', str(valid_certchain)),
                                                       ('valid_CN', valid_CN),
                                                       ('valid_signature', is_valid_sig),
-                                                      ('signature_errors', str(valid_signature))
+                                                      ('signature_errors', str(signature_errors)),
                                                       ('valid_apk_cert', valid_apk_cert),
                                                       ('valid_apk_packagename', valid_apk_packagename),
                                                       ('nonce', jwt_payload_obj['nonce']),
                                                       ('apkPackageName', jwt_payload_obj['apkPackageName']),
                                                       ('apkDigestSha256', jwt_payload_obj['apkDigestSha256']),
+                                                      ('apkCertificateDigestSha256', jwt_payload_obj['apkCertificateDigestSha256'][0]),
                                                       ('ctsProfileMatch', jwt_payload_obj['ctsProfileMatch']),
                                                       ('extension', jwt_payload_obj['extension'])
                                                       ])
