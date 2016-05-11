@@ -819,11 +819,11 @@ class ServerInstance(object):
                                                       ('signature_errors', str(valid_signature))
                                                       ('valid_apk_cert', valid_apk_cert),
                                                       ('valid_apk_packagename', valid_apk_packagename),
-                                                      ('nonce'), jwt_payload_obj['nonce']),
-                                                      ('apkPackageName'), jwt_payload_obj['apkPackageName']),
-                                                      ('apkDigestSha256'), jwt_payload_obj['apkDigestSha256']),
-                                                      ('ctsProfileMatch'), jwt_payload_obj['ctsProfileMatch']),
-                                                      ('extension'), jwt_payload_obj['extension'])
+                                                      ('nonce', jwt_payload_obj['nonce']),
+                                                      ('apkPackageName', jwt_payload_obj['apkPackageName']),
+                                                      ('apkDigestSha256', jwt_payload_obj['apkDigestSha256']),
+                                                      ('ctsProfileMatch', jwt_payload_obj['ctsProfileMatch']),
+                                                      ('extension', jwt_payload_obj['extension'])
                                                       ])
                 start_response('200 OK', [])
             except:
