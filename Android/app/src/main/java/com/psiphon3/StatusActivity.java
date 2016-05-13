@@ -19,10 +19,6 @@
 
 package com.psiphon3;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -52,7 +48,13 @@ import com.mopub.mobileads.MoPubView;
 import com.mopub.mobileads.MoPubView.BannerAdListener;
 import com.psiphon3.psiphonlibrary.EmbeddedValues;
 import com.psiphon3.psiphonlibrary.PsiphonData;
+import com.psiphon3.psiphonlibrary.SupersonicRewardedVideoAd;
 import com.psiphon3.psiphonlibrary.WebViewProxySettings;
+import com.supersonic.mediationsdk.integration.IntegrationHelper;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 
 
 public class StatusActivity
@@ -138,6 +140,17 @@ public class StatusActivity
         LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(StatusActivity.this);
         localBroadcastManager.registerReceiver(new ConnectionStateChangeReceiver(), new IntentFilter(TUNNEL_STOPPING));
         localBroadcastManager.registerReceiver(new ConnectionStateChangeReceiver(), new IntentFilter(UNEXPECTED_DISCONNECT));
+
+
+        /**
+         * Supersonic video ad integration TEST BEGIN
+         */
+        SupersonicRewardedVideoAd videoAd = new SupersonicRewardedVideoAd("DefaultRewardedVideo");
+        videoAd.requestAd(this);
+        IntegrationHelper.validateIntegration(this);
+        /**
+         * Supersonic video ad integration TEST END
+         */
 
         // Auto-start on app first run
         if (m_firstRun)
