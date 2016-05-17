@@ -242,7 +242,7 @@ public class StatusActivity
     {
         // For now, only show ads when the tunnel is connected, since WebViewProxySettings are
         // probably set and webviews won't load successfully when the tunnel is not connected
-        return PsiphonData.getPsiphonData().getShowAds() &&
+        return PsiphonData.getPsiphonData().getShowAds(this) &&
                 PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
                 Build.VERSION.SDK_INT > Build.VERSION_CODES.FROYO;
     }
@@ -401,7 +401,7 @@ public class StatusActivity
     
     private void initAds()
     {
-        if (PsiphonData.getPsiphonData().getShowAds())
+        if (PsiphonData.getPsiphonData().getShowAds(this))
         {
             // make sure WebView proxy settings are up to date
             WebViewProxySettings.setLocalProxy(this, PsiphonData.getPsiphonData().getListeningLocalHttpProxyPort());

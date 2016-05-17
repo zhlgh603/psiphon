@@ -594,7 +594,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
 
     @Override
     public void onHomepage(String url) {
-        PsiphonData.getPsiphonData().addHomePage(url);
+        PsiphonData.getPsiphonData().addHomePage(m_parentService, url);
     }
 
     @Override
