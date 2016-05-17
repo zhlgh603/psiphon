@@ -67,6 +67,9 @@ import psi_ops_discovery
 
 psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
+# ===== Globals =====
+
+CLIENT_VERIFICATION_REQUIRED = True
 
 # ===== Helpers =====
 
@@ -510,6 +513,9 @@ class ServerInstance(object):
 
 
         config["server_timestamp"] = datetime.utcnow().isoformat() + 'Z'
+
+        global CLIENT_VERIFICATION_REQUIRED
+        config["client_verification_required"] = CLIENT_VERIFICATION_REQUIRED
 
         # The entire config is JSON encoded and included as well.
 
