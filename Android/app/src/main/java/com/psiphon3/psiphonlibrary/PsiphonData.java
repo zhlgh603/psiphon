@@ -31,8 +31,10 @@ import org.apache.http.auth.NTCredentials;
 import org.json.JSONObject;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.SystemClock;
+import android.preference.PreferenceManager;
 import android.util.Log;
 
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
@@ -58,7 +60,6 @@ public class PsiphonData
         return m_psiphonData;
     }
 
-    private boolean m_showAds;
     private boolean m_skipHomePage;
     private ArrayList<String> m_homePages;
     private long m_nextFetchRemoteServerList;
@@ -97,7 +98,6 @@ public class PsiphonData
         
     private PsiphonData()
     {
-        m_showAds = false;
         m_skipHomePage = false;
         m_homePages = new ArrayList<String>();
         m_nextFetchRemoteServerList = -1;
@@ -112,14 +112,17 @@ public class PsiphonData
         m_egressRegion = PsiphonConstants.REGION_CODE_ANY;
     }
 
-    public synchronized void setShowAds()
+    private static final String PREFERENCE_SHOW_ADS = "showAds";
+    private synchronized void setShowAds(Context context, boolean show)
     {
-        m_showAds = true;
+        SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(context).edit();
+        editor.putBoolean(PREFERENCE_SHOW_ADS, show);
+        editor.commit();
     }
     
-    public synchronized boolean getShowAds()
+    public synchronized boolean getShowAds(Context context)
     {
-        return m_showAds;
+        return PreferenceManager.getDefaultSharedPreferences(context).getBoolean(PREFERENCE_SHOW_ADS, false);
     }
     
     public synchronized void setSkipHomePage()
@@ -137,24 +140,36 @@ public class PsiphonData
         m_homePages.clear();
     }
 
-    public synchronized void addHomePage(String url)
+    public synchronized void addHomePage(Context context, String url)
     {
-        if (url.contains("psiphon_show_ads"))
+        final String PSIPHON_SHOW_ADS = "psiphon_show_ads";
+        final String PSIPHON_SKIP_HOMEPAGE = "psiphon_skip_homepage";
+        boolean showAds = false;
+        if (url.contains(PSIPHON_SHOW_ADS))
         {
-            setShowAds();
+            showAds = true;
         }
-        if (url.contains("psiphon_skip_homepage"))
+        if (url.contains(PSIPHON_SKIP_HOMEPAGE))
         {
             setSkipHomePage();
         }
-        for (int i = 0; i < m_homePages.size(); i++)
+        boolean duplicateHomePage = false;
+        for (String homePage : m_homePages)
         {
-            if (m_homePages.get(i).equals(url))
+            if (homePage.equals(url))
             {
-                return;
+                duplicateHomePage = true;
+            }
+            if (homePage.contains(PSIPHON_SHOW_ADS))
+            {
+                showAds = true;
             }
         }
-        m_homePages.add(url);
+        if (!duplicateHomePage)
+        {
+            m_homePages.add(url);
+        }
+        setShowAds(context, showAds);
     }
 
     public synchronized ArrayList<String> getHomePages()
