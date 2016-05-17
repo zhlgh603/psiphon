@@ -36,32 +36,27 @@
     }
 </style>
 
-<h1>Psiphon 3 Nagios Monitoring</h1>
 <%
-
-added_hosts, pruned_hosts, nagios_failed, runtime = data
-
-added_hosts_count = len(added_hosts)
-pruned_hosts_count = len(pruned_hosts)
-
+    import datetime
+    
+    header, host_records = data
+    
+    added_hosts_count = len([hosts for hosts in host_records for h in hosts['added_hosts']])
+    pruned_hosts_count = len([hosts for hosts in host_records for h in hosts['pruned_hosts']])
 %>
 
-<h3>Runtime: ${runtime}</h3>
-% if nagios_failed:
-    <h3>Nagios Failure</h3>
-% endif
+<h1>${header}</h1>
 
 <h3>Added Hosts: ${added_hosts_count}</h3>
-% if added_hosts_count > 0:
-    <table>
-    <thead>
-        <tr>
-            <th>Host name</th>
-            <th>Provider</th>
-        </tr>
-    </thead>
-    <tbody>
-        % for host_id in added_hosts:
+<table>
+<tr>
+    <th>Host Name</th>
+    <th>Provider</th>
+    <th>Time Added</th>
+</tr>
+% for record in host_records:
+    % if len(record['added_hosts']) > 0:
+        % for host_id in record['added_hosts']:
             <tr>
                 <td>${host_id}</td>
                 % if host_id.startswith('do-'):
@@ -75,23 +70,23 @@ pruned_hosts_count = len(pruned_hosts)
                 % else:
                     <td>unknown</td>
                 % endif
+                <td>${datetime.datetime.fromtimestamp(record['timestamp']).strftime("%Y-%m-%d %H:%M:%S")}</td>
             </tr>
         % endfor
-    </tbody>
-    </table>
-% endif
+    % endif
+% endfor
+</table>
 
 <h3>Pruned Hosts: ${pruned_hosts_count}</h3>
-% if pruned_hosts_count > 0:
-    <table>
-    <thead>
-        <tr>
-            <th>Host name</th>
-            <th>Provider</th>
-        </tr>
-    </thead>
-    <tbody>
-        % for host_id in pruned_hosts:
+<table>
+<tr>
+    <th>Host Name</th>
+    <th>Provider</th>
+    <th>Time Pruned</th>
+</tr>
+% for record in host_records:
+    % if len(record['pruned_hosts']) > 0:
+        % for host_id in record['pruned_hosts']:
             <tr>
                 <td>${host_id}</td>
                 % if host_id.startswith('do-'):
@@ -105,9 +100,9 @@ pruned_hosts_count = len(pruned_hosts)
                 % else:
                     <td>unknown</td>
                 % endif
+                <td>${datetime.datetime.fromtimestamp(record['timestamp']).strftime("%Y-%m-%d %H:%M:%S")}</td>
             </tr>
         % endfor
-    </tbody>
-    </table>
-% endif
-
+    % endif
+% endfor
+</table>

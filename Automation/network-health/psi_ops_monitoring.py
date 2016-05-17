@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright (c) 2015, Psiphon Inc.
+# Copyright (c) 2016, Psiphon Inc.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -19,8 +19,11 @@
 
 import os
 import datetime
+import time
 import shutil
 import re
+import json
+import optparse
 
 import sys
 try:
@@ -32,7 +35,7 @@ try:
 except:
     sys.exit()
 
-from subprocess import call
+import subprocess
 
 import psi_ops
 
@@ -44,6 +47,8 @@ from mako.lookup import TemplateLookup
 from mako import exceptions
 
 MAKO_TEMPLATE = 'psi_mail_nagios_template.mako'
+HOST_CHANGES_JSON_FILE = 'host_changes.json'
+LOCAL_CONFIG_FILE = 'psi_ops_monitoring_config.json'
 
 # Using the FeedbackDecryptor's mail capabilities
 sys.path.append(os.path.abspath(os.path.join('..', '..', 'EmailResponder')))
@@ -53,15 +58,23 @@ import sender
 from config import config
 
 
-def prep_mail_record(added_hosts, pruned_hosts, nagios_failed):
-    runtime = datetime.datetime.now()
-    record = (added_hosts, pruned_hosts, nagios_failed, runtime)
-    send_mail(record)
+def load_local_config():
+    '''
+        Load a local config file.
+    '''
+    try:
+        if os.path.exists(LOCAL_CONFIG_FILE):
+            with open(LOCAL_CONFIG_FILE, 'r') as f:
+                json_config_file_contents = json.loads(f.read())
+        return json_config_file_contents
+    except:
+        print "Could not read in local config file: %s" % LOCAL_CONFIG_FILE
+        sys.exit(1)
 
 
 # Formats record using a mako template and sends email
 def send_mail(record, subject='Nagios Host Monitoring', 
-              template_filename=MAKO_TEMPLATE):
+              template_filename=MAKO_TEMPLATE, emailRecipients=None):
     
     if not os.path.isfile(template_filename):
         raise
@@ -77,7 +90,10 @@ def send_mail(record, subject='Nagios Host Monitoring',
     # CSS in email HTML must be inline
     rendered = pynliner.fromString(rendered)
     
-    sender.send(config['emailRecipients'], config['emailUsername'], subject, None, rendered)
+    if emailRecipients is None:
+        emailRecipients = config['emailRecipients']
+    
+    sender.send(emailRecipients, config['emailUsername'], subject, None, rendered)
 
 
 def update_dat():
@@ -332,7 +348,58 @@ def generate_changed_psiphon_hosts_list(active_host_cfg, backup_host_cfg):
     return(added_hosts, pruned_hosts)        
 
 
-def main():
+def save_host_changes(added_hosts, pruned_hosts):
+    '''
+        save_host_changes to a file to be sent as a status update daily.
+    '''
+    json_file = HOST_CHANGES_JSON_FILE
+    if os.path.exists(json_file):
+        with open(json_file, 'r') as f:
+            json_data = json.loads(f.read())
+    else:
+        json_data = list()
+    
+    data = {
+        'timestamp': time.time(), 
+        'added_hosts': added_hosts,
+        'pruned_hosts': pruned_hosts,
+        }
+        
+    json_data.append(data)
+    
+    with open(json_file, 'w') as f:
+        json.dump(json_data, f)
+
+
+def email_host_changes(local_config):
+    json_file = HOST_CHANGES_JSON_FILE
+    with open(json_file, 'r') as f:
+        data = json.loads(f.read())
+    
+    record = ('Psiphon 3 Nagios Daily Summary', data)
+    
+    send_mail(record, emailRecipients=local_config['email_recipients'])
+
+
+def email_nagios_failure(local_config, err_lines):
+    record = err_lines
+    send_mail(
+        record, 
+        subject="Psiphon Nagios Service Failure", 
+        template_filename='psi_mail_nagios_failure_template.mako',
+        emailRecipients=local_config['email_recipients'])
+
+
+def rotate_log_file(logfile=HOST_CHANGES_JSON_FILE):
+    '''
+        rotate_log_file will back up the (JSON) log file.
+        By default this will be called daily
+    '''
+    if os.path.exists(logfile):
+        shutil.move(logfile, (logfile + '.bak'))
+
+
+def main(local_config):
     psinet = psi_ops.PsiphonNetwork.load_from_file(PSI_OPS_DB_FILENAME)
     active_cfg_path = os.path.join(os.path.abspath('.'), 'objects', 'psiphon', 'active')
     
@@ -396,21 +463,36 @@ def main():
         with open(active_hostgroup_providers_cfg, 'w') as file_out:
             file_out.write(hostgroup_providers)
         
-        nagios_failed = False
-        nagios_reload = call(['sudo', 'service', 'nagios', 'reload'])
-        if nagios_reload != 0:
-            nagios_failed = True
+        nagios_reload_cmd = ['sudo', 'service', 'nagios', 'reload']
+        subprocess.check_output(nagios_reload_cmd)
         
-        if len(added_hosts) > 0 or len(pruned_hosts) > 0 or nagios_failed:
-            prep_mail_record(added_hosts, pruned_hosts, nagios_failed)
+        if len(added_hosts) > 0 or len(pruned_hosts) > 0:
+            save_host_changes(added_hosts, pruned_hosts)
+        
     except IOError, e:
         print str(e)
     except OSError, e:
         print str(e)
+    except subprocess.CalledProcessError, e:
+        email_nagios_failure(local_config, e.output)
     except Exception, e:
         print str(e)
 
 
 if __name__ == "__main__":
-    update_dat()
-    main()
+    parser = optparse.OptionParser('usage: %prog [options]')
+    parser.add_option("-m", "--send_mail", action="store_true", help="Send mail summary")
+    parser.add_option("-r", "--rotate_logs", action="store_true", help="Rotate log file")
+    parser.add_option("-u", "--update_hosts", action="store_true", help="Update hosts for monitoring")
+    
+    (options, _) = parser.parse_args()
+    
+    local_config = load_local_config()
+    
+    if options.send_mail:
+        email_host_changes(local_config)
+    if options.rotate_logs:
+        rotate_log_file()
+    if options.update_hosts:
+        update_dat()
+        main(local_config)
