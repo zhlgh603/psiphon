@@ -835,24 +835,28 @@ class ServerInstance(object):
                 is_valid_sig = signature_errors == None
 
                 self._log_event("client_verification", inputs +
-                                                    [
-                                                    ('apk_certificate_digest_sha256', jwt_payload_obj['apkCertificateDigestSha256'][0]),
-                                                    ('apk_digest_sha256', jwt_payload_obj['apkDigestSha256']),
-                                                    ('apk_package_name', jwt_payload_obj['apkPackageName']),
-                                                    ('certchain_errors', str(valid_certchain)),
-                                                    ('cts_profile_match', jwt_payload_obj['ctsProfileMatch']),
-                                                    ('extension', jwt_payload_obj['extension']),
-                                                    ('nonce', jwt_payload_obj['nonce']),
-                                                    ('signature_errors', str(signature_errors)),
-                                                    ('status', str(status)),
-                                                    ('status_string', status_string),
-                                                    ('valid_cn', valid_CN),
-                                                    ('valid_apk_cert', valid_apk_cert),
-                                                    ('valid_apk_packagename', valid_apk_packagename),
-                                                    ('valid_certchain', is_valid_certchain),
-                                                    ('valid_signature', is_valid_sig),
-                                                    ('verification_timestamp', timestamp)
-                                                    ])
+                                                    [('safetynet_check',
+                                                    {
+                                                        'apk_certificate_digest_sha256': jwt_payload_obj['apkCertificateDigestSha256'][0],
+                                                        'apk_digest_sha256': jwt_payload_obj['apkDigestSha256'],
+                                                        'apk_package_name': jwt_payload_obj['apkPackageName'],
+                                                        'certchain_errors': str(valid_certchain),
+                                                        'cts_profile_match': jwt_payload_obj['ctsProfileMatch'],
+                                                        'extension': jwt_payload_obj['extension'],
+                                                        'nonce': jwt_payload_obj['nonce'],
+                                                        'signature_errors': str(signature_errors),
+                                                        'status': str(status),
+                                                        'status_string': status_string,
+                                                        'valid_cn': valid_CN,
+                                                        'valid_apk_cert': valid_apk_cert,
+                                                        'valid_apk_packagename': valid_apk_packagename,
+                                                        'valid_certchain': is_valid_certchain,
+                                                        'valid_signature': is_valid_sig,
+                                                        'verification_timestamp': timestamp
+                                                    }
+                                                    )])
+
+
                 start_response('200 OK', [])
             except Exception as e:
                 self._log_event("client_verification", inputs + [('error_message',
