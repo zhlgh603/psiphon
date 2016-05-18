@@ -739,8 +739,9 @@ class ServerInstance(object):
 
         request = Request(environ)
 
-        # Logging
+        # get default inputs for logging
         get_inputs = self._get_inputs(request, "client_verification")
+        # still log malformed requests for now
         inputs = get_inputs if get_inputs else []
 
         if request.body:
@@ -757,6 +758,7 @@ class ServerInstance(object):
                 status_string = status_strings[status]
 
                 if (status != 0):
+                    # log errors for now
                     self._log_event("client_verification", inputs + [('error_message', status_string)])
                     start_response('200 OK', [])
                     return []
@@ -769,7 +771,7 @@ class ServerInstance(object):
                     payload = decode_base64(jwt_parts[1])
                     signature = decode_base64(jwt_parts[2])
                 else:
-                    # invalid request to /client_verification
+                    # invalid request to /client_verification, log for now
                     self._log_event("client_verification", inputs + [('error_message',
                                                                       'Invalid request to client_verification, malformed jwt')])
                     start_response('200 OK', [])
@@ -782,7 +784,7 @@ class ServerInstance(object):
                 x5c = jwt_header_obj['x5c']
 
                 if (len(x5c) == 0 or len(x5c) > 10):
-                    # invalid cert chain
+                    # invalid cert chain, log for now
                     # OpenSSL's default maximum chain length is 10
                     self._log_event("client_verification", inputs + [('error_message',
                                                                       'Invalid certchain of size %d' % len(x5c))])
@@ -825,30 +827,32 @@ class ServerInstance(object):
                 # verify packagename
                 valid_apk_packagename = jwt_payload_obj['apkPackageName'] == PSIPHON3_APKPACKAGENAME
 
-                # logging
-                timestamp = jwt_payload_obj['timestampMs']
+                # convert timestamp from ms to iso format
+                timestamp = datetime.fromtimestamp(jwt_payload_obj['timestampMs']/1000.0).isoformat() + 'Z'
 
                 # both will be error type otherwise
                 is_valid_certchain = valid_certchain == None
                 is_valid_sig = signature_errors == None
 
-                self._log_event("client_verification", inputs + [('status', str(status)),
-                                                      ('status_string', status_string),
-                                                      ('timestamp', timestamp),
-                                                      ('valid_certchain', is_valid_certchain),
-                                                      ('certchain_errors', str(valid_certchain)),
-                                                      ('valid_CN', valid_CN),
-                                                      ('valid_signature', is_valid_sig),
-                                                      ('signature_errors', str(signature_errors)),
-                                                      ('valid_apk_cert', valid_apk_cert),
-                                                      ('valid_apk_packagename', valid_apk_packagename),
-                                                      ('nonce', jwt_payload_obj['nonce']),
-                                                      ('apkPackageName', jwt_payload_obj['apkPackageName']),
-                                                      ('apkDigestSha256', jwt_payload_obj['apkDigestSha256']),
-                                                      ('apkCertificateDigestSha256', jwt_payload_obj['apkCertificateDigestSha256'][0]),
-                                                      ('ctsProfileMatch', jwt_payload_obj['ctsProfileMatch']),
-                                                      ('extension', jwt_payload_obj['extension'])
-                                                      ])
+                self._log_event("client_verification", inputs +
+                                                    [
+                                                    ('apk_certificate_digest_sha256', jwt_payload_obj['apkCertificateDigestSha256'][0]),
+                                                    ('apk_digest_sha256', jwt_payload_obj['apkDigestSha256']),
+                                                    ('apk_package_name', jwt_payload_obj['apkPackageName']),
+                                                    ('certchain_errors', str(valid_certchain)),
+                                                    ('cts_profile_match', jwt_payload_obj['ctsProfileMatch']),
+                                                    ('extension', jwt_payload_obj['extension']),
+                                                    ('nonce', jwt_payload_obj['nonce']),
+                                                    ('signature_errors', str(signature_errors)),
+                                                    ('status', str(status)),
+                                                    ('status_string', status_string),
+                                                    ('valid_cn', valid_CN),
+                                                    ('valid_apk_cert', valid_apk_cert),
+                                                    ('valid_apk_packagename', valid_apk_packagename),
+                                                    ('valid_certchain', is_valid_certchain),
+                                                    ('valid_signature', is_valid_sig),
+                                                    ('verification_timestamp', timestamp)
+                                                    ])
                 start_response('200 OK', [])
             except Exception as e:
                 self._log_event("client_verification", inputs + [('error_message',
