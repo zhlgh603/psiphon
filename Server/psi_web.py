@@ -50,6 +50,14 @@ from datetime import datetime
 from functools import wraps
 import psi_web_patch
 import multiprocessing
+from base64 import b64decode
+from base64 import urlsafe_b64decode
+from OpenSSL.crypto import X509Store, X509StoreContext
+from OpenSSL.crypto import load_certificate
+from OpenSSL.crypto import FILETYPE_PEM
+from OpenSSL.crypto import FILETYPE_ASN1
+from OpenSSL.crypto import verify
+
 
 # ===== PSINET database ===================================================
 
@@ -59,6 +67,9 @@ import psi_ops_discovery
 
 psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
+# ===== Globals =====
+
+CLIENT_VERIFICATION_REQUIRED = True
 
 # ===== Helpers =====
 
@@ -160,6 +171,12 @@ def safe_int(input):
         pass
     return return_value
 
+def decode_base64(data):
+    data = str(data)
+    missing_padding = 4 - len(data) % 4
+    if missing_padding:
+        data += b'='* missing_padding
+    return urlsafe_b64decode(data)
 
 def exception_logger(function):
     @wraps(function)
@@ -497,6 +514,9 @@ class ServerInstance(object):
 
         config["server_timestamp"] = datetime.utcnow().isoformat() + 'Z'
 
+        global CLIENT_VERIFICATION_REQUIRED
+        config["client_verification_required"] = CLIENT_VERIFICATION_REQUIRED
+
         # The entire config is JSON encoded and included as well.
 
         output.append('Config: ' + json.dumps(config))
@@ -701,6 +721,147 @@ class ServerInstance(object):
         return []
 
     @exception_logger
+    def client_verification(self, environ, start_response):
+        SAFTEYNET_CN = 'attest.android.com'
+        PSIPHON3_APKPACKAGENAME = 'com.psiphon3'
+        # cert of the root certificate authority (GeoTrust Global CA)
+        # which signs the intermediate certificate from Google (GIAG2)
+        GEOTRUST_CERT = '-----BEGIN CERTIFICATE-----\nMIIDVDCCAjygAwIBAgIDAjRWMA0GCSqGSIb3DQEBBQUAMEIxCzAJBgNVBAYTAlVT\nMRYwFAYDVQQKEw1HZW9UcnVzdCBJbmMuMRswGQYDVQQDExJHZW9UcnVzdCBHbG9i\nYWwgQ0EwHhcNMDIwNTIxMDQwMDAwWhcNMjIwNTIxMDQwMDAwWjBCMQswCQYDVQQG\nEwJVUzEWMBQGA1UEChMNR2VvVHJ1c3QgSW5jLjEbMBkGA1UEAxMSR2VvVHJ1c3Qg\nR2xvYmFsIENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2swYYzD9\n9BcjGlZ+W988bDjkcbd4kdS8odhM+KhDtgPpTSEHCIjaWC9mOSm9BXiLnTjoBbdq\nfnGk5sRgprDvgOSJKA+eJdbtg/OtppHHmMlCGDUUna2YRpIuT8rxh0PBFpVXLVDv\niS2Aelet8u5fa9IAjbkU+BQVNdnARqN7csiRv8lVK83Qlz6cJmTM386DGXHKTubU\n1XupGc1V3sjs0l44U+VcT4wt/lAjNvxm5suOpDkZALeVAjmRCw7+OC7RHQWa9k0+\nbw8HHa8sHo9gOeL6NlMTOdReJivbPagUvTLrGAMoUgRx5aszPeE4uwc2hGKceeoW\nMPRfwCvocWvk+QIDAQABo1MwUTAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBTA\nephojYn7qwVkDBF9qn1luMrMTjAfBgNVHSMEGDAWgBTAephojYn7qwVkDBF9qn1l\nuMrMTjANBgkqhkiG9w0BAQUFAAOCAQEANeMpauUvXVSOKVCUn5kaFOSPeCpilKIn\nZ57QzxpeR+nBsqTP3UEaBU6bS+5Kb1VSsyShNwrrZHYqLizz/Tt1kL/6cdjHPTfS\ntQWVYrmm3ok9Nns4d0iXrKYgjy6myQzCsplFAMfOEVEiIuCl6rYVSAlk6l5PdPcF\nPseKUgzbFbS9bZvlxrFUaKnjaZC2mqUPuLk/IH2uSrW4nOQdtqvmlKXBx4Ot2/Un\nhw4EbNX/3aBd7YdStysVAq45pmp06drE57xNNB6pXE0zX5IJL4hmXXeXxx12E6nV\n5fEWCRE11azbJHFwLJhWC9kXtNHjUStedejV0NxPNO3CBWaAocvmMw==\n-----END CERTIFICATE-----\n'
+        # base64 encoded sha256 hash of the license used to sign the android
+        # client (.apk) https://psiphon.ca/en/faq.html#authentic-android
+        #
+        # keytool -printcert -file CERT.RSA
+        # SHA256: 76:DB:EF:15:F6:77:26:D4:51:A1:23:59:B8:57:9C:0D:7A:9F:63:5D:52:6A:A3:74:24:DF:13:16:32:F1:78:10
+        #
+        # echo dtvvFfZ3JtRRoSNZuFecDXqfY11SaqN0JN8TFjLxeBA= | base64 -d | hexdump  -e '32/1 "%02X " "\n"'
+        # 76 DB EF 15 F6 77 26 D4 51 A1 23 59 B8 57 9C 0D 7A 9F 63 5D 52 6A A3 74 24 DF 13 16 32 F1 78 10
+        PSIPHON3_BASE64_CERTHASH = 'dtvvFfZ3JtRRoSNZuFecDXqfY11SaqN0JN8TFjLxeBA='
+
+        request = Request(environ)
+
+        # get default inputs for logging
+        get_inputs = self._get_inputs(request, "client_verification")
+        # still log malformed requests for now
+        inputs = get_inputs if get_inputs else []
+
+        if request.body:
+            try:
+                body = json.loads(request.body)
+                status = body['status']
+
+                status_strings = {
+                    0: "API_REQUEST_OK",
+                    1: "API_REQUEST_FAILED",
+                    2: "API_CONNECT_FAILED"
+                }
+
+                status_string = status_strings[status]
+
+                if (status != 0):
+                    # log errors for now
+                    self._log_event("client_verification", inputs + [('error_message', status_string)])
+                    start_response('200 OK', [])
+                    return []
+
+                jwt = body['payload']
+                jwt_parts = jwt.split('.')
+
+                if (len(jwt_parts) == 3):
+                    header = decode_base64(jwt_parts[0])
+                    payload = decode_base64(jwt_parts[1])
+                    signature = decode_base64(jwt_parts[2])
+                else:
+                    # invalid request to /client_verification, log for now
+                    self._log_event("client_verification", inputs + [('error_message',
+                                                                      'Invalid request to client_verification, malformed jwt')])
+                    start_response('200 OK', [])
+                    return []
+
+                jwt_header_obj = json.loads(header)
+                jwt_payload_obj = json.loads(payload)
+
+                # verify cert chain
+                x5c = jwt_header_obj['x5c']
+
+                if (len(x5c) == 0 or len(x5c) > 10):
+                    # invalid cert chain, log for now
+                    # OpenSSL's default maximum chain length is 10
+                    self._log_event("client_verification", inputs + [('error_message',
+                                                                      'Invalid certchain of size %d' % len(x5c))])
+                    start_response('200 OK', [])
+                    return []
+
+
+                leaf_cert_data = b64decode(x5c[0])
+                leaf_cert = load_certificate(FILETYPE_ASN1, leaf_cert_data)
+                root_cert = load_certificate(FILETYPE_PEM, GEOTRUST_CERT)
+
+                store = X509Store()
+                store.add_cert(root_cert)
+
+                for cert_index in xrange(1,len(x5c)):
+                    intermediate_data = b64decode(x5c[cert_index])
+                    intermediate_cert = load_certificate(FILETYPE_ASN1, intermediate_data)
+                    store.add_cert(intermediate_cert)
+
+                store_ctx = X509StoreContext(store, leaf_cert)
+
+                try:
+                    valid_certchain = store_ctx.verify_certificate()
+                except Exception as e:
+                    valid_certchain = e
+
+                # verify CN
+                components = dict(leaf_cert.get_subject().get_components())
+                valid_CN = components['CN'] == SAFTEYNET_CN
+
+                # verify signature
+                try:
+                    signature_errors = verify(leaf_cert, signature, jwt_parts[0] + '.' + jwt_parts[1], 'sha256')
+                except Exception as e:
+                    signature_errors = e
+
+                # verify apkCertificateDigest
+                valid_apk_cert = jwt_payload_obj['apkCertificateDigestSha256'][0] == PSIPHON3_BASE64_CERTHASH
+
+                # verify packagename
+                valid_apk_packagename = jwt_payload_obj['apkPackageName'] == PSIPHON3_APKPACKAGENAME
+
+                # convert timestamp from ms to iso format
+                timestamp = datetime.fromtimestamp(jwt_payload_obj['timestampMs']/1000.0).isoformat() + 'Z'
+
+                # both will be error type otherwise
+                is_valid_certchain = valid_certchain == None
+                is_valid_sig = signature_errors == None
+
+                self._log_event("client_verification", inputs +
+                                                    [
+                                                    ('apk_certificate_digest_sha256', jwt_payload_obj['apkCertificateDigestSha256'][0]),
+                                                    ('apk_digest_sha256', jwt_payload_obj['apkDigestSha256']),
+                                                    ('apk_package_name', jwt_payload_obj['apkPackageName']),
+                                                    ('certchain_errors', str(valid_certchain)),
+                                                    ('cts_profile_match', jwt_payload_obj['ctsProfileMatch']),
+                                                    ('extension', jwt_payload_obj['extension']),
+                                                    ('nonce', jwt_payload_obj['nonce']),
+                                                    ('signature_errors', str(signature_errors)),
+                                                    ('status', str(status)),
+                                                    ('status_string', status_string),
+                                                    ('valid_cn', valid_CN),
+                                                    ('valid_apk_cert', valid_apk_cert),
+                                                    ('valid_apk_packagename', valid_apk_packagename),
+                                                    ('valid_certchain', is_valid_certchain),
+                                                    ('valid_signature', is_valid_sig),
+                                                    ('verification_timestamp', timestamp)
+                                                    ])
+                start_response('200 OK', [])
+            except Exception as e:
+                self._log_event("client_verification", inputs + [('error_message',
+                                                                  'Exception %s' % str(e))])
+
+                start_response('200 OK', [])
+        return []
+
+    @exception_logger
     def speed(self, environ, start_response):
         request = Request(environ)
 
@@ -833,6 +994,7 @@ class WebServerThread(threading.Thread):
                                      '/routes': server_instance.routes,
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
+                                     '/client_verification': server_instance.client_verification,
                                      '/speed': server_instance.speed,
                                      '/feedback': server_instance.feedback,
                                      '/check': server_instance.check,
