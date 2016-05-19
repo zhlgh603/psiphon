@@ -48,9 +48,8 @@ import com.mopub.mobileads.MoPubView;
 import com.mopub.mobileads.MoPubView.BannerAdListener;
 import com.psiphon3.psiphonlibrary.EmbeddedValues;
 import com.psiphon3.psiphonlibrary.PsiphonData;
-import com.psiphon3.psiphonlibrary.SupersonicRewardedVideoAd;
+import com.psiphon3.psiphonlibrary.SupersonicRewardedVideoWrapper;
 import com.psiphon3.psiphonlibrary.WebViewProxySettings;
-import com.supersonic.mediationsdk.integration.IntegrationHelper;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -74,6 +73,7 @@ public class StatusActivity
     private boolean m_tunnelWholeDevicePromptShown = false;
     private boolean m_loadedSponsorTab = false;
     private boolean m_temporarilyDisableInterstitial = false;
+    private SupersonicRewardedVideoWrapper mVideoAdListener;
 
     public StatusActivity()
     {
@@ -145,9 +145,10 @@ public class StatusActivity
         /**
          * Supersonic video ad integration TEST BEGIN
          */
-        SupersonicRewardedVideoAd videoAd = new SupersonicRewardedVideoAd("DefaultRewardedVideo");
-        videoAd.requestAd(this);
-        IntegrationHelper.validateIntegration(this);
+        if(mVideoAdListener == null) {
+            mVideoAdListener = new SupersonicRewardedVideoWrapper(this, "DefaultRewardedVideo");
+        }
+//        IntegrationHelper.validateIntegration(this);
         /**
          * Supersonic video ad integration TEST END
          */
@@ -174,6 +175,9 @@ public class StatusActivity
     public void onPause()
     {
         super.onPause();
+        if(mVideoAdListener != null) {
+            mVideoAdListener.onPause();
+        }
     }
     
     @Override
@@ -182,6 +186,9 @@ public class StatusActivity
         super.onResume();
         m_temporarilyDisableInterstitial = false;
         initAds();
+        if(mVideoAdListener != null) {
+            mVideoAdListener.onResume();
+        }
     }
     
     @Override
@@ -479,6 +486,7 @@ public class StatusActivity
     @Override
     protected void startUp()
     {
+        mVideoAdListener.playVideo();
         // If the user hasn't set a whole-device-tunnel preference, show a prompt
         // (and delay starting the tunnel service until the prompt is completed)
 
