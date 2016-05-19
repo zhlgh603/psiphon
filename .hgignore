@@ -25,6 +25,8 @@ Client/psiclient/psiclient.aps
 *.opensdf
 *.user
 *.o
+*.VC.db
+*.VC.opendb
 
 Automation/Builds
 Automation/logs
