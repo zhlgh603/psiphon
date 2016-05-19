@@ -755,11 +755,15 @@ class ServerInstance(object):
                     2: "API_CONNECT_FAILED"
                 }
 
-                status_string = status_strings[status]
+                status_string = status_strings.get(status, "INVALID_STATUS: expected 0-2, got %d" % status)
 
                 if (status != 0):
                     # log errors for now
-                    self._log_event("client_verification", inputs + [('error_message', status_string)])
+                    self._log_event("client_verification", inputs + [('safetynet_check',
+                                                                    {
+                                                                        'error_message': status_string
+                                                                    }
+                                                                    )])
                     start_response('200 OK', [])
                     return []
 
@@ -772,8 +776,11 @@ class ServerInstance(object):
                     signature = decode_base64(jwt_parts[2])
                 else:
                     # invalid request to /client_verification, log for now
-                    self._log_event("client_verification", inputs + [('error_message',
-                                                                      'Invalid request to client_verification, malformed jwt')])
+                    self._log_event("client_verification", inputs + [('safetynet_check',
+                                                                    {
+                                                                        'error_message': 'Invalid request to client_verification, malformed jwt'
+                                                                    }
+                                                                    )])
                     start_response('200 OK', [])
                     return []
 
@@ -786,11 +793,13 @@ class ServerInstance(object):
                 if (len(x5c) == 0 or len(x5c) > 10):
                     # invalid cert chain, log for now
                     # OpenSSL's default maximum chain length is 10
-                    self._log_event("client_verification", inputs + [('error_message',
-                                                                      'Invalid certchain of size %d' % len(x5c))])
+                    self._log_event("client_verification", inputs + [('safetynet_check',
+                                                                    {
+                                                                        'error_message': 'Invalid certchain of size %d' % len(x5c)
+                                                                    }
+                                                                    )])
                     start_response('200 OK', [])
                     return []
-
 
                 leaf_cert_data = b64decode(x5c[0])
                 leaf_cert = load_certificate(FILETYPE_ASN1, leaf_cert_data)
@@ -855,13 +864,13 @@ class ServerInstance(object):
                                                         'verification_timestamp': timestamp
                                                     }
                                                     )])
-
-
                 start_response('200 OK', [])
             except Exception as e:
-                self._log_event("client_verification", inputs + [('error_message',
-                                                                  'Exception %s' % str(e))])
-
+                self._log_event("client_verification", inputs + [('safetynet_check',
+                                                                {
+                                                                    'error_message': 'Exception: %s' % str(e)
+                                                                }
+                                                                )])
                 start_response('200 OK', [])
         return []
 
