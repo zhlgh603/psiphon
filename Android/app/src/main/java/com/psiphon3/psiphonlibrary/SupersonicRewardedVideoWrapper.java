@@ -14,25 +14,36 @@ import com.supersonic.mediationsdk.sdk.SupersonicFactory;
 
 import java.io.IOException;
 
-public class SupersonicRewardedVideoAd implements RewardedVideoListener {
+public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
+    private boolean mIsInitialized = false;
     private Supersonic mMediationAgent;
     private  String mPlacement;
-    private AsyncTask mUserIdRequestTask;
+    private Activity mActivity;
+
+    private AsyncTask mGAIDRequestTask;
 
     //Set the Application Key - can be retrieved from Supersonic platform
     private final String mAppKey = "49a684d5";
 
-    public SupersonicRewardedVideoAd(String placement) {
+    public SupersonicRewardedVideoWrapper(Activity activity, String placement) {
         mPlacement = placement;
+        mActivity = activity;
         mMediationAgent = SupersonicFactory.getInstance();
+        mMediationAgent.setRewardedVideoListener(SupersonicRewardedVideoWrapper.this);
+        initialize();
     }
 
-    public void requestAd(Activity activity) {
-        if (mUserIdRequestTask != null && !mUserIdRequestTask.isCancelled()) {
-            mUserIdRequestTask.cancel(false);
+    public void initialize() {
+        if(mIsInitialized) {
+            return;
         }
-        mUserIdRequestTask = new UserIdRequestTask(activity).execute();
+
+        if (mGAIDRequestTask != null && !mGAIDRequestTask.isCancelled()) {
+            mGAIDRequestTask.cancel(false);
+        }
+        mGAIDRequestTask = new UserIdRequestTask().execute();
     }
+
     @Override
     public void onRewardedVideoInitSuccess() {
 
@@ -53,10 +64,16 @@ public class SupersonicRewardedVideoAd implements RewardedVideoListener {
 
     }
 
+    public void  playVideo() {
+        if(mIsInitialized && mMediationAgent.isRewardedVideoAvailable()) {
+            mMediationAgent.showRewardedVideo();
+        }
+    }
+
     @Override
     public void onVideoAvailabilityChanged(boolean available) {
         if(available){
-            mMediationAgent.showRewardedVideo(mPlacement);
+//            mMediationAgent.showRewardedVideo(mPlacement);
         }
     }
 
@@ -81,16 +98,12 @@ public class SupersonicRewardedVideoAd implements RewardedVideoListener {
     }
 
     private final class UserIdRequestTask extends AsyncTask<Void, Void, String> {
-        private final Activity mActivity;
-
-        UserIdRequestTask(Activity activity) {
-            mActivity = activity;
-        }
 
         @Override
         protected String doInBackground(Void... params) {
             try {
-                return AdvertisingIdClient.getAdvertisingIdInfo(mActivity).getId();
+                String GAID = AdvertisingIdClient.getAdvertisingIdInfo(SupersonicRewardedVideoWrapper.this.mActivity).getId();
+                return new String("unique_user_id");
             } catch (final IOException e) {
 
             } catch (final GooglePlayServicesNotAvailableException e) {
@@ -102,11 +115,22 @@ public class SupersonicRewardedVideoAd implements RewardedVideoListener {
         }
 
         @Override
-        protected void onPostExecute(String userId) {
-            if (userId != null) {
-                mMediationAgent.setRewardedVideoListener(SupersonicRewardedVideoAd.this);
-                mMediationAgent.initRewardedVideo(mActivity, SupersonicRewardedVideoAd.this.mAppKey, userId);
+        protected void onPostExecute(String GAID) {
+            if (GAID != null) {
+                mMediationAgent.initRewardedVideo(mActivity, SupersonicRewardedVideoWrapper.this.mAppKey, GAID);
+                SupersonicRewardedVideoWrapper.this.mIsInitialized = true;
             }
+        }
+    }
+
+    public void onPause() {
+        if (mMediationAgent != null) {
+            mMediationAgent.onPause(mActivity);
+        }
+    }
+    public void onResume() {
+        if (mMediationAgent != null) {
+            mMediationAgent.onResume(mActivity);
         }
     }
 }
