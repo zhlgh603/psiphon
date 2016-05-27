@@ -232,9 +232,6 @@ public class StatusActivity
     {
         deInitAds();
         delayHandler.removeCallbacks(enableFreeTrial);
-        if(m_supersonicWrapper != null) {
-            m_supersonicWrapper.onDestroy();
-        }
         super.onDestroy();
     }
 
@@ -566,6 +563,18 @@ public class StatusActivity
             loadFullScreenAd();
         }
 
+        if (show)
+        {
+            // Initialize Supersonic video ads
+            if (m_supersonicWrapper == null) {
+                m_supersonicWrapper = new SupersonicRewardedVideoWrapper(this);
+            }
+        }
+
+        findViewById(R.id.subscriptionPromptMessage).setVisibility(show ? View.VISIBLE : View.GONE);
+        findViewById(R.id.subscribeButton).setVisibility(show ? View.VISIBLE : View.GONE);
+        findViewById(R.id.watchRewardedVideoButton).setVisibility(show && m_supersonicWrapper.isRewardedVideoAvailable() ? View.VISIBLE : View.GONE);
+
         TextView textViewRemainingMinutes = (TextView) findViewById(R.id.timeRemaining);
         if (show)
         {
@@ -574,17 +583,7 @@ public class StatusActivity
                     getResources().getString(R.string.FreeTrialRemainingTime),
                     DateUtils.formatElapsedTime(
                             freeTrialRemainingSeconds)));
-
-            // Initialize Supersonic video ads
-            if (m_supersonicWrapper == null) {
-                m_supersonicWrapper = new SupersonicRewardedVideoWrapper(this, "PsiphonProVideoPlacement");
-            }
         }
-
-        findViewById(R.id.subscriptionPromptMessage).setVisibility(show ? View.VISIBLE : View.GONE);
-        findViewById(R.id.subscribeButton).setVisibility(show ? View.VISIBLE : View.GONE);
-        findViewById(R.id.watchRewardedVideoButton).setVisibility(show && m_supersonicWrapper.isRewardedVideoAvailable() ? View.VISIBLE : View.GONE);
-
         textViewRemainingMinutes.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
@@ -696,5 +695,11 @@ public class StatusActivity
             m_moPubInterstitial.destroy();
         }
         m_moPubInterstitial = null;
+
+        if (m_supersonicWrapper != null)
+        {
+            m_supersonicWrapper.onDestroy();
+        }
+        m_supersonicWrapper = null;
     }
 }
