@@ -21,7 +21,6 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
 
     private boolean mIsInitialized = false;
     private Supersonic mMediationAgent;
-    private  String mPlacement;
     private WeakReference<Activity> mWeakActivity;
     private boolean mIsVideoAvailable = false;
 
@@ -30,8 +29,7 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
     //Set the Application Key - can be retrieved from Supersonic platform
     private final String mAppKey = "49a64b4d";
 
-    public SupersonicRewardedVideoWrapper(Activity activity, String placement) {
-        mPlacement = placement;
+    public SupersonicRewardedVideoWrapper(Activity activity) {
         mWeakActivity = new WeakReference<Activity>(activity);
         mMediationAgent = SupersonicFactory.getInstance();
         mMediationAgent.setRewardedVideoListener(SupersonicRewardedVideoWrapper.this);
@@ -126,14 +124,9 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
             Activity activity = SupersonicRewardedVideoWrapper.this.mWeakActivity.get();
             if (activity != null) {
                 try {
-                    String GAID = AdvertisingIdClient.getAdvertisingIdInfo(activity).getId();
-                    return GAID;
-                } catch (final IOException e) {
-
-                } catch (final GooglePlayServicesNotAvailableException e) {
-
-                } catch (final GooglePlayServicesRepairableException e) {
-
+                    return AdvertisingIdClient.getAdvertisingIdInfo(activity).getId();
+                } catch (final IOException | GooglePlayServicesNotAvailableException | GooglePlayServicesRepairableException e) {
+                    // do nothing, fall through
                 }
             }
             return null;
