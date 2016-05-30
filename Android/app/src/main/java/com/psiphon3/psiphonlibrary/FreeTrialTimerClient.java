@@ -9,7 +9,6 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.RemoteException;
-import android.util.Log;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -50,7 +49,6 @@ public class FreeTrialTimerClient {
         mConnection = new android.content.ServiceConnection() {
             public void onServiceConnected(ComponentName className,
                                            IBinder service) {
-                Log.d("Psiphon-Pro", "client:onServiceConnected");
                 mServiceMessenger = new Messenger(service);
                 /** Send all pending messages to the newly created Service. **/
                 synchronized (m_queue) {
@@ -68,7 +66,6 @@ public class FreeTrialTimerClient {
             public void onServiceDisconnected(ComponentName className) {
                 // This is called when the connection with the service has been
                 // unexpectedly disconnected -- that is, its process crashed.
-                Log.d("Psiphon-Pro", "client:onServiceDisconnected");
                 mServiceMessenger = null;
             }
         };

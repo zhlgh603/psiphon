@@ -109,7 +109,7 @@ public class FreeTrialTimerService extends Service {
                 long remainingSeconds = calcRemainingTimeSeconds(m_lastReadTimeSeconds, m_startedTimeMillis);
                 FreeTrialTimeStore.setRemainingTimeSeconds(FreeTrialTimerService.this, remainingSeconds);
 
-                Log.d("Psiphon-Pro", "periodic store remaining seconds: " + remainingSeconds);
+                Log.d(PsiphonConstants.TAG, "periodic store remaining seconds: " + remainingSeconds);
             }
             m_timerHandler.postAtTime(this, m_messageTag, SystemClock.uptimeMillis() + STORE_PERIOD_MILLIS);
         }
@@ -133,7 +133,7 @@ public class FreeTrialTimerService extends Service {
             }
 
             MessageType msgType = MessageType.getType(msg.what);
-            Log.d("Psiphon-Pro", "service:handleMessage: " + msgType.name());
+            Log.d(PsiphonConstants.TAG, "service:handleMessage: " + msgType.name());
 
             switch (msgType) {
                 case MSG_CLIENT_REGISTER:
@@ -161,7 +161,7 @@ public class FreeTrialTimerService extends Service {
     private void onUnregisterClient(Messenger client) {
         ClientObject lookupClient = new ClientObject(client, 0, 0);
         mClients.remove(lookupClient);
-        Log.d("Psiphon-Pro", "onUnregisterClient, mClients size: " + mClients.size());
+        Log.d(PsiphonConstants.TAG, "onUnregisterClient, mClients size: " + mClients.size());
     }
 
     private void onRegisterClient(Messenger client, int msgType, int updateInterval) {
@@ -178,7 +178,7 @@ public class FreeTrialTimerService extends Service {
         } catch (RemoteException e) {
 
         }
-        Log.d("Psiphon-Pro", "onRegisterClient, mClients size: " + mClients.size());
+        Log.d(PsiphonConstants.TAG, "onRegisterClient, mClients size: " + mClients.size());
     }
 
     private void onAddTimeSeconds(long seconds) {
@@ -190,7 +190,7 @@ public class FreeTrialTimerService extends Service {
     }
 
     private void onStartTimer() {
-        Log.d("Psiphon-Pro", "onStartTimer()");
+        Log.d(PsiphonConstants.TAG, "onStartTimer()");
 
         // Unschedule all client updates
         m_timerHandler.removeCallbacksAndMessages(m_messageTag);
@@ -220,7 +220,7 @@ public class FreeTrialTimerService extends Service {
     }
 
     private void onStopTimer() {
-        Log.d("Psiphon-Pro", "called onStopTimer()");
+        Log.d(PsiphonConstants.TAG, "called onStopTimer()");
         m_timerHandler.removeCallbacksAndMessages(m_messageTag);
 
         sendUpdateToAllClients();
@@ -262,7 +262,7 @@ public class FreeTrialTimerService extends Service {
 
     @Override
     public void onCreate() {
-        Log.d("Psiphon-Pro", "Service onCreate()");
+        Log.d(PsiphonConstants.TAG, "Service onCreate()");
 
         // Get time from storage if not cached
         if (m_lastReadTimeSeconds < 0) {
@@ -272,20 +272,20 @@ public class FreeTrialTimerService extends Service {
 
     @Override
     public void onDestroy() {
-        Log.d("Psiphon-Pro", "Service onDestroy()");
+        Log.d(PsiphonConstants.TAG, "Service onDestroy()");
         onStopTimer();
         mClients.clear();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
-        Log.d("Psiphon-Pro", "Service onBind()");
+        Log.d(PsiphonConstants.TAG, "Service onBind()");
         return m_messenger.getBinder();
     }
 
     @Override
     public boolean onUnbind(Intent intent) {
-        Log.d("Psiphon-Pro", "Service onUnbind()");
+        Log.d(PsiphonConstants.TAG, "Service onUnbind()");
         return super.onUnbind(intent);
     }
 

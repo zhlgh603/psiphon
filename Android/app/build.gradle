@@ -21,6 +21,7 @@ android {
                 targetSdkVersion 21
                 versionCode verCode
                 versionName verName
+                multiDexEnabled false
             }
         } else {
             throw new GradleException('version.properties found but entries are missing')
@@ -33,6 +34,15 @@ android {
         release
     }
 
+    productFlavors{
+        prod {
+            //use defaultConfig values
+        }
+        dev {
+            minSdkVersion 21
+            multiDexEnabled true
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
