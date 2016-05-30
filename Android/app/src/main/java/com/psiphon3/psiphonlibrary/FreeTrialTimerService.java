@@ -133,7 +133,7 @@ public class FreeTrialTimerService extends Service {
             }
 
             MessageType msgType = MessageType.getType(msg.what);
-            Log.d("Psiphon-Pro", "sevice:handleMessage: " + msgType.name());
+            Log.d("Psiphon-Pro", "service:handleMessage: " + msgType.name());
 
             switch (msgType) {
                 case MSG_CLIENT_REGISTER:

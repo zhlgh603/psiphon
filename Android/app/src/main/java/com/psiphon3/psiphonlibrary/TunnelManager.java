@@ -104,8 +104,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
                 }
             }
         });
-
-}
+    }
 
     // Implementation of android.app.Service.onStartCommand
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -116,6 +115,8 @@ public class TunnelManager implements PsiphonTunnel.HostService {
         if (mNotificationBuilder == null) {
             mNotificationBuilder = new NotificationCompat.Builder(m_parentService);
         }
+
+        m_freeTrialTimerClient.registerForTimeUpdates();
 
         if (m_firstStart) {
             m_parentService.startForeground(R.string.psiphon_service_notification_id, this.createNotification(false));
@@ -154,6 +155,9 @@ public class TunnelManager implements PsiphonTunnel.HostService {
         }
         m_tunnelThreadStopSignal = null;
         m_tunnelThread = null;
+
+        m_freeTrialTimerClient.unregisterFromTimeUpdates();
+        m_freeTrialTimerClient.doUnbind();
     }
 
     // signalStopService signals the runTunnel thread to stop. The thread will
@@ -429,8 +433,6 @@ public class TunnelManager implements PsiphonTunnel.HostService {
             m_parentService.stopForeground(true);
             m_parentService.stopSelf();
             m_freeTrialTimerClient.requestStopTimer();
-            m_freeTrialTimerClient.unregisterFromTimeUpdates();
-            m_freeTrialTimerClient.doUnbind();
 
         }
     }
@@ -632,6 +634,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
             MyLog.v(R.string.tunnel_connecting, MyLog.Sensitivity.NOT_SENSITIVE);
 
             if (m_isReconnect.get()) {
+                m_freeTrialTimerClient.requestStopTimer();
                 IEvents events = PsiphonData.getPsiphonData().getCurrentEventsInterface();
                 if (events != null) {
                     events.signalUnexpectedDisconnect(m_parentService);
@@ -658,7 +661,6 @@ public class TunnelManager implements PsiphonTunnel.HostService {
 
 
         if (!PsiphonData.getPsiphonData().getHasValidSubscription()) {
-            m_freeTrialTimerClient.registerForTimeUpdates();
             m_freeTrialTimerClient.requestStartTimer();
         }
     }
