@@ -42,7 +42,7 @@ import com.mopub.mobileads.MoPubErrorCode;
 import com.mopub.mobileads.MoPubInterstitial;
 import com.mopub.mobileads.MoPubInterstitial.InterstitialAdListener;
 import com.psiphon3.psiphonlibrary.EmbeddedValues;
-import com.psiphon3.psiphonlibrary.FreeTrialTimer;
+import com.psiphon3.psiphonlibrary.FreeTrialTimerClient;
 import com.psiphon3.psiphonlibrary.PsiphonConstants;
 import com.psiphon3.psiphonlibrary.PsiphonData;
 import com.psiphon3.psiphonlibrary.SupersonicRewardedVideoWrapper;
@@ -73,6 +73,9 @@ public class StatusActivity
     private boolean m_moPubInterstitialShowWhenLoaded = false;
     private SupersonicRewardedVideoWrapper m_supersonicWrapper;
 
+    private FreeTrialTimerClient m_freeTrialTimerClient;
+    private long m_remainingFreeTrialSeconds = 0;
+
     public StatusActivity()
     {
         super();
@@ -93,6 +96,24 @@ public class StatusActivity
         // NOTE: super class assumes m_tabHost is initialized in its onCreate
 
         super.onCreate(savedInstanceState);
+
+        m_freeTrialTimerClient = new FreeTrialTimerClient(this, PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER, 0);
+
+        m_freeTrialTimerClient.registerForTimeUpdates();
+
+        m_freeTrialTimerClient.setTimerUpdateListener(new FreeTrialTimerClient.TimerUpdateListener() {
+
+            @Override
+            public void onTimerUpdateSeconds(long seconds) {
+                m_remainingFreeTrialSeconds = seconds;
+                TextView textViewRemainingMinutes = (TextView) findViewById(R.id.timeRemaining);
+                textViewRemainingMinutes.setText(String.format(
+                        getResources().getString(R.string.FreeTrialRemainingTime),
+                        DateUtils.formatElapsedTime(
+                                seconds)));
+
+            }
+        });
 
         if (m_firstRun)
         {
@@ -181,7 +202,7 @@ public class StatusActivity
 
         if (0 == intent.getAction().compareTo(HANDSHAKE_SUCCESS))
         {
-            if (!PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this))
+            if (!(PsiphonData.getPsiphonData().getHasValidSubscription() || m_remainingFreeTrialSeconds > 0))
             {
                 startIab();
             }
@@ -217,7 +238,7 @@ public class StatusActivity
     protected void onPause()
     {
         if (PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
-                !PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this))
+                !(PsiphonData.getPsiphonData().getHasValidSubscription() || m_remainingFreeTrialSeconds > 0))
         {
             doToggle();
         }
@@ -232,9 +253,8 @@ public class StatusActivity
     {
         deInitAds();
         delayHandler.removeCallbacks(enableFreeTrial);
-        if(m_supersonicWrapper != null) {
-            m_supersonicWrapper.onDestroy();
-        }
+        m_freeTrialTimerClient.unregisterFromTimeUpdates();
+        m_freeTrialTimerClient.doUnbind();
         super.onDestroy();
     }
 
@@ -258,7 +278,7 @@ public class StatusActivity
     @Override
     protected void startUp()
     {
-        if (PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this))
+        if (PsiphonData.getPsiphonData().getHasValidSubscription() || m_remainingFreeTrialSeconds > 0 )
         {
             doStartUp();
         }
@@ -276,9 +296,6 @@ public class StatusActivity
         // Abort any outstanding ad requests
         deInitAds();
 
-        // Reset the FreeTrialTimerCachingWrapper because the tunnel service might modify the free trial timer independently
-        FreeTrialTimer.getFreeTrialTimerCachingWrapper().reset();
-        
         // If the user hasn't set a whole-device-tunnel preference, show a prompt
         // (and delay starting the tunnel service until the prompt is completed)
 
@@ -420,7 +437,7 @@ public class StatusActivity
             updateEgressRegionPreference(PsiphonConstants.REGION_CODE_ANY);
 
             if (PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
-                    !PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(StatusActivity.this))
+                    !(PsiphonData.getPsiphonData().getHasValidSubscription() || m_remainingFreeTrialSeconds > 0))
             {
                 // Stop the tunnel
                 doToggle();
@@ -495,7 +512,8 @@ public class StatusActivity
         deInitIab();
         
         if (PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
-                !PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this))
+                !(PsiphonData.getPsiphonData().getHasValidSubscription() || m_remainingFreeTrialSeconds > 0))
+
         {
             // Stop the tunnel
             doToggle();
@@ -518,7 +536,6 @@ public class StatusActivity
             }
         }
     }
-
     static final int INTERSTITIAL_REWARD_MINUTES = 60;
     private Handler delayHandler = new Handler();
     private Runnable enableFreeTrial = new Runnable()
@@ -535,7 +552,7 @@ public class StatusActivity
             else
             {
                 resumeServiceStateUI();
-                PsiphonData.getPsiphonData().startFreeTrial(StatusActivity.this, INTERSTITIAL_REWARD_MINUTES);
+                m_freeTrialTimerClient.requestAddTimeSeconds(INTERSTITIAL_REWARD_MINUTES * 60);
             }
         }
     };
@@ -560,24 +577,18 @@ public class StatusActivity
             show = false;
         }
 
-        if (show && !PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this) &&
+        if (show &&
+                !(PsiphonData.getPsiphonData().getHasValidSubscription() || m_remainingFreeTrialSeconds > 0) &&
                 m_moPubInterstitial == null)
         {
             loadFullScreenAd();
         }
 
-        TextView textViewRemainingMinutes = (TextView) findViewById(R.id.timeRemaining);
         if (show)
         {
-            long freeTrialRemainingSeconds = FreeTrialTimer.getFreeTrialTimerCachingWrapper().getRemainingTimeSeconds(this);
-            textViewRemainingMinutes.setText(String.format(
-                    getResources().getString(R.string.FreeTrialRemainingTime),
-                    DateUtils.formatElapsedTime(
-                            freeTrialRemainingSeconds)));
-
             // Initialize Supersonic video ads
             if (m_supersonicWrapper == null) {
-                m_supersonicWrapper = new SupersonicRewardedVideoWrapper(this, "PsiphonProVideoPlacement");
+                m_supersonicWrapper = new SupersonicRewardedVideoWrapper(this);
             }
         }
 
@@ -585,6 +596,7 @@ public class StatusActivity
         findViewById(R.id.subscribeButton).setVisibility(show ? View.VISIBLE : View.GONE);
         findViewById(R.id.watchRewardedVideoButton).setVisibility(show && m_supersonicWrapper.isRewardedVideoAvailable() ? View.VISIBLE : View.GONE);
 
+        TextView textViewRemainingMinutes = (TextView) findViewById(R.id.timeRemaining);
         textViewRemainingMinutes.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
@@ -665,7 +677,7 @@ public class StatusActivity
                 // Enable the free trial right away
                 delayHandler.removeCallbacks(enableFreeTrial);
                 resumeServiceStateUI();
-                PsiphonData.getPsiphonData().startFreeTrial(StatusActivity.this, INTERSTITIAL_REWARD_MINUTES);
+                m_freeTrialTimerClient.requestAddTimeSeconds(INTERSTITIAL_REWARD_MINUTES * 60);
             }
         });
 
@@ -696,5 +708,11 @@ public class StatusActivity
             m_moPubInterstitial.destroy();
         }
         m_moPubInterstitial = null;
+
+        if (m_supersonicWrapper != null)
+        {
+            m_supersonicWrapper.onDestroy();
+        }
+        m_supersonicWrapper = null;
     }
 }
