@@ -23,6 +23,8 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
     private Supersonic mMediationAgent;
     private WeakReference<Activity> mWeakActivity;
     private boolean mIsVideoAvailable = false;
+    private FreeTrialTimerClient m_freeTrialTimerClient;
+
 
     private AsyncTask mGAIDRequestTask;
 
@@ -108,7 +110,9 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
     public void onRewardedVideoAdRewarded(Placement placement) {
         Activity activity = mWeakActivity.get();
         if (activity != null) {
-            FreeTrialTimer.getFreeTrialTimerCachingWrapper().addTimeSyncSeconds(activity, VIDEO_REWARD_MINUTES * 60);
+
+            FreeTrialTimerClient freeTrialTimerclient = new FreeTrialTimerClient(activity, PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER, 0);
+            freeTrialTimerclient.requestAddTimeSeconds(VIDEO_REWARD_MINUTES * 60);
         }
     }
 
