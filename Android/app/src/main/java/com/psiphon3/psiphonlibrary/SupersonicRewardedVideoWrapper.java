@@ -111,7 +111,7 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
         Activity activity = mWeakActivity.get();
         if (activity != null) {
 
-            FreeTrialTimerClient freeTrialTimerclient = new FreeTrialTimerClient(activity, PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER, 0);
+            FreeTrialTimerClient freeTrialTimerclient = new FreeTrialTimerClient(activity, PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER_STATUS_ACTIVITY, 0);
             freeTrialTimerclient.requestAddTimeSeconds(VIDEO_REWARD_MINUTES * 60);
         }
     }

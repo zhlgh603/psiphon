@@ -38,7 +38,7 @@ public class PsiphonConstants
 
     public final static Boolean DOWNLOAD_WIFI_ONLY_PREFERENCE_DEFAULT = false;
 
-    public final static int MSG_UPDATE_TIME_FROM_TIMER = 101;
+    public final static int MSG_UPDATE_TIME_FROM_TIMER_STATUS_ACTIVITY = 101;
     public final static int MSG_UPDATE_TIME_FROM_TIMER_TUNNEL_MANAGER = 102;
 
 }
