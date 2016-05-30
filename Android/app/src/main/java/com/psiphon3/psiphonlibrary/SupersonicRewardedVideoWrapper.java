@@ -21,17 +21,17 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
 
     private boolean mIsInitialized = false;
     private Supersonic mMediationAgent;
-    private  String mPlacement;
     private WeakReference<Activity> mWeakActivity;
     private boolean mIsVideoAvailable = false;
+    private FreeTrialTimerClient m_freeTrialTimerClient;
+
 
     private AsyncTask mGAIDRequestTask;
 
     //Set the Application Key - can be retrieved from Supersonic platform
     private final String mAppKey = "49a64b4d";
 
-    public SupersonicRewardedVideoWrapper(Activity activity, String placement) {
-        mPlacement = placement;
+    public SupersonicRewardedVideoWrapper(Activity activity) {
         mWeakActivity = new WeakReference<Activity>(activity);
         mMediationAgent = SupersonicFactory.getInstance();
         mMediationAgent.setRewardedVideoListener(SupersonicRewardedVideoWrapper.this);
@@ -49,6 +49,12 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
         }
         mGAIDRequestTask = new UserIdRequestTask().execute();
         mIsVideoAvailable = mMediationAgent.isRewardedVideoAvailable();
+
+        /**
+         * Uncomment line below for verbose output of the
+         * Supersonic integration state
+         */
+        // IntegrationHelper.validateIntegration(mWeakActivity.get());
     }
 
     public void setRewardedVideoListener(RewardedVideoListener listener) {
@@ -104,7 +110,9 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
     public void onRewardedVideoAdRewarded(Placement placement) {
         Activity activity = mWeakActivity.get();
         if (activity != null) {
-            FreeTrialTimer.getFreeTrialTimerCachingWrapper().addTimeSyncSeconds(activity, VIDEO_REWARD_MINUTES * 60);
+
+            FreeTrialTimerClient freeTrialTimerclient = new FreeTrialTimerClient(activity, PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER, 0);
+            freeTrialTimerclient.requestAddTimeSeconds(VIDEO_REWARD_MINUTES * 60);
         }
     }
 
@@ -120,14 +128,9 @@ public class SupersonicRewardedVideoWrapper implements RewardedVideoListener {
             Activity activity = SupersonicRewardedVideoWrapper.this.mWeakActivity.get();
             if (activity != null) {
                 try {
-                    String GAID = AdvertisingIdClient.getAdvertisingIdInfo(activity).getId();
-                    return GAID;
-                } catch (final IOException e) {
-
-                } catch (final GooglePlayServicesNotAvailableException e) {
-
-                } catch (final GooglePlayServicesRepairableException e) {
-
+                    return AdvertisingIdClient.getAdvertisingIdInfo(activity).getId();
+                } catch (final IOException | GooglePlayServicesNotAvailableException | GooglePlayServicesRepairableException e) {
+                    // do nothing, fall through
                 }
             }
             return null;
