@@ -64,6 +64,7 @@ public class StatusActivity
     extends com.psiphon3.psiphonlibrary.MainBase.TabbedActivityBase
 {
     public static final String BANNER_FILE_NAME = "bannerImage";
+    private static final String FREE_TRIAL_REMAINING_SECONDS = "freeTrialRemainingSeconds";
 
     private ImageView m_banner;
     private boolean m_tunnelWholeDevicePromptShown = false;
@@ -96,6 +97,10 @@ public class StatusActivity
         // NOTE: super class assumes m_tabHost is initialized in its onCreate
 
         super.onCreate(savedInstanceState);
+        if (savedInstanceState != null) {
+            // Restore remaining trial seconds from saved state
+            m_remainingFreeTrialSeconds = savedInstanceState.getLong(FREE_TRIAL_REMAINING_SECONDS);
+        }
 
         m_freeTrialTimerClient = new FreeTrialTimerClient(this,
                 PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER_STATUS_ACTIVITY, 0);
@@ -237,11 +242,6 @@ public class StatusActivity
     @Override
     protected void onPause()
     {
-        if (PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
-                !(PsiphonData.getPsiphonData().getHasValidSubscription() || m_remainingFreeTrialSeconds > 0))
-        {
-            doToggle();
-        }
         if(m_supersonicWrapper != null) {
             m_supersonicWrapper.onPause();
         }
@@ -256,6 +256,14 @@ public class StatusActivity
         m_freeTrialTimerClient.unregisterFromTimeUpdates();
         m_freeTrialTimerClient.doUnbind();
         super.onDestroy();
+    }
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        // Save the user's current remaining trial time
+        if (m_remainingFreeTrialSeconds > 0) {
+            savedInstanceState.putLong(FREE_TRIAL_REMAINING_SECONDS, m_remainingFreeTrialSeconds);
+        }
+        super.onSaveInstanceState(savedInstanceState);
     }
 
     public void onToggleClick(View v)

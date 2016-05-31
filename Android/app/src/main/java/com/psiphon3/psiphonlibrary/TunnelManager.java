@@ -130,7 +130,11 @@ public class TunnelManager implements PsiphonTunnel.HostService {
 
                     //Request stop in case we are unbound/unregistered and the timer is still running
                     m_freeTrialTimerClient.requestStopTimer();
+
                     signalStopService();
+
+                    //stop self
+                    stopTimerUpdateVerifier();
                 }
                 currentSeconds = m_freeTrialRemainingSeconds;
                 m_Handler.postDelayed(this, TIMER_VERIFIER_CHECK_INTERVAL_SECONDS * 1000);
