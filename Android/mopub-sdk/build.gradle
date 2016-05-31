@@ -51,6 +51,7 @@ android {
         minSdkVersion 16
         targetSdkVersion 23
         consumerProguardFiles 'proguard.txt'
+        multiDexEnabled true
     }
 
     sourceSets {
