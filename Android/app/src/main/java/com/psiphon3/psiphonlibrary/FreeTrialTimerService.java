@@ -219,9 +219,10 @@ public class FreeTrialTimerService extends Service {
 
     private void onStopTimer() {
         MyLog.d("FreeTrialTimeService:onStopTimer()");
-        m_timerHandler.removeCallbacksAndMessages(m_messageTag);
 
+        m_timerHandler.removeCallbacksAndMessages(m_messageTag);
         sendUpdateToAllClients();
+
         if (m_lastReadTimeSeconds > 0 && m_startedTimeMillis > 0) {
             //store current remaining seconds
             m_lastReadTimeSeconds = calcRemainingTimeSeconds(m_lastReadTimeSeconds, m_startedTimeMillis);
