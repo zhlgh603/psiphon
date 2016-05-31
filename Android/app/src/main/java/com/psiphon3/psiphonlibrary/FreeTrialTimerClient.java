@@ -26,7 +26,7 @@ public class FreeTrialTimerClient {
     Context m_context;
 
     //code expected to be seen in msg.what from service
-    final public int m_msgTimeUpdateCode;
+    final public int m_msgClientUpdateCode;
 
     //timer update interval from service when timer is running
     final public int m_updateInterval;
@@ -39,8 +39,8 @@ public class FreeTrialTimerClient {
 
     private TimerUpdateListener m_listener;
 
-    public FreeTrialTimerClient(Context context, int msgTimeUpdateCode, int updateInterval) {
-        m_msgTimeUpdateCode = msgTimeUpdateCode;
+    public FreeTrialTimerClient(Context context, int clientUpdateCode, int updateInterval) {
+        m_msgClientUpdateCode = clientUpdateCode;
         m_updateInterval = updateInterval;
         m_context = context;
         m_queue = new ArrayList<>();
@@ -93,7 +93,7 @@ public class FreeTrialTimerClient {
         public void handleMessage(Message msg) {
             FreeTrialTimerClient target = mTarget.get();
             if (target != null) {
-                if (msg.what == target.m_msgTimeUpdateCode) {
+                if (msg.what == target.m_msgClientUpdateCode) {
                     Long l = ((Number) msg.obj).longValue();
                     if (target.m_listener != null)
                         target.m_listener.onTimerUpdateSeconds(l);
@@ -104,10 +104,28 @@ public class FreeTrialTimerClient {
         }
     }
 
-    public final void postToService(final FreeTrialTimerService.MessageType type,
+    private final void postToService(final FreeTrialTimerService.MessageType type,
                                     int updateMessageType,
-                                    int updateInterval,
-                                    long addSeconds) {
+                                    int updateInterval)
+    {
+        postToService(type, updateMessageType, updateInterval, 0);
+    }
+
+    private final void postToService(final FreeTrialTimerService.MessageType type)
+    {
+        postToService(type, 0, 0, 0);
+    }
+
+    private final void postToService(final FreeTrialTimerService.MessageType type,
+                                     final long seconds) {
+        postToService(type, 0, 0, seconds);
+
+    }
+
+    private final void postToService(final FreeTrialTimerService.MessageType type,
+                                     int updateMessageType,
+                                     int updateInterval,
+                                     long addSeconds) {
         /** Create a new message object. **/
         Object objAddSeconds = null;
         if (addSeconds > 0) {
@@ -161,25 +179,24 @@ public class FreeTrialTimerClient {
     }
 
     //Client messages
-
     public void registerForTimeUpdates() {
         postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_REGISTER,
-                m_msgTimeUpdateCode, m_updateInterval, 0);
+                m_msgClientUpdateCode, m_updateInterval);
     }
 
     public void unregisterFromTimeUpdates() {
-        postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_UNREGISTER, 0, 0, 0);
+        postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_UNREGISTER);
     }
 
     public void requestStartTimer() {
-        postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_START_TIMER, 0, 0, 0);
+        postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_START_TIMER);
     }
 
     public void requestStopTimer() {
-        postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_STOP_TIMER, 0, 0, 0);
+        postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_STOP_TIMER);
     }
 
     public void requestAddTimeSeconds(long seconds) {
-        postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_ADD_TIME_SECONDS, 0, 0, seconds);
+        postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_ADD_TIME_SECONDS, seconds);
     }
 }

@@ -54,6 +54,12 @@ import ca.psiphon.PsiphonTunnel;
 
 public class TunnelManager implements PsiphonTunnel.HostService {
 
+    // See the NOTE in m_timerVerifierRunnable initialization in the constructor
+    // for why TIMER_VERIFIER_CHECK_INTERVAL_SECONDS is not a nice round number
+
+    private static final int TIMER_VERIFIER_CHECK_INTERVAL_SECONDS = 31;
+    private static final int TIMER_UPDATE_INTERVAL_SECONDS = 1;
+
     public enum NotificationState {
         CONNECTING,
         CONNECTED
@@ -74,7 +80,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
     private String m_lastUpstreamProxyErrorMessage;
     private Handler m_Handler = new Handler();
     private GoogleSafetyNetApiWrapper m_safetyNetwrapper;
-
+    private Runnable m_timerVerifierRunnable;
 
     public TunnelManager(Service parentService) {
         m_parentService = parentService;
@@ -84,7 +90,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
 
         m_freeTrialTimerClient = new FreeTrialTimerClient(m_parentService,
                 PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER_TUNNEL_MANAGER,
-                1000);
+                TIMER_UPDATE_INTERVAL_SECONDS * 1000);
         m_freeTrialTimerClient.setTimerUpdateListener(new FreeTrialTimerClient.TimerUpdateListener() {
 
             @Override
@@ -104,7 +110,34 @@ public class TunnelManager implements PsiphonTunnel.HostService {
                 }
             }
         });
+
+        m_timerVerifierRunnable = new Runnable() {
+            final long startedSeconds = m_freeTrialRemainingSeconds;
+            long currentSeconds = startedSeconds;
+            @Override
+            public void run() {
+                if (m_freeTrialRemainingSeconds == currentSeconds) {
+                    // Timer service not sending updates while it is supposed to be running.
+                    // It is dead or stopped by request from other client or we somehow unbound/unregistered,
+                    // in any case tunnel should not be running when there are no timer updates
+                    //
+                    // NOTE: there's a potential case where another client calls
+                    // requestAddTimeSeconds() with value == TIMER_VERIFIER_CHECK_INTERVAL_SECONDS
+                    // that will cause m_freeTrialRemainingSeconds to reset between
+                    // verifier runs to currentSeconds value, that's why we set
+                    // to a somewhat odd value
+                    // TODO: MyLog.e() this?
+
+                    //Request stop in case we are unbound/unregistered and the timer is still running
+                    m_freeTrialTimerClient.requestStopTimer();
+                    signalStopService();
+                }
+                currentSeconds = m_freeTrialRemainingSeconds;
+                m_Handler.postDelayed(this, TIMER_VERIFIER_CHECK_INTERVAL_SECONDS * 1000);
+            }
+        };
     }
+
 
     // Implementation of android.app.Service.onStartCommand
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -257,7 +290,6 @@ public class TunnelManager implements PsiphonTunnel.HostService {
                 .setContentText(notificationText)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(notificationText))
                 .setTicker(ticker)
-                .setAutoCancel(true)
                 .setContentIntent(invokeActivityIntent);
 
         Notification notification = mNotificationBuilder.build();
@@ -432,9 +464,19 @@ public class TunnelManager implements PsiphonTunnel.HostService {
             // Stop service
             m_parentService.stopForeground(true);
             m_parentService.stopSelf();
-            m_freeTrialTimerClient.requestStopTimer();
 
+            m_freeTrialTimerClient.requestStopTimer();
+            stopTimerUpdateVerifier();
         }
+    }
+
+    private void stopTimerUpdateVerifier() {
+        m_Handler.removeCallbacks(m_timerVerifierRunnable);
+
+    }
+
+    private void startTimerUpdateVerifier() {
+        m_Handler.postDelayed(m_timerVerifierRunnable, TIMER_VERIFIER_CHECK_INTERVAL_SECONDS * 1000);
     }
 
     @Override
@@ -635,6 +677,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
 
             if (m_isReconnect.get()) {
                 m_freeTrialTimerClient.requestStopTimer();
+                stopTimerUpdateVerifier();
                 IEvents events = PsiphonData.getPsiphonData().getCurrentEventsInterface();
                 if (events != null) {
                     events.signalUnexpectedDisconnect(m_parentService);
@@ -662,6 +705,7 @@ public class TunnelManager implements PsiphonTunnel.HostService {
 
         if (!PsiphonData.getPsiphonData().getHasValidSubscription()) {
             m_freeTrialTimerClient.requestStartTimer();
+            startTimerUpdateVerifier();
         }
     }
 
