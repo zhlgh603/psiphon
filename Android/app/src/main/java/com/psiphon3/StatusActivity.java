@@ -97,10 +97,8 @@ public class StatusActivity
 
         super.onCreate(savedInstanceState);
 
-        m_freeTrialTimerClient = new FreeTrialTimerClient(this, PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER_STATUS_ACTIVITY, 0);
-
-        m_freeTrialTimerClient.registerForTimeUpdates();
-
+        m_freeTrialTimerClient = new FreeTrialTimerClient(this,
+                PsiphonConstants.MSG_UPDATE_TIME_FROM_TIMER_STATUS_ACTIVITY, 0);
         m_freeTrialTimerClient.setTimerUpdateListener(new FreeTrialTimerClient.TimerUpdateListener() {
 
             @Override
@@ -114,6 +112,8 @@ public class StatusActivity
 
             }
         });
+
+        m_freeTrialTimerClient.registerForTimeUpdates();
 
         if (m_firstRun)
         {
