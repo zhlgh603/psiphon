@@ -58,7 +58,6 @@ from OpenSSL.crypto import FILETYPE_PEM
 from OpenSSL.crypto import FILETYPE_ASN1
 from OpenSSL.crypto import verify
 
-
 # ===== PSINET database ===================================================
 
 sys.path.insert(0, os.path.abspath(os.path.join('..', 'Automation')))
@@ -723,7 +722,7 @@ class ServerInstance(object):
     @exception_logger
     def client_verification(self, environ, start_response):
         SAFTEYNET_CN = 'attest.android.com'
-        PSIPHON3_APKPACKAGENAME = 'com.psiphon3'
+        PSIPHON3_APK_PACKAGENAMES = ['com.psiphon3', 'com.psiphon3.subscription']
         # cert of the root certificate authority (GeoTrust Global CA)
         # which signs the intermediate certificate from Google (GIAG2)
         GEOTRUST_CERT = '-----BEGIN CERTIFICATE-----\nMIIDVDCCAjygAwIBAgIDAjRWMA0GCSqGSIb3DQEBBQUAMEIxCzAJBgNVBAYTAlVT\nMRYwFAYDVQQKEw1HZW9UcnVzdCBJbmMuMRswGQYDVQQDExJHZW9UcnVzdCBHbG9i\nYWwgQ0EwHhcNMDIwNTIxMDQwMDAwWhcNMjIwNTIxMDQwMDAwWjBCMQswCQYDVQQG\nEwJVUzEWMBQGA1UEChMNR2VvVHJ1c3QgSW5jLjEbMBkGA1UEAxMSR2VvVHJ1c3Qg\nR2xvYmFsIENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2swYYzD9\n9BcjGlZ+W988bDjkcbd4kdS8odhM+KhDtgPpTSEHCIjaWC9mOSm9BXiLnTjoBbdq\nfnGk5sRgprDvgOSJKA+eJdbtg/OtppHHmMlCGDUUna2YRpIuT8rxh0PBFpVXLVDv\niS2Aelet8u5fa9IAjbkU+BQVNdnARqN7csiRv8lVK83Qlz6cJmTM386DGXHKTubU\n1XupGc1V3sjs0l44U+VcT4wt/lAjNvxm5suOpDkZALeVAjmRCw7+OC7RHQWa9k0+\nbw8HHa8sHo9gOeL6NlMTOdReJivbPagUvTLrGAMoUgRx5aszPeE4uwc2hGKceeoW\nMPRfwCvocWvk+QIDAQABo1MwUTAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBTA\nephojYn7qwVkDBF9qn1luMrMTjAfBgNVHSMEGDAWgBTAephojYn7qwVkDBF9qn1l\nuMrMTjANBgkqhkiG9w0BAQUFAAOCAQEANeMpauUvXVSOKVCUn5kaFOSPeCpilKIn\nZ57QzxpeR+nBsqTP3UEaBU6bS+5Kb1VSsyShNwrrZHYqLizz/Tt1kL/6cdjHPTfS\ntQWVYrmm3ok9Nns4d0iXrKYgjy6myQzCsplFAMfOEVEiIuCl6rYVSAlk6l5PdPcF\nPseKUgzbFbS9bZvlxrFUaKnjaZC2mqUPuLk/IH2uSrW4nOQdtqvmlKXBx4Ot2/Un\nhw4EbNX/3aBd7YdStysVAq45pmp06drE57xNNB6pXE0zX5IJL4hmXXeXxx12E6nV\n5fEWCRE11azbJHFwLJhWC9kXtNHjUStedejV0NxPNO3CBWaAocvmMw==\n-----END CERTIFICATE-----\n'
@@ -761,7 +760,8 @@ class ServerInstance(object):
                     # log errors for now
                     self._log_event("client_verification", inputs + [('safetynet_check',
                                                                     {
-                                                                        'error_message': status_string
+                                                                        'error_message': status_string,
+                                                                        'payload': None
                                                                     }
                                                                     )])
                     start_response('200 OK', [])
@@ -778,7 +778,8 @@ class ServerInstance(object):
                     # invalid request to /client_verification, log for now
                     self._log_event("client_verification", inputs + [('safetynet_check',
                                                                     {
-                                                                        'error_message': 'Invalid request to client_verification, malformed jwt'
+                                                                        'error_message': 'Invalid request to client_verification, malformed jwt',
+                                                                        'payload': str(jwt)
                                                                     }
                                                                     )])
                     start_response('200 OK', [])
@@ -795,7 +796,8 @@ class ServerInstance(object):
                     # OpenSSL's default maximum chain length is 10
                     self._log_event("client_verification", inputs + [('safetynet_check',
                                                                     {
-                                                                        'error_message': 'Invalid certchain of size %d' % len(x5c)
+                                                                        'error_message': 'Invalid certchain of size %d' % len(x5c),
+                                                                        'payload': str(jwt)
                                                                     }
                                                                     )])
                     start_response('200 OK', [])
@@ -834,7 +836,7 @@ class ServerInstance(object):
                 valid_apk_cert = jwt_payload_obj['apkCertificateDigestSha256'][0] == PSIPHON3_BASE64_CERTHASH
 
                 # verify packagename
-                valid_apk_packagename = jwt_payload_obj['apkPackageName'] == PSIPHON3_APKPACKAGENAME
+                valid_apk_packagename = jwt_payload_obj['apkPackageName'] in PSIPHON3_APK_PACKAGENAMES
 
                 # convert timestamp from ms to iso format
                 timestamp = datetime.fromtimestamp(jwt_payload_obj['timestampMs']/1000.0).isoformat() + 'Z'
@@ -865,10 +867,17 @@ class ServerInstance(object):
                                                     }
                                                     )])
                 start_response('200 OK', [])
-            except Exception as e:
+            except Exception:
+                try:
+                    payload = json.loads(request.body).get('payload', None)
+                except (AttributeError, ValueError):
+                    payload = "No valid JSON could be decoded in request body"
+
+                exc_type, exc_obj, exc_tb = sys.exc_info()
                 self._log_event("client_verification", inputs + [('safetynet_check',
                                                                 {
-                                                                    'error_message': 'Exception: %s' % str(e)
+                                                                    'error_message': 'Exception: %s %s on line %s' % (str(exc_type), str(exc_obj), str(exc_tb.tb_lineno)),
+                                                                    'payload': payload
                                                                 }
                                                                 )])
                 start_response('200 OK', [])
