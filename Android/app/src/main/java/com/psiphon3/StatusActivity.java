@@ -19,10 +19,6 @@
 
 package com.psiphon3;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -31,16 +27,37 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.preference.PreferenceManager;
+import android.text.format.DateUtils;
 import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TabHost;
+import android.widget.TextView;
 
+import com.mopub.mobileads.MoPubErrorCode;
+import com.mopub.mobileads.MoPubInterstitial;
+import com.mopub.mobileads.MoPubInterstitial.InterstitialAdListener;
 import com.psiphon3.psiphonlibrary.EmbeddedValues;
+import com.psiphon3.psiphonlibrary.FreeTrialTimer;
+import com.psiphon3.psiphonlibrary.PsiphonConstants;
 import com.psiphon3.psiphonlibrary.PsiphonData;
+import com.psiphon3.psiphonlibrary.SupersonicRewardedVideoWrapper;
+import com.psiphon3.subscription.R;
+import com.psiphon3.util.IabHelper;
+import com.psiphon3.util.IabResult;
+import com.psiphon3.util.Inventory;
+import com.psiphon3.util.Purchase;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 
 public class StatusActivity
@@ -51,6 +68,10 @@ public class StatusActivity
     private ImageView m_banner;
     private boolean m_tunnelWholeDevicePromptShown = false;
     private boolean m_loadedSponsorTab = false;
+    private IabHelper m_iabHelper = null;
+    private MoPubInterstitial m_moPubInterstitial = null;
+    private boolean m_moPubInterstitialShowWhenLoaded = false;
+    private SupersonicRewardedVideoWrapper m_supersonicWrapper;
 
     public StatusActivity()
     {
@@ -66,6 +87,8 @@ public class StatusActivity
         m_banner = (ImageView)findViewById(R.id.banner);
         m_tabHost = (TabHost)findViewById(R.id.tabHost);
         m_toggleButton = (Button)findViewById(R.id.toggleButton);
+
+
 
         // NOTE: super class assumes m_tabHost is initialized in its onCreate
 
@@ -106,13 +129,6 @@ public class StatusActivity
             // Ignore failure
         }
 
-        // Auto-start on app first run
-        if (m_firstRun)
-        {
-            m_firstRun = false;
-            startUp();
-        }
-        
         m_loadedSponsorTab = false;
         HandleCurrentIntent();
         
@@ -121,6 +137,16 @@ public class StatusActivity
                 !m_loadedSponsorTab)
         {
             loadSponsorTab(false);
+        }
+    }
+
+    @Override
+    protected void onResume()
+    {
+        startIab();
+        super.onResume();
+        if(m_supersonicWrapper != null) {
+            m_supersonicWrapper.onResume();
         }
     }
 
@@ -155,6 +181,11 @@ public class StatusActivity
 
         if (0 == intent.getAction().compareTo(HANDSHAKE_SUCCESS))
         {
+            if (!PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this))
+            {
+                startIab();
+            }
+            
             // Show the home page. Always do this in browser-only mode, even
             // after an automated reconnect -- since the status activity was
             // brought to the front after an unexpected disconnect. In whole
@@ -181,6 +212,31 @@ public class StatusActivity
 
         // No explicit action for UNEXPECTED_DISCONNECT, just show the activity
     }
+    
+    @Override
+    protected void onPause()
+    {
+        if (PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
+                !PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this))
+        {
+            doToggle();
+        }
+        if(m_supersonicWrapper != null) {
+            m_supersonicWrapper.onPause();
+        }
+        super.onPause();
+    }
+    
+    @Override
+    public void onDestroy()
+    {
+        deInitAds();
+        delayHandler.removeCallbacks(enableFreeTrial);
+        if(m_supersonicWrapper != null) {
+            m_supersonicWrapper.onDestroy();
+        }
+        super.onDestroy();
+    }
 
     public void onToggleClick(View v)
     {
@@ -202,6 +258,27 @@ public class StatusActivity
     @Override
     protected void startUp()
     {
+        if (PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this))
+        {
+            doStartUp();
+        }
+        else
+        {
+            pauseServiceStateUI();
+            freeTrialCountdown = 10;
+            delayHandler.postDelayed(enableFreeTrial, 1000);
+            showFullScreenAd();
+        }
+    }
+    
+    private void doStartUp()
+    {
+        // Abort any outstanding ad requests
+        deInitAds();
+
+        // Reset the FreeTrialTimerCachingWrapper because the tunnel service might modify the free trial timer independently
+        FreeTrialTimer.getFreeTrialTimerCachingWrapper().reset();
+        
         // If the user hasn't set a whole-device-tunnel preference, show a prompt
         // (and delay starting the tunnel service until the prompt is completed)
 
@@ -277,5 +354,352 @@ public class StatusActivity
 
             startTunnel(this);
         }
+    }
+
+    static final String IAB_PUBLIC_KEY = "";
+    static final String IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU = "";
+    static final String[] OTHER_VALID_IAB_SUBSCRIPTION_SKUS = {};
+    static final int IAB_REQUEST_CODE = 10001;
+
+    synchronized
+    private void startIab()
+    {
+        if (m_iabHelper == null)
+        {
+            m_iabHelper = new IabHelper(this, IAB_PUBLIC_KEY);
+            m_iabHelper.startSetup(m_iabSetupFinishedListener);
+        }
+        else
+        {
+            queryInventory();
+        }
+    }
+    
+    private IabHelper.OnIabSetupFinishedListener m_iabSetupFinishedListener =
+            new IabHelper.OnIabSetupFinishedListener()
+    {
+        @Override
+        public void onIabSetupFinished(IabResult result)
+        {
+            if (result.isFailure())
+            {
+                handleIabFailure(result);
+            }
+            else
+            {
+                queryInventory();
+            }
+        }
+    };
+    
+    private IabHelper.QueryInventoryFinishedListener m_iabQueryInventoryFinishedListener =
+            new IabHelper.QueryInventoryFinishedListener()
+    {
+        @Override
+        public void onQueryInventoryFinished(IabResult result, Inventory inventory)
+        {
+            if (result.isFailure())
+            {
+                handleIabFailure(result);
+                return;
+            }
+            
+            List<String> validSubscriptionSkus = new ArrayList<String>(Arrays.asList(OTHER_VALID_IAB_SUBSCRIPTION_SKUS));
+            validSubscriptionSkus.add(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU);
+            for (String validSku : validSubscriptionSkus)
+            {
+                if (inventory.hasPurchase(validSku))
+                {
+                    proceedWithValidSubscription();
+                    return;
+                }
+            }
+
+            PsiphonData.getPsiphonData().setHasValidSubscription(false);
+
+            updateEgressRegionPreference(PsiphonConstants.REGION_CODE_ANY);
+
+            if (PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
+                    !PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(StatusActivity.this))
+            {
+                // Stop the tunnel
+                doToggle();
+            }
+        }
+    };
+    
+    private IabHelper.OnIabPurchaseFinishedListener m_iabPurchaseFinishedListener = 
+            new IabHelper.OnIabPurchaseFinishedListener()
+    {
+        @Override
+        public void onIabPurchaseFinished(IabResult result, Purchase purchase) 
+        {
+            if (result.isFailure())
+            {
+                handleIabFailure(result);
+            }      
+            else if (purchase.getSku().equals(IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU))
+            {
+                proceedWithValidSubscription();
+            }
+        }
+    };
+    
+    private void queryInventory()
+    {
+        try
+        {
+            if (m_iabHelper != null)
+            {
+                m_iabHelper.queryInventoryAsync(m_iabQueryInventoryFinishedListener);
+            }
+        }
+        catch (IllegalStateException ex)
+        {
+            handleIabFailure(null);
+        }
+    }
+    
+    private void launchSubscriptionPurchaseFlow()
+    {
+        try
+        {
+            if (m_iabHelper != null)
+            {
+                m_iabHelper.launchSubscriptionPurchaseFlow(this, IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU,
+                        IAB_REQUEST_CODE, m_iabPurchaseFinishedListener);
+            }
+        }
+        catch (IllegalStateException ex)
+        {
+            handleIabFailure(null);
+        }
+    }
+    
+    private void proceedWithValidSubscription()
+    {
+        PsiphonData.getPsiphonData().setHasValidSubscription(true);
+
+        // Auto-start on app first run
+        if (m_firstRun)
+        {
+            m_firstRun = false;
+            doStartUp();
+        }
+    }
+    
+    // NOTE: result may be null
+    private void handleIabFailure(IabResult result)
+    {
+        // try again next time
+        deInitIab();
+        
+        if (PsiphonData.getPsiphonData().getDataTransferStats().isConnected() &&
+                !PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this))
+        {
+            // Stop the tunnel
+            doToggle();
+        }
+        else
+        {
+            if (result != null &&
+                    result.getResponse() == IabHelper.IABHELPER_USER_CANCELLED)
+            {
+                // do nothing, onResume() calls startIAB()
+            }
+            else
+            {
+                // Start the tunnel anyway, IAB will get checked again once the tunnel is connected
+                if (m_firstRun)
+                {
+                    m_firstRun = false;
+                    doStartUp();
+                }
+            }
+        }
+    }
+
+    static final int INTERSTITIAL_REWARD_MINUTES = 60;
+    private Handler delayHandler = new Handler();
+    private Runnable enableFreeTrial = new Runnable()
+    {
+        @Override
+        public void run()
+        {
+            if (freeTrialCountdown > 0)
+            {
+                m_toggleButton.setText(String.valueOf(freeTrialCountdown));
+                freeTrialCountdown--;
+                delayHandler.postDelayed(this, 1000);
+            }
+            else
+            {
+                resumeServiceStateUI();
+                PsiphonData.getPsiphonData().startFreeTrial(StatusActivity.this, INTERSTITIAL_REWARD_MINUTES);
+            }
+        }
+    };
+    private int freeTrialCountdown;
+
+    // updateSubscriptionAndAdOptions() gets called once in onCreate().
+    // Don't show these options during the first few calls, to allow time for IAB to check
+    // for a valid subscription.
+    private int updateSubscriptionAndAdOptionsFlickerHackCountdown = 3;
+
+    @Override
+    protected void updateSubscriptionAndAdOptions(boolean show)
+    {
+        if (updateSubscriptionAndAdOptionsFlickerHackCountdown > 0)
+        {
+            show = false;
+            updateSubscriptionAndAdOptionsFlickerHackCountdown--;
+        }
+
+        if (PsiphonData.getPsiphonData().getHasValidSubscription())
+        {
+            show = false;
+        }
+
+        if (show && !PsiphonData.getPsiphonData().getHasValidSubscriptionOrFreeTime(this) &&
+                m_moPubInterstitial == null)
+        {
+            loadFullScreenAd();
+        }
+
+        TextView textViewRemainingMinutes = (TextView) findViewById(R.id.timeRemaining);
+        if (show)
+        {
+            long freeTrialRemainingSeconds = FreeTrialTimer.getFreeTrialTimerCachingWrapper().getRemainingTimeSeconds(this);
+            textViewRemainingMinutes.setText(String.format(
+                    getResources().getString(R.string.FreeTrialRemainingTime),
+                    DateUtils.formatElapsedTime(
+                            freeTrialRemainingSeconds)));
+
+            // Initialize Supersonic video ads
+            if (m_supersonicWrapper == null) {
+                m_supersonicWrapper = new SupersonicRewardedVideoWrapper(this, "PsiphonProVideoPlacement");
+            }
+        }
+
+        findViewById(R.id.subscriptionPromptMessage).setVisibility(show ? View.VISIBLE : View.GONE);
+        findViewById(R.id.subscribeButton).setVisibility(show ? View.VISIBLE : View.GONE);
+        findViewById(R.id.watchRewardedVideoButton).setVisibility(show ? View.VISIBLE : View.GONE);
+
+        if (show)
+        {
+            findViewById(R.id.watchRewardedVideoButton).setEnabled(m_supersonicWrapper.isRewardedVideoAvailable());
+        }
+
+        textViewRemainingMinutes.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    @Override
+    public void onSubscribeButtonClick(View v)
+    {
+        launchSubscriptionPurchaseFlow();
+    }
+
+    @Override
+    public void onWatchRewardedVideoButtonClick(View v)
+    {
+        if(m_supersonicWrapper != null) {
+            m_supersonicWrapper.playVideo();
+        }
+    }
+
+    synchronized
+    private void deInitIab()
+    {
+        if (m_iabHelper != null)
+        {
+            m_iabHelper.dispose();
+            m_iabHelper = null;
+        }
+    }
+    
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data)
+    {
+        if (requestCode == IAB_REQUEST_CODE)
+        {
+            if (m_iabHelper != null)
+            {
+                m_iabHelper.handleActivityResult(requestCode, resultCode, data);
+            }
+        }
+        else
+        {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
+    }
+
+    static final String MOPUB_INTERSTITIAL_PROPERTY_ID = "";
+
+    synchronized
+    private void loadFullScreenAd()
+    {
+        if (m_moPubInterstitial != null)
+        {
+            m_moPubInterstitial.destroy();
+        }
+        m_moPubInterstitial = new MoPubInterstitial(this, MOPUB_INTERSTITIAL_PROPERTY_ID);
+        
+        m_moPubInterstitial.setInterstitialAdListener(new InterstitialAdListener() {
+
+            @Override
+            public void onInterstitialClicked(MoPubInterstitial arg0) {
+            }
+            @Override
+            public void onInterstitialDismissed(MoPubInterstitial arg0) {
+                startUp();
+            }
+            @Override
+            public void onInterstitialFailed(MoPubInterstitial interstitial,
+                    MoPubErrorCode errorCode) {
+            }
+            @Override
+            public void onInterstitialLoaded(MoPubInterstitial interstitial) {
+                if (interstitial != null && interstitial.isReady() &&
+                        m_moPubInterstitialShowWhenLoaded)
+                {
+                    interstitial.show();
+                }
+            }
+            @Override
+            public void onInterstitialShown(MoPubInterstitial arg0) {
+                // Enable the free trial right away
+                delayHandler.removeCallbacks(enableFreeTrial);
+                resumeServiceStateUI();
+                PsiphonData.getPsiphonData().startFreeTrial(StatusActivity.this, INTERSTITIAL_REWARD_MINUTES);
+            }
+        });
+
+        m_moPubInterstitialShowWhenLoaded = false;
+        m_moPubInterstitial.load();
+    }
+
+    private void showFullScreenAd()
+    {
+        if (m_moPubInterstitial != null)
+        {
+            if (m_moPubInterstitial.isReady())
+            {
+                m_moPubInterstitial.show();
+            }
+            else
+            {
+                m_moPubInterstitialShowWhenLoaded = true;
+            }
+        }
+    }
+
+    synchronized
+    private void deInitAds()
+    {
+        if (m_moPubInterstitial != null)
+        {
+            m_moPubInterstitial.destroy();
+        }
+        m_moPubInterstitial = null;
     }
 }
