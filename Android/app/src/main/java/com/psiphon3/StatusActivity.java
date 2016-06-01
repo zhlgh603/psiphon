@@ -381,9 +381,9 @@ public class StatusActivity
         }
     }
 
-    static final String IAB_PUBLIC_KEY = "";
-    static final String IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU = "";
-    static final String[] OTHER_VALID_IAB_SUBSCRIPTION_SKUS = {};
+    static final String IAB_PUBLIC_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs8+vhQ05Sm6A0phkzda1oHhd+sQ0ByQnuMWplLt5vin7PJyx9FjgTef6YB/DpCIItztbUCk7YpJ5OAXbiGuX8Adeb1MHlCw64olXRc1LBgnVdLg65pBdgrmKRFacO+YM6mRWZXD4GVvr8entuYDOdq/e8MYCFJFxPEPg7uNCJ4AVDY83ruQqHyaqbDpdr+UciLangltCikI41jf72riMxr66katYygbldbzFkBY4vzkGJIgPDpPgolcsujRDGNOIwPxbnhLZ5/J7gFmrt8t27Q7EHUmi/8nc7DCGeR3+WAdA8Ygo7sHxhvqdgDcvoQpqYmdxyA1oqwhxGVQwlSUpHQIDAQAB";
+    static final String IAB_BASIC_MONTHLY_SUBSCRIPTION_SKU = "basic_ad_free_subscription_3";
+    static final String[] OTHER_VALID_IAB_SUBSCRIPTION_SKUS = {"basic_ad_free_subscription", "basic_ad_free_subscription_2"};
     static final int IAB_REQUEST_CODE = 10001;
 
     synchronized
@@ -648,7 +648,7 @@ public class StatusActivity
         }
     }
 
-    static final String MOPUB_INTERSTITIAL_PROPERTY_ID = "";
+    static final String MOPUB_INTERSTITIAL_PROPERTY_ID = "0d4cf70da6504af5878f0b3592808852";
 
     synchronized
     private void loadFullScreenAd()
