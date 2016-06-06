@@ -44,10 +44,13 @@ public class FreeTrialTimerClient {
     boolean m_isBound;
     Context m_context;
 
-    //code expected to be seen in msg.what from service
+    // code expected to be seen in msg.what from service
     final public int m_msgClientUpdateCode;
 
-    //timer update interval from service when timer is running
+    // Timer update interval from service when timer is running
+    // if update interval is 0 then the client will receive
+    // timer update only at the time of registering with the
+    // timer service or when more time gets added.
     final public int m_updateInterval;
 
     private ServiceConnection mConnection;
@@ -197,7 +200,7 @@ public class FreeTrialTimerClient {
         }
     }
 
-    //Client messages
+    // Client messages
     public void registerForTimeUpdates() {
         postToService(FreeTrialTimerService.MessageType.MSG_CLIENT_REGISTER,
                 m_msgClientUpdateCode, m_updateInterval);
