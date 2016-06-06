@@ -91,7 +91,6 @@ public class FreeTrialTimerService extends Service {
     private final Handler m_timerHandler = new Handler();
     private final Object m_messageTag = new Object();
 
-
     private class ClientUpdateRunnable implements Runnable {
 
         final ClientObject m_clientObj;
@@ -192,6 +191,14 @@ public class FreeTrialTimerService extends Service {
             mClients.remove(clientObj);
             mClients.add(clientObj);
 
+            //Schedule client updates if timer is currently running
+            if(m_startedTimeMillis > 0) {
+                if (clientObj.updateInterval > 0) {
+                    ClientUpdateRunnable r = new ClientUpdateRunnable(clientObj);
+                    m_timerHandler.postAtTime(r, m_messageTag, SystemClock.uptimeMillis() + clientObj.updateInterval);
+                }
+            }
+
         } catch (RemoteException e) {
 
         }
@@ -227,12 +234,13 @@ public class FreeTrialTimerService extends Service {
         // Schedule timer updates for all clients
         for (int i = mClients.size() - 1; i >= 0; i--) {
             ClientObject clientObj = mClients.get(i);
-            ClientUpdateRunnable r = new ClientUpdateRunnable(clientObj);
             if (clientObj.updateInterval > 0) {
+                ClientUpdateRunnable r = new ClientUpdateRunnable(clientObj);
                 m_timerHandler.postAtTime(r, m_messageTag, SystemClock.uptimeMillis() + clientObj.updateInterval);
             }
         }
 
+        // Schedule remaining time file backup job in case of non-graceful shutdown of the service
         m_timerHandler.postAtTime(m_periodicStoreTimeSecondsRunnable, m_messageTag, SystemClock.uptimeMillis() + STORE_PERIOD_MILLIS);
     }
 
