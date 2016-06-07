@@ -551,7 +551,7 @@ def install_host(host, servers, existing_server_ids, plugins):
     #
     
     ssh.exec_command('apt-get install -y python-pip libffi-dev')
-    ssh.exec_command('pip install pyOpenSSL')
+    ssh.exec_command('pip install --upgrade pyOpenSSL')
     ssh.exec_command('pip install hiredis')
     ssh.exec_command('pip install redis')
     ssh.exec_command('pip install iso8601')
