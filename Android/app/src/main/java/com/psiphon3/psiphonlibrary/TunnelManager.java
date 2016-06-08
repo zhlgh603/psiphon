@@ -180,6 +180,9 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
     }
 
     public void onCreate() {
+        // This service runs as a separate process, so it needs to initialize embedded values
+        EmbeddedValues.initialize(this.getContext());
+
         MyLog.setLogger(this);
     }
 
@@ -743,6 +746,7 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
         }
 
         setIsConnected(false);
+        m_tunnelState.homePages.clear();
         Bundle data = new Bundle();
         data.putBoolean(DATA_TUNNEL_STATE_IS_CONNECTED, false);
         sendClientMessage(MSG_TUNNEL_CONNECTION_STATE, data);
