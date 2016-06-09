@@ -61,6 +61,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 
 import de.schildbach.wallet.util.LinuxSecureRandom;
+import com.psiphon3.subscription.R;
 
 
 public class Utils

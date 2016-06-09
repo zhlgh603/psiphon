@@ -34,11 +34,11 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.support.v4.app.NotificationCompat;
-
-import com.psiphon3.R;
+import android.text.format.DateUtils;
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
-
+import com.psiphon3.subscription.R;
 import net.grandcentrix.tray.AppPreferences;
 
 import org.json.JSONArray;
@@ -273,15 +273,34 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
             iconID = R.drawable.notification_icon_connecting_animation;
         }
 
+        String notificationTitle = m_parentService.getText(R.string.app_name_psiphon_pro).toString();
+        String notificationText = m_parentService.getText(contentTextID).toString();
+        
+        if (PsiphonData.getPsiphonData().getFreeTrialActive()) {
+
+            long secondsLeft = FreeTrialTimer.getFreeTrialTimerCachingWrapper().getRemainingTimeSeconds(m_parentService);
+
+            String timeLeftText = String.format(
+                    m_parentService.getResources().getString(R.string.FreeTrialRemainingTime),
+                    DateUtils.formatElapsedTime(secondsLeft));
+
+            notificationText += "\n" + timeLeftText;
+            
+            if (ticker == null && secondsLeft <= 10 * 60) {
+                ticker = m_parentService.getText(R.string.app_name_psiphon_pro) + " " + timeLeftText;
+            }
+        }
+        
         mNotificationBuilder
                 .setSmallIcon(iconID)
-                .setContentTitle(m_parentService.getText(R.string.app_name))
-                .setContentText(m_parentService.getText(contentTextID))
+                .setContentTitle(notificationTitle)
+                .setContentText(notificationText)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(notificationText))
                 .setTicker(ticker)
                 .setContentIntent(m_tunnelConfig.notificationPendingIntent);
 
         Notification notification = mNotificationBuilder.build();
-
+        
         if (alert) {
             final AppPreferences multiProcessPreferences = new AppPreferences(getContext());
 
@@ -303,6 +322,10 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
 
         m_tunnelState.isConnected = isConnected;
 
+        doNotify(alert);
+    }
+
+    private synchronized void doNotify(boolean alert) {
         // Don't update notification to CONNECTING, etc., when a stop was commanded.
         if (!m_serviceDestroyed && !m_isStopping.get()) {
             if (mNotificationManager != null) {
@@ -474,6 +497,30 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
         }
     };
 
+    private Handler checkFreeTrialDelayHandler = new Handler();
+    private final long checkFreeTrialInterval = 30 * 1000;
+    private long lastChecktimeMillis = 0;
+    private Runnable checkFreeTrial = new Runnable() {
+        @Override
+        public void run() {
+            long timeSinceLastCheckMillis = SystemClock.elapsedRealtime() - lastChecktimeMillis;
+            FreeTrialTimer.getFreeTrialTimerCachingWrapper().addTimeSyncSeconds(m_parentService, (long) -Math.floor(timeSinceLastCheckMillis/1000));
+            if (FreeTrialTimer.getFreeTrialTimerCachingWrapper().getRemainingTimeSeconds(m_parentService) > 0) {
+                doNotify(false);
+                lastChecktimeMillis = SystemClock.elapsedRealtime();
+                checkFreeTrialDelayHandler.postDelayed(this, checkFreeTrialInterval);
+            } else {
+                signalStopService();
+                PsiphonData.getPsiphonData().endFreeTrial();
+                IEvents events = PsiphonData.getPsiphonData().getCurrentEventsInterface();
+                if (events != null) {
+                    events.signalDisconnectRaiseActivity(m_parentService);
+                }
+            }
+        }
+    };
+
+
     private void runTunnel() {
 
         Utils.initializeSecureRandom();
@@ -511,6 +558,12 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
 
             m_tunnel.startTunneling(getServerEntries(m_parentService));
 
+            if (PsiphonData.getPsiphonData().getFreeTrialActive()) {
+                FreeTrialTimer.getFreeTrialTimerCachingWrapper().reset();
+                lastChecktimeMillis = SystemClock.elapsedRealtime();
+                checkFreeTrialDelayHandler.postDelayed(checkFreeTrial, checkFreeTrialInterval);
+            }
+                
             try {
                 m_tunnelThreadStopSignal.await();
             } catch (InterruptedException e) {
@@ -523,6 +576,8 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
             MyLog.e(R.string.start_tunnel_failed, MyLog.Sensitivity.NOT_SENSITIVE, e.getMessage());
         } finally {
 
+            checkFreeTrialDelayHandler.removeCallbacks(checkFreeTrial);
+            
             MyLog.v(R.string.stopping_tunnel, MyLog.Sensitivity.NOT_SENSITIVE);
 
             sendClientMessage(MSG_TUNNEL_STOPPING, null);
@@ -542,7 +597,7 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
 
     @Override
     public String getAppName() {
-        return m_parentService.getString(R.string.app_name);
+        return m_parentService.getString(R.string.app_name_psiphon_pro);
     }
 
     @Override
