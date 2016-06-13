@@ -761,7 +761,7 @@ class ServerInstance(object):
                     self._log_event("client_verification", inputs + [('safetynet_check',
                                                                     {
                                                                         'error_message': status_string,
-                                                                        'payload': None
+                                                                        'payload': body.get('payload', None)
                                                                     }
                                                                     )])
                     start_response('200 OK', [])
