@@ -912,7 +912,7 @@ public abstract class MainBase {
                 return;
             }
             
-            if (!m_boundToTunnelService && !m_boundToTunnelVpnService) {
+            if (!m_boundToTunnelService) {
                 setStatusState(R.drawable.status_icon_disconnected);
                 if (!isServiceRunning()) {
                     m_toggleButton.setText(getText(R.string.start));
@@ -977,7 +977,6 @@ public abstract class MainBase {
         private void checkRestartTunnel() {
             if (m_restartTunnel &&
                     !m_boundToTunnelService &&
-                    !m_boundToTunnelVpnService &&
                     !isServiceRunning()) {
                 m_restartTunnel = false;
                 startTunnel();
@@ -1271,24 +1270,20 @@ public abstract class MainBase {
             // Disable service-toggling controls while service is starting up
             // (i.e., while isServiceRunning can't be relied upon)
             disableToggleServiceUI();
+            Intent intent;
 
             if (getTunnelConfigWholeDevice() && Utils.hasVpnService()) {
                 // VpnService backwards compatibility: startVpnServiceIntent is a wrapper
                 // function so we don't reference the undefined class when this
                 // function is loaded.
-                Intent intent = startVpnServiceIntent();
-                configureServiceIntent(intent);
-                startService(intent);
-                if (bindService(intent, m_tunnelServiceConnection, 0)) {
-                    m_boundToTunnelVpnService = true;
-                }
+                intent = startVpnServiceIntent();
             } else {
-                Intent intent = new Intent(this, TunnelService.class);
-                configureServiceIntent(intent);
-                startService(intent);
-                if (bindService(intent, m_tunnelServiceConnection, 0)) {
-                    m_boundToTunnelService = true;
-                }
+                intent = new Intent(this, TunnelService.class);
+            }
+            configureServiceIntent(intent);
+            startService(intent);
+            if (bindService(intent, m_tunnelServiceConnection, 0)) {
+                m_boundToTunnelService = true;
             }
         }
 
@@ -1463,33 +1458,6 @@ public abstract class MainBase {
             }
         };
 
-        private boolean m_boundToTunnelVpnService = false;
-        private final ServiceConnection m_tunnelVpnServiceConnection = new ServiceConnection() {
-            @Override
-            public void onServiceConnected(ComponentName className, IBinder service) {
-                m_outgoingMessenger = new Messenger(service);
-                m_boundToTunnelVpnService = true;
-                /** Send all pending messages to the newly created Service. **/
-                synchronized (m_queue) {
-                    for (Integer message : m_queue) {
-                        sendServiceMessage(message);
-                    }
-                    m_queue.clear();
-                }
-                sendServiceMessage(TunnelManager.MSG_REGISTER);
-                updateServiceStateUI();
-            }
-
-            @Override
-            public void onServiceDisconnected(ComponentName arg0) {
-                m_outgoingMessenger = null;
-                if (m_boundToTunnelVpnService) {
-                    unbindTunnelService();
-                }
-                updateServiceStateUI();
-            }
-        };
-
         private void stopTunnelService() {
             sendServiceMessage(TunnelManager.MSG_STOP_SERVICE);
             // MSG_STOP_SERVICE will cause the Service to stop itself,
@@ -1510,15 +1478,6 @@ public abstract class MainBase {
                     // "java.lang.IllegalArgumentException: Service not registered"
                 }
                 m_boundToTunnelService = false;
-            }
-            if (m_boundToTunnelVpnService) {
-                try {
-                    unbindService(m_tunnelVpnServiceConnection);
-                } catch (java.lang.IllegalArgumentException e) {
-                    // Ignore
-                    // "java.lang.IllegalArgumentException: Service not registered"
-                }
-                m_boundToTunnelVpnService = false;
             }
             updateServiceStateUI();
         }
