@@ -404,7 +404,7 @@ class ServerInstance(object):
                 elif key == 'upstream_proxy_type':
                     # Submitted value could be e.g., "SOCKS5" or "socks5"; log lowercase
                     normalizedValue = normalizedValue.lower()
-                    json_log['meek_host_header'] = normalizedValue
+                    json_log['upstream_proxy_type'] = normalizedValue
                 elif key == 'upstream_proxy_custom_header_names':
                     # Note: upstream_proxy_custom_header_names has been validated with is_valid_json_string_array
                     json_log['upstream_proxy_custom_header_names'] = json.loads(normalizedValue)
