@@ -157,6 +157,24 @@ def is_valid_boolean_str(str):
     return str in ['0', '1']
 
 
+def is_valid_upstream_proxy_type(value):
+    return isinstance(value, str) and value.lower() in ['socks4a', 'socks5', 'http']
+
+
+def is_valid_json_string_array(value):
+    try:
+        string_array = json.loads(value)
+        if not isinstance(string_array, list):
+            return False
+        for item in string_array:
+        if not isinstance(item, str):
+            return False            
+    except ValueError:
+        return False
+    return True
+
+
+
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
     return [seq[i:i+length] for i in range(0, len(seq), length)]
@@ -226,6 +244,9 @@ class ServerInstance(object):
             ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
             ('server_entry_source', is_valid_server_entry_source),
             ('server_entry_timestamp', is_valid_iso8601_date),
+            ('upstream_proxy_type', is_valid_upstream_proxy_type),
+            # Validation note: upstream_proxy_custom_header_names allows arbitrary string values within the array
+            ('upstream_proxy_custom_header_names', is_valid_json_string_array),
 
             # Obsolete
             ('fronting_host', is_valid_domain),
@@ -380,6 +401,13 @@ class ServerInstance(object):
                 elif key == 'meek_host_header':
                     normalizedValue = get_host(normalizedValue)
                     json_log['meek_host_header'] = normalizedValue
+                elif key == 'upstream_proxy_type':
+                    # Submitted value could be e.g., "SOCKS5" or "socks5"; log lowercase
+                    normalizedValue = normalizedValue.lower()
+                    json_log['meek_host_header'] = normalizedValue
+                elif key == 'upstream_proxy_custom_header_names':
+                    # Note: upstream_proxy_custom_header_names has been validated with is_valid_json_string_array
+                    json_log['upstream_proxy_custom_header_names'] = json.loads(normalizedValue)
                 else:
                     json_log[key] = normalizedValue
 
