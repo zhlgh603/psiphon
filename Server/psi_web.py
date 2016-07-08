@@ -167,12 +167,11 @@ def is_valid_json_string_array(value):
         if not isinstance(string_array, list):
             return False
         for item in string_array:
-        if not isinstance(item, str):
-            return False            
+            if not isinstance(item, unicode):
+                return False
     except ValueError:
         return False
     return True
-
 
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
@@ -407,7 +406,8 @@ class ServerInstance(object):
                     json_log['upstream_proxy_type'] = normalizedValue
                 elif key == 'upstream_proxy_custom_header_names':
                     # Note: upstream_proxy_custom_header_names has been validated with is_valid_json_string_array
-                    json_log['upstream_proxy_custom_header_names'] = json.loads(normalizedValue)
+                    normalizedValue = json.dumps([str(item.encode('utf8')) for item in json.loads(normalizedValue)])
+                    json_log['upstream_proxy_custom_header_names'] = normalizedValue
                 else:
                     json_log[key] = normalizedValue
 
