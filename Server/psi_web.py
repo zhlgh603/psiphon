@@ -167,7 +167,7 @@ def is_valid_json_string_array(value):
         if not isinstance(string_array, list):
             return False
         for item in string_array:
-            if not isinstance(item, unicode):
+            if not isinstance(item, basestring):
                 return False
     except ValueError:
         return False
@@ -406,7 +406,7 @@ class ServerInstance(object):
                     json_log['upstream_proxy_type'] = normalizedValue
                 elif key == 'upstream_proxy_custom_header_names':
                     # Note: upstream_proxy_custom_header_names has been validated with is_valid_json_string_array
-                    normalizedValue = json.dumps([str(item.encode('utf8')) for item in json.loads(normalizedValue)])
+                    normalizedValue = json.dumps([(str(item.encode('utf8')) if type(item) == unicode else item) for item in json.loads(normalizedValue)])
                     json_log['upstream_proxy_custom_header_names'] = normalizedValue
                 else:
                     json_log[key] = normalizedValue
