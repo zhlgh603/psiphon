@@ -158,7 +158,7 @@ def is_valid_boolean_str(str):
 
 
 def is_valid_upstream_proxy_type(value):
-    return isinstance(value, str) and value.lower() in ['socks4a', 'socks5', 'http']
+    return isinstance(value, basestring) and value.lower() in ['socks4a', 'socks5', 'http']
 
 
 def is_valid_json_string_array(value):
