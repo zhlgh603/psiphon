@@ -78,6 +78,7 @@ type Config struct {
 	ThrottleSleepMilliseconds           int
 	ThrottleMaxPayloadSizeMultiple      float64
 	ThrottleRegions                     map[string]bool
+	AllowedRegions                      map[string]bool
 	ForcePsiphonServerAddress           string
 }
 
@@ -379,10 +380,20 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return
 	}
 
+	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
+
+	if geoIpData != nil {
+		if len(dispatcher.config.AllowedRegions) > 0 {
+			_, ok := dispatcher.config.AllowedRegions[geoIpData.Region]
+			if !ok {
+				err = fmt.Errorf("GetSession denied access to region '%s'", geoIpData.Region)
+				return
+			}
+		}
+	}
+
 	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion, meekSessionKeySent: false}
 	session.Touch()
-
-	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
 
 	if geoIpData != nil {
 		_, ok := dispatcher.config.ThrottleRegions[geoIpData.Region]
