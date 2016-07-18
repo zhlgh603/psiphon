@@ -70,6 +70,9 @@ psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
 CLIENT_VERIFICATION_REQUIRED = True
 
+# one week TTL
+CLIENT_VERIFICATION_TTL_SECONDS = 60 * 60 * 24 * 7
+
 # ===== Helpers =====
 
 # see: http://codahale.com/a-lesson-in-timing-attacks/
@@ -543,6 +546,9 @@ class ServerInstance(object):
 
         global CLIENT_VERIFICATION_REQUIRED
         config["client_verification_required"] = CLIENT_VERIFICATION_REQUIRED
+
+        global CLIENT_VERIFICATION_TTL_SECONDS
+        config["client_verification_ttl_seconds"] = CLIENT_VERIFICATION_TTL_SECONDS
 
         # The entire config is JSON encoded and included as well.
 
