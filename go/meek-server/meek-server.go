@@ -187,11 +187,11 @@ func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *
 
 	session.BytesTransferred += requestBodySize
 
-	throttle := (dispatcher.config.ThrottleThresholdBytes > 0 &&
-		(session.IsThrottled &&
+	throttle := dispatcher.config.ThrottleThresholdBytes > 0 &&
+		((session.IsThrottled &&
 			session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes) ||
-		(session.IsThrottledSeverely &&
-			session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes / 10))
+			(session.IsThrottledSeverely &&
+				session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes/10))
 
 	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_2 && session.meekSessionKeySent == false {
 		http.SetCookie(responseWriter, sessionCookie)
@@ -213,7 +213,7 @@ func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *
 		if throttle {
 			if session.IsThrottledSeverely {
 				time.Sleep(
-					time.Duration(dispatcher.config.ThrottleSleepMilliseconds * 10) * time.Millisecond)
+					time.Duration(dispatcher.config.ThrottleSleepMilliseconds*10) * time.Millisecond)
 				reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple / 10)
 			} else {
 				time.Sleep(
