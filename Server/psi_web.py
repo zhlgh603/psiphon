@@ -70,6 +70,9 @@ psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
 CLIENT_VERIFICATION_REQUIRED = True
 
+# one week TTL
+CLIENT_VERIFICATION_TTL_SECONDS = 60 * 60 * 24 * 7
+
 # ===== Helpers =====
 
 # see: http://codahale.com/a-lesson-in-timing-attacks/
@@ -158,7 +161,7 @@ def is_valid_boolean_str(str):
 
 
 def is_valid_upstream_proxy_type(value):
-    return isinstance(value, str) and value.lower() in ['socks4a', 'socks5', 'http']
+    return isinstance(value, basestring) and value.lower() in ['socks4a', 'socks5', 'http']
 
 
 def is_valid_json_string_array(value):
@@ -167,7 +170,7 @@ def is_valid_json_string_array(value):
         if not isinstance(string_array, list):
             return False
         for item in string_array:
-            if not isinstance(item, unicode):
+            if not isinstance(item, basestring):
                 return False
     except ValueError:
         return False
@@ -406,7 +409,7 @@ class ServerInstance(object):
                     json_log['upstream_proxy_type'] = normalizedValue
                 elif key == 'upstream_proxy_custom_header_names':
                     # Note: upstream_proxy_custom_header_names has been validated with is_valid_json_string_array
-                    normalizedValue = json.dumps([str(item.encode('utf8')) for item in json.loads(normalizedValue)])
+                    normalizedValue = json.dumps([(str(item.encode('utf8')) if type(item) == unicode else item) for item in json.loads(normalizedValue)])
                     json_log['upstream_proxy_custom_header_names'] = normalizedValue
                 else:
                     json_log[key] = normalizedValue
@@ -543,6 +546,9 @@ class ServerInstance(object):
 
         global CLIENT_VERIFICATION_REQUIRED
         config["client_verification_required"] = CLIENT_VERIFICATION_REQUIRED
+
+        global CLIENT_VERIFICATION_TTL_SECONDS
+        config["client_verification_ttl_seconds"] = CLIENT_VERIFICATION_TTL_SECONDS
 
         # The entire config is JSON encoded and included as well.
 
