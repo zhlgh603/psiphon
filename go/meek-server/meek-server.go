@@ -78,6 +78,7 @@ type Config struct {
 	ThrottleSleepMilliseconds           int
 	ThrottleMaxPayloadSizeMultiple      float64
 	ThrottleRegions                     map[string]bool
+	AllowedRegions                      map[string]bool
 	ForcePsiphonServerAddress           string
 }
 
@@ -99,6 +100,7 @@ type Session struct {
 	LastSeen            time.Time
 	BytesTransferred    int64
 	IsThrottled         bool
+	IsThrottledSeverely bool
 	meekSessionKeySent  bool
 }
 
@@ -134,14 +136,6 @@ func (dispatcher *Dispatcher) ServeHTTP(responseWriter http.ResponseWriter, requ
 		log.Printf("unexpected request type: %s", request.Method)
 		dispatcher.terminateConnection(responseWriter, request)
 		return
-	}
-
-	for key, value := range request.Header {
-		if strings.Contains(strings.ToLower(key), "x-online-host") {
-			log.Printf("X-Online-Host: %s %+v", key, value)
-			dispatcher.terminateConnection(responseWriter, request)
-			return
-		}
 	}
 
 	sessionKey, session, err := dispatcher.GetSession(request, clientCookie.Value)
@@ -186,8 +180,10 @@ func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *
 	session.BytesTransferred += requestBodySize
 
 	throttle := dispatcher.config.ThrottleThresholdBytes > 0 &&
-		session.IsThrottled &&
-		session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes
+		((session.IsThrottled &&
+			session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes) ||
+			(session.IsThrottledSeverely &&
+				session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes/10))
 
 	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_2 && session.meekSessionKeySent == false {
 		http.SetCookie(responseWriter, sessionCookie)
@@ -207,9 +203,15 @@ func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *
 		reponseMaxPayloadLength := MAX_PAYLOAD_LENGTH
 
 		if throttle {
-			time.Sleep(
-				time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
-			reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
+			if session.IsThrottledSeverely {
+				time.Sleep(
+					time.Duration(dispatcher.config.ThrottleSleepMilliseconds*10) * time.Millisecond)
+				reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple / 10)
+			} else {
+				time.Sleep(
+					time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
+				reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
+			}
 		}
 
 		buf := make([]byte, reponseMaxPayloadLength)
@@ -370,14 +372,30 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return
 	}
 
+	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
+
+	if geoIpData != nil {
+		if len(dispatcher.config.AllowedRegions) > 0 {
+			_, ok := dispatcher.config.AllowedRegions[geoIpData.Region]
+			if !ok {
+				err = fmt.Errorf("GetSession denied access to region '%s'", geoIpData.Region)
+				return
+			}
+		}
+	}
+
 	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion, meekSessionKeySent: false}
 	session.Touch()
-
-	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
 
 	if geoIpData != nil {
 		_, ok := dispatcher.config.ThrottleRegions[geoIpData.Region]
 		session.IsThrottled = ok
+	}
+
+	if session.IsThrottled {
+		if strings.Contains(strings.ToLower(request.UserAgent()), "apache") {
+			session.IsThrottledSeverely = true
+		}
 	}
 
 	dispatcher.lock.Lock()
