@@ -904,8 +904,15 @@ class ServerInstance(object):
             except Exception:
                 try:
                     payload = json.loads(request.body).get('payload', None)
+                    jwt_parts = payload.split('.')
+                    if len(jwt_parts) != 3:
+                        payload = "JWT does not have 3 parts"
+                    else:
+                        payload = decode_base64(jwt_parts[1])
                 except (AttributeError, ValueError):
                     payload = "No valid JSON could be decoded in request body"
+                except:
+                    payload = "Payload is not valid base64"
 
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 self._log_event("client_verification", inputs + [('safetynet_check',
