@@ -867,7 +867,8 @@ class ServerInstance(object):
                     signature_errors = e
 
                 # verify apkCertificateDigest
-                valid_apk_cert = jwt_payload_obj['apkCertificateDigestSha256'][0] == PSIPHON3_BASE64_CERTHASH
+                valid_apk_cert = (len(jwt_payload_obj['apkCertificateDigestSha256']) > 0 and
+                                    jwt_payload_obj['apkCertificateDigestSha256'][0] == PSIPHON3_BASE64_CERTHASH)
 
                 # verify packagename
                 valid_apk_packagename = jwt_payload_obj['apkPackageName'] in PSIPHON3_APK_PACKAGENAMES
@@ -882,7 +883,8 @@ class ServerInstance(object):
                 self._log_event("client_verification", inputs +
                                                     [('safetynet_check',
                                                     {
-                                                        'apk_certificate_digest_sha256': jwt_payload_obj['apkCertificateDigestSha256'][0],
+                                                        'apk_certificate_digest_sha256': (jwt_payload_obj['apkCertificateDigestSha256'][0]
+                                                                                            if len(jwt_payload_obj['apkCertificateDigestSha256']) > 0 else ''),
                                                         'apk_digest_sha256': jwt_payload_obj['apkDigestSha256'],
                                                         'apk_package_name': jwt_payload_obj['apkPackageName'],
                                                         'certchain_errors': str(valid_certchain),
@@ -904,8 +906,15 @@ class ServerInstance(object):
             except Exception:
                 try:
                     payload = json.loads(request.body).get('payload', None)
+                    jwt_parts = payload.split('.')
+                    if len(jwt_parts) != 3:
+                        payload = "JWT does not have 3 parts"
+                    else:
+                        payload = decode_base64(jwt_parts[1])
                 except (AttributeError, ValueError):
                     payload = "No valid JSON could be decoded in request body"
+                except:
+                    payload = "Payload is not valid base64"
 
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 self._log_event("client_verification", inputs + [('safetynet_check',
