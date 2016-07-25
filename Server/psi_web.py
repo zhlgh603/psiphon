@@ -544,12 +544,6 @@ class ServerInstance(object):
 
         config["server_timestamp"] = datetime.utcnow().isoformat() + 'Z'
 
-        global CLIENT_VERIFICATION_REQUIRED
-        config["client_verification_required"] = CLIENT_VERIFICATION_REQUIRED
-
-        global CLIENT_VERIFICATION_TTL_SECONDS
-        config["client_verification_ttl_seconds"] = CLIENT_VERIFICATION_TTL_SECONDS
-
         # The entire config is JSON encoded and included as well.
 
         output.append('Config: ' + json.dumps(config))
