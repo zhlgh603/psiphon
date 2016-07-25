@@ -770,6 +770,9 @@ class ServerInstance(object):
         # 76 DB EF 15 F6 77 26 D4 51 A1 23 59 B8 57 9C 0D 7A 9F 63 5D 52 6A A3 74 24 DF 13 16 32 F1 78 10
         PSIPHON3_BASE64_CERTHASH = 'dtvvFfZ3JtRRoSNZuFecDXqfY11SaqN0JN8TFjLxeBA='
 
+        global CLIENT_VERIFICATION_REQUIRED
+        global CLIENT_VERIFICATION_TTL_SECONDS
+
         request = Request(environ)
 
         # get default inputs for logging
@@ -777,7 +780,13 @@ class ServerInstance(object):
         # still log malformed requests for now
         inputs = get_inputs if get_inputs else []
 
-        if request.body:
+        if not request.body:
+            start_response('200 OK', [("Content-Type", "application/json")])
+            if CLIENT_VERIFICATION_REQUIRED:
+                return [json.dumps({"client_verification_ttl_seconds":CLIENT_VERIFICATION_TTL_SECONDS})]
+            else:
+                return []
+        else:
             try:
                 body = json.loads(request.body)
                 status = body['status']
@@ -1219,4 +1228,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
