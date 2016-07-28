@@ -544,12 +544,6 @@ class ServerInstance(object):
 
         config["server_timestamp"] = datetime.utcnow().isoformat() + 'Z'
 
-        global CLIENT_VERIFICATION_REQUIRED
-        config["client_verification_required"] = CLIENT_VERIFICATION_REQUIRED
-
-        global CLIENT_VERIFICATION_TTL_SECONDS
-        config["client_verification_ttl_seconds"] = CLIENT_VERIFICATION_TTL_SECONDS
-
         # The entire config is JSON encoded and included as well.
 
         output.append('Config: ' + json.dumps(config))
@@ -770,6 +764,9 @@ class ServerInstance(object):
         # 76 DB EF 15 F6 77 26 D4 51 A1 23 59 B8 57 9C 0D 7A 9F 63 5D 52 6A A3 74 24 DF 13 16 32 F1 78 10
         PSIPHON3_BASE64_CERTHASH = 'dtvvFfZ3JtRRoSNZuFecDXqfY11SaqN0JN8TFjLxeBA='
 
+        global CLIENT_VERIFICATION_REQUIRED
+        global CLIENT_VERIFICATION_TTL_SECONDS
+
         request = Request(environ)
 
         # get default inputs for logging
@@ -777,7 +774,13 @@ class ServerInstance(object):
         # still log malformed requests for now
         inputs = get_inputs if get_inputs else []
 
-        if request.body:
+        if not request.body:
+            start_response('200 OK', [("Content-Type", "application/json")])
+            if CLIENT_VERIFICATION_REQUIRED:
+                return [json.dumps({"client_verification_ttl_seconds":CLIENT_VERIFICATION_TTL_SECONDS})]
+            else:
+                return []
+        else:
             try:
                 body = json.loads(request.body)
                 status = body['status']
@@ -867,7 +870,8 @@ class ServerInstance(object):
                     signature_errors = e
 
                 # verify apkCertificateDigest
-                valid_apk_cert = jwt_payload_obj['apkCertificateDigestSha256'][0] == PSIPHON3_BASE64_CERTHASH
+                valid_apk_cert = (len(jwt_payload_obj['apkCertificateDigestSha256']) > 0 and
+                                    jwt_payload_obj['apkCertificateDigestSha256'][0] == PSIPHON3_BASE64_CERTHASH)
 
                 # verify packagename
                 valid_apk_packagename = jwt_payload_obj['apkPackageName'] in PSIPHON3_APK_PACKAGENAMES
@@ -882,7 +886,8 @@ class ServerInstance(object):
                 self._log_event("client_verification", inputs +
                                                     [('safetynet_check',
                                                     {
-                                                        'apk_certificate_digest_sha256': jwt_payload_obj['apkCertificateDigestSha256'][0],
+                                                        'apk_certificate_digest_sha256': (jwt_payload_obj['apkCertificateDigestSha256'][0]
+                                                                                            if len(jwt_payload_obj['apkCertificateDigestSha256']) > 0 else ''),
                                                         'apk_digest_sha256': jwt_payload_obj['apkDigestSha256'],
                                                         'apk_package_name': jwt_payload_obj['apkPackageName'],
                                                         'certchain_errors': str(valid_certchain),
@@ -904,8 +909,15 @@ class ServerInstance(object):
             except Exception:
                 try:
                     payload = json.loads(request.body).get('payload', None)
+                    jwt_parts = payload.split('.')
+                    if len(jwt_parts) != 3:
+                        payload = "JWT does not have 3 parts"
+                    else:
+                        payload = decode_base64(jwt_parts[1])
                 except (AttributeError, ValueError):
                     payload = "No valid JSON could be decoded in request body"
+                except:
+                    payload = "Payload is not valid base64"
 
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 self._log_event("client_verification", inputs + [('safetynet_check',
@@ -1210,4 +1222,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
