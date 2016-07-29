@@ -804,8 +804,8 @@ class ServerInstance(object):
                                                                         'payload': body.get('payload', None)
                                                                     }
                                                                     )])
-                    start_response('200 OK', [])
-                    return []
+                    start_response('200 OK', [("Content-Type", "application/json")])
+                    return ['{}']
 
                 jwt = body['payload']
                 jwt_parts = jwt.split('.')
@@ -822,8 +822,8 @@ class ServerInstance(object):
                                                                         'payload': str(jwt)
                                                                     }
                                                                     )])
-                    start_response('200 OK', [])
-                    return []
+                    start_response('200 OK', [("Content-Type", "application/json")])
+                    return ['{}']
 
                 jwt_header_obj = json.loads(header)
                 jwt_payload_obj = json.loads(payload)
@@ -840,8 +840,8 @@ class ServerInstance(object):
                                                                         'payload': str(jwt)
                                                                     }
                                                                     )])
-                    start_response('200 OK', [])
-                    return []
+                    start_response('200 OK', [("Content-Type", "application/json")])
+                    return ['{}']
 
                 leaf_cert_data = b64decode(x5c[0])
                 leaf_cert = load_certificate(FILETYPE_ASN1, leaf_cert_data)
@@ -908,7 +908,6 @@ class ServerInstance(object):
                                                         'verification_timestamp': timestamp
                                                     }
                                                     )])
-                start_response('200 OK', [])
             except Exception:
                 try:
                     payload = json.loads(request.body).get('payload', None)
@@ -929,8 +928,8 @@ class ServerInstance(object):
                                                                     'payload': payload
                                                                 }
                                                                 )])
-                start_response('200 OK', [])
-        return []
+        start_response('200 OK', [("Content-Type", "application/json")])
+        return ['{}']
 
     @exception_logger
     def speed(self, environ, start_response):
