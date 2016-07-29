@@ -779,7 +779,10 @@ class ServerInstance(object):
             if CLIENT_VERIFICATION_REQUIRED:
                 return [json.dumps({"client_verification_ttl_seconds":CLIENT_VERIFICATION_TTL_SECONDS})]
             else:
-                return []
+                # Send valid empty JSON here.
+                # There is a bug in Android client v.133 that treats JSON parse failure as a 
+                # failure to send payload and sends client into an infinite retry loop
+                return ['{}']
         else:
             try:
                 body = json.loads(request.body)
