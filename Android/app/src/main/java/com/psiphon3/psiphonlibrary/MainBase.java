@@ -995,7 +995,7 @@ public abstract class MainBase {
             }
         }
 
-        private void scheduleRunningTunnelServiceRestart() {
+        protected void scheduleRunningTunnelServiceRestart() {
             if (isServiceRunning()) {
                 m_restartTunnel = true;
                 stopTunnelService();
@@ -1249,6 +1249,14 @@ public abstract class MainBase {
             return m_tunnelConfig.disableTimeouts;
         }
 
+        protected void setTunnelConfigRateLimit(boolean rateLimit) {
+            m_tunnelConfig.rateLimit = rateLimit;
+        }
+
+        protected boolean getTunnelConfigRateLimit() {
+            return m_tunnelConfig.rateLimit;
+        }
+
         protected PendingIntent getHandshakePendingIntent() {
             return null;
         }
@@ -1272,6 +1280,9 @@ public abstract class MainBase {
 
             intent.putExtra(TunnelManager.DATA_TUNNEL_CONFIG_DISABLE_TIMEOUTS,
                     getTunnelConfigDisableTimeouts());
+
+            intent.putExtra(TunnelManager.DATA_TUNNEL_CONFIG_RATE_LIMIT,
+                    getTunnelConfigRateLimit());
         }
 
         protected void startAndBindTunnelService() {
@@ -1323,6 +1334,15 @@ public abstract class MainBase {
             return m_tunnelState.clientRegion;
         }
 
+        /**
+         * Indicates if the currently connected tunnel is rate-limited.
+         * Invalid if there is no currently connected tunnel.
+         * @return True if currently connected tunnel is rate-limited. False otherwise.
+         */
+        protected boolean getRateLimited() {
+            return m_tunnelState.rateLimited;
+        }
+
         protected void getTunnelStateFromHandshakeIntent(Intent intent) {
             if (!intent.getAction().equals(TunnelManager.INTENT_ACTION_HANDSHAKE)) {
                 return;
@@ -1353,6 +1373,7 @@ public abstract class MainBase {
             if (homePages != null) {
                 m_tunnelState.homePages = homePages;
             }
+            m_tunnelState.rateLimited = data.getBoolean(TunnelManager.DATA_TUNNEL_STATE_RATE_LIMITED);
 
             onTunnelStateReceived();
         }
