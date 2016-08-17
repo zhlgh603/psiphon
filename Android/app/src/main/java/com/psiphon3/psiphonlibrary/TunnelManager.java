@@ -672,7 +672,7 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
                 //disable timeouts
                 MyLog.g("DisableTimeouts", "disableTimeouts", true);
                 json.put("TunnelConnectTimeoutSeconds", 0);
-                json.put("TunnelPortForwardTimeoutSeconds", 0);
+                json.put("TunnelPortForwardDialTimeoutSeconds", 0);
                 json.put("TunnelSshKeepAliveProbeTimeoutSeconds", 0);
                 json.put("TunnelSshKeepAlivePeriodicTimeoutSeconds", 0);
                 json.put("FetchRemoteServerListTimeoutSeconds", 0);
@@ -840,6 +840,17 @@ public class TunnelManager implements PsiphonTunnel.HostService, MyLog.ILogger {
                     }
                 }
                 m_tunnelState.homePages.add(url);
+
+        boolean showAds = false;
+        for (String homePage : m_tunnelState.homePages) {
+            if (homePage.contains("psiphon_show_ads")) {
+                showAds = true;
+            }
+        }
+        final AppPreferences multiProcessPreferences = new AppPreferences(getContext());
+        multiProcessPreferences.put(
+                m_parentService.getString(R.string.persistent_show_ads_setting),
+                showAds);
             }
         });
     }
