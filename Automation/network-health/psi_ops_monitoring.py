@@ -403,7 +403,7 @@ def main(local_config):
     psinet = psi_ops.PsiphonNetwork.load_from_file(PSI_OPS_DB_FILENAME)
     active_cfg_path = os.path.join(os.path.abspath('.'), 'objects', 'psiphon', 'active')
     
-    hosts = [nagios_host_from_psiphon_host(h) for h in psinet.get_hosts()]
+    hosts = [nagios_host_from_psiphon_host(h) for h in psinet.get_hosts() if h.id not in local_config['ignore_hosts']]
     nagios_hosts = "\n".join(hosts)
     host_cfg_file = 'psiphon3-hosts.cfg'
     
@@ -426,7 +426,8 @@ def main(local_config):
         
         custom_host_services = []
         for host in psinet.get_hosts():
-            custom_host_services.append(nagios_service_from_psiphon_host(psinet, host))
+	    if host.id not in local_config['ignore_hosts']:
+            	custom_host_services.append(nagios_service_from_psiphon_host(psinet, host))
         
         host_services = '\n'.join(custom_host_services)
         
