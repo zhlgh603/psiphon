@@ -45,8 +45,6 @@ Android/PsiphonAndroidLibrary/obj
 Android/PsiphonProxiedWebApp/bin
 Android/PsiphonProxiedWebApp/gen
 
-EmailResponder/FeedbackDecryptor/conf.*
-
 EmbeddedValues.java
 embeddedvalues.h
 
@@ -56,20 +54,6 @@ Automation/transifex_conf.json
 
 Automation/psi-ansible/
 Automation/network-health/
-Automation/CipherShare/
-Automation/botnet.list
-Automation/cherrypy-ssl_builtin.patch
-Automation/cif_config.py
-Automation/*.list
-Automation/*.bak
-Automation/*.dat
-Automation/psi_update_dat.*
-Automation/psi_update_hosts.*
-Automation/psi_ops_status_credentials.*
-Automation/psi_ops_monitoring.*
-Automation/psi_mail_ansible_template*
-Automation/psi_mail_update_hosts_template.*
-Automation/psi_ops_stats_credentials.*
 
 node_modules/
 out/
