@@ -34,17 +34,6 @@ psi_data_config.py
 psi_ops_config.py
 transifex_conf.json
 
-Android/PsiphonAndroid/bin
-Android/PsiphonAndroid/gen
-Android/PsiphonAndroid/obj
-Android/zirco-browser/bin
-Android/zirco-browser/gen
-Android/PsiphonAndroidLibrary/bin
-Android/PsiphonAndroidLibrary/gen
-Android/PsiphonAndroidLibrary/obj
-Android/PsiphonProxiedWebApp/bin
-Android/PsiphonProxiedWebApp/gen
-
 EmbeddedValues.java
 embeddedvalues.h
 
@@ -100,7 +89,6 @@ Android/local.properties
 /.idea/libraries
 .DS_Store
 Android/build
-Android/app/build
+Android/*/build
 Android/captures
-Android/tray/build
 
