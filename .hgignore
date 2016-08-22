@@ -52,6 +52,9 @@ Automation/host_reports/staging
 Automation/host_reports/data
 Automation/transifex_conf.json
 
+Automation/psi-ansible/
+Automation/network-health/
+
 node_modules/
 out/
 
