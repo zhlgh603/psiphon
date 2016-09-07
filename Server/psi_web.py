@@ -720,8 +720,10 @@ class ServerInstance(object):
                             ('session_id', tunnel['session_id']),
                             ('tunnel_number', tunnel['tunnel_number']),
                             ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),
+                            # Tunnel Core sends establishment_duration in nanoseconds, divide to get to milliseconds
+                            ('establishment_duration', (int(tunnel['establishment_duration']) / 1000000)),
                             ('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
-                            # Tunnel Core sends durations in nanoseconds, divide to get to milliseconds
+                            # Tunnel Core sends duration in nanoseconds, divide to get to milliseconds
                             ('duration', (int(tunnel['duration']) / 1000000)),
                             ('total_bytes_sent', tunnel['total_bytes_sent']),
                             ('total_bytes_received', tunnel['total_bytes_received'])
