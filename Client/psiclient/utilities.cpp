@@ -36,6 +36,9 @@
 #include "osrng.h"
 #include "modes.h"
 #include "hmac.h"
+#include "diagnostic_info.h"
+
+using namespace std::experimental;
 
 
 extern HINSTANCE g_hInst;
@@ -78,27 +81,14 @@ bool ExtractExecutable(
 {
     // Extract executable from resources and write to temporary file
 
-    HRSRC res;
-    HGLOBAL handle = INVALID_HANDLE_VALUE;
     BYTE* data;
     DWORD size;
 
-    res = FindResource(g_hInst, MAKEINTRESOURCE(resourceID), RT_RCDATA);
-    if (!res)
+    if (!GetResourceBytes(resourceID, RT_RCDATA, data, size))
     {
-        my_print(NOT_SENSITIVE, false, _T("ExtractExecutable - FindResource failed (%d)"), GetLastError());
+        my_print(NOT_SENSITIVE, false, _T("ExtractExecutable - GetResourceBytes failed (%d)"), GetLastError());
         return false;
     }
-
-    handle = LoadResource(NULL, res);
-    if (!handle)
-    {
-        my_print(NOT_SENSITIVE, false, _T("ExtractExecutable - LoadResource failed (%d)"), GetLastError());
-        return false;
-    }
-
-    data = (BYTE*)LockResource(handle);
-    size = SizeofResource(NULL, res);
 
     tstring tempPath;
     if (!GetTempPath(tempPath))
@@ -172,8 +162,10 @@ bool ExtractExecutable(
 
 
 // Caller can check GetLastError() on failure
-bool GetTempPath(tstring& path)
+bool GetTempPath(tstring& o_path)
 {
+    o_path.clear();
+
     DWORD ret;
     TCHAR tempPath[MAX_PATH];
     // http://msdn.microsoft.com/en-us/library/aa364991%28v=vs.85%29.aspx notes
@@ -184,13 +176,67 @@ bool GetTempPath(tstring& path)
         return false;
     }
 
-    path = tempPath;
+    o_path = tempPath;
+    return true;
+}
+
+
+// Makes an absolute path to a unique temp directory.
+// If `create` is true, the directory will also be created.
+// Returns true on success, false otherwise. Caller can check GetLastError() on failure.
+bool GetUniqueTempDir(tstring& o_path, bool create)
+{
+    o_path.clear();
+
+    tstring tempPath;
+    if (!GetTempPath(tempPath)) 
+    {
+        return false;
+    }
+
+    tstring guid;
+    if (!MakeGUID(guid)) 
+    {
+        return false;
+    }
+
+    auto tempDir = filesystem::path(tempPath).append(guid);
+
+    if (create && !CreateDirectory(tempDir.tstring().c_str(), NULL)) {
+        return false;
+    }
+
+    o_path = tempDir.tstring();
+
+    return true;
+}
+
+
+// Makes a GUID string. Returns true on success, false otherwise.
+bool MakeGUID(tstring& o_guid) {
+    o_guid.clear();
+
+    GUID g;
+    if (CoCreateGuid(&g) != S_OK) 
+    {
+        return false;
+    }
+
+    TCHAR guidString[128];
+
+    if (StringFromGUID2(g, guidString, sizeof(guidString)/sizeof(TCHAR)) <= 0) 
+    {
+        return false;
+    }
+
+    o_guid = guidString;
+    
     return true;
 }
 
 
 // Caller can check GetLastError() on failure
-bool GetShortPathName(const tstring& path, tstring& shortPath)
+bool GetShortPathName(const tstring& path, tstring& o_shortPath)
 {
     DWORD ret = GetShortPathName(path.c_str(), NULL, 0);
     if (ret == 0)
@@ -204,7 +250,7 @@ bool GetShortPathName(const tstring& path, tstring& shortPath)
         delete[] buffer;
         return false;
     }
-    shortPath = buffer;
+    o_shortPath = buffer;
     delete[] buffer;
     return true;
 }
@@ -350,14 +396,20 @@ bool TestForOpenPort(int& targetPort, int maxIncrement, const StopInfo& stopInfo
 
 void StopProcess(DWORD processID, HANDLE process)
 {
-    GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, processID);
-    if (WAIT_OBJECT_0 != WaitForSingleObject(process, 100))
+    // TODO: AttachConsole/FreeConsole sequence not threadsafe?
+    if (AttachConsole(processID))
     {
-        if (!TerminateProcess(process, 0) ||
-            WAIT_OBJECT_0 != WaitForSingleObject(process, TERMINATE_PROCESS_WAIT_MS))
+        GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, processID);
+        FreeConsole();
+        if (WAIT_OBJECT_0 == WaitForSingleObject(process, 100))
         {
-            my_print(NOT_SENSITIVE, false, _T("TerminateProcess failed for process with PID %d"), processID);
+            return;
         }
+    }
+    if (!TerminateProcess(process, 0) ||
+        WAIT_OBJECT_0 != WaitForSingleObject(process, TERMINATE_PROCESS_WAIT_MS))
+    {
+        my_print(NOT_SENSITIVE, false, _T("TerminateProcess failed for process with PID %d"), processID);
     }
 }
 
@@ -641,7 +693,7 @@ bool WriteRegistryStringValue(const string& name, const wstring& value, Registry
     HKEY key = 0;
     LONG returnCode = 0;
     reason = REGISTRY_FAILURE_NO_REASON;
-    wstring wName = NarrowToTString(name);
+    wstring wName = UTF8ToWString(name);
 
     if (ERROR_SUCCESS != (returnCode = RegCreateKeyEx(
         HKEY_CURRENT_USER,
@@ -734,7 +786,7 @@ bool ReadRegistryStringValue(LPCSTR name, wstring& value)
     DWORD bufferLength = 0;
     wchar_t* buffer = 0;
     DWORD type;
-    wstring wName = NarrowToTString(name);
+    wstring wName = UTF8ToWString(name);
 
     if (ERROR_SUCCESS == RegOpenKeyEx(
                             HKEY_CURRENT_USER,
@@ -958,30 +1010,6 @@ string Dehexlify(const string& input)
     return output;
 }
 
-wstring EscapeSOCKSArg(const char* input)
-{
-    DWORD length = strlen(input);
-    string output;
-    output.reserve(2 * length);
-    for (size_t i = 0; i < length; ++i)
-    {
-        const char c = input[i];
-        /* From goptlib.git/args.go:
-
-        "If any [k=v] items are provided, they are configuration parameters for the
-        proxy: Tor should separate them with semicolons ... If a key or value value
-        must contain [an equals sign or] a semicolon or a backslash, it is escaped
-        with a backslash."
-        */
-        if(c == '=' || c == ';' || c == '\\')
-        {
-            output.push_back('\\');
-        }
-        output.push_back(c);
-    }
-    return NarrowToTString(output).c_str();
-}
-
 
 // Adapted from:
 // http://stackoverflow.com/questions/154536/encode-decode-urls-in-c
@@ -1082,6 +1110,225 @@ tstring GetISO8601DatetimeString()
         systime.wMilliseconds);
 
     return ret;
+}
+
+
+static wstring g_uiLocale;
+void SetUiLocale(const wstring& uiLocale)
+{
+    g_uiLocale = uiLocale;
+}
+
+wstring GetDeviceRegion()
+{
+    // There are a few different indicators of the device region, none of which
+    // are perfect. So we'll look at what indicators we have and take a best guess.
+
+    //
+    // Read the system dialing code and convert to a country code.
+    // Based on comparing user feedback language to dialing code, we have found
+    // that dialing code is correct about 65% of the time.
+    //
+
+    // Multiple countries can have the same dialing code (such as 
+    // the US, Canada, and Puerto Rico all using '1'), so we'll need
+    // a vector of possibilities.
+    vector<wstring> dialingCodeCountries;
+
+    wstring countryDialingCode;
+    if (GetCountryDialingCode(countryDialingCode)
+        && countryDialingCode.length() > 0)
+    {
+        BYTE* countryDialingCodesBytes = 0;
+        DWORD countryDialingCodesLen = 0;
+        if (GetResourceBytes(
+            _T("COUNTRY_DIALING_CODES.JSON"), RT_RCDATA,
+            countryDialingCodesBytes, countryDialingCodesLen))
+        {
+            Json::Value json;
+            Json::Reader reader;
+
+            string utf8JSON((char*)countryDialingCodesBytes, countryDialingCodesLen);
+            bool parsingSuccessful = reader.parse(utf8JSON, json);
+            if (parsingSuccessful)
+            {
+                // Sometimes (for some reason) the country dialing code given by the system
+                // has an additional trailing digit. So we'll also match against a truncated
+                // version of that value. If we don't get a match on the full value, we'll
+                // use the matches on the truncated value.
+                wstring countryDialingCodeTruncated;
+                vector<wstring> dialingCodeCountriesTruncatedMatch;
+                if (countryDialingCode.length() > 1)
+                {
+                    countryDialingCodeTruncated = countryDialingCode.substr(0, countryDialingCode.length() - 1);
+                }
+
+                for (const Json::Value& entry : json)
+                {
+                    wstring entryDialingCode = UTF8ToWString(entry.get("dialing_code", "").asString());
+                    if (!entryDialingCode.empty() 
+                        && entryDialingCode == countryDialingCode)
+                    {
+                        wstring entryCountryCode = UTF8ToWString(entry.get("country_code", "").asString());
+                        if (!entryCountryCode.empty())
+                        {
+                            std::transform(entryCountryCode.begin(), entryCountryCode.end(), entryCountryCode.begin(), ::toupper);
+                            dialingCodeCountries.push_back(entryCountryCode);
+                        }
+                    }
+
+                    if (!entryDialingCode.empty()
+                        && entryDialingCode == countryDialingCodeTruncated)
+                    {
+                        wstring entryCountryCode = UTF8ToWString(entry.get("country_code", "").asString());
+                        if (!entryCountryCode.empty())
+                        {
+                            std::transform(entryCountryCode.begin(), entryCountryCode.end(), entryCountryCode.begin(), ::toupper);
+                            dialingCodeCountriesTruncatedMatch.push_back(entryCountryCode);
+                        }
+                    }
+                }
+
+                if (dialingCodeCountries.empty() && !dialingCodeCountriesTruncatedMatch.empty())
+                {
+                    // We failed to match on the full country dialing code, but
+                    // we did get matches on the truncated form.
+                    dialingCodeCountries = dialingCodeCountriesTruncatedMatch;
+                }
+            }
+            else
+            {
+                my_print(NOT_SENSITIVE, true, _T("%s:%d: Failed to parse country dialing codes JSON"), __TFUNCTION__, __LINE__);
+            }
+        }
+        else
+        {
+            my_print(NOT_SENSITIVE, true, _T("%s:%d: Failed to load country dialing codes JSON resource"), __TFUNCTION__, __LINE__);
+        }
+    }
+    else
+    {
+        my_print(NOT_SENSITIVE, true, _T("%s:%d: GetCountryDialingCode failed"), __TFUNCTION__, __LINE__);
+    }
+
+    // At this point, dialingCodeCountries either has a value or is unusable.
+    
+    //
+    // Derive region from UI locale.
+    //
+
+    // Country information defaults to "US", so that tells us very little.
+    const wstring GENERIC_COUNTRY = L"US";
+
+    wstring uiLocaleUpper = g_uiLocale;
+    std::transform(uiLocaleUpper.begin(), uiLocaleUpper.end(), uiLocaleUpper.begin(), ::toupper);
+
+    // This is hand-wavy, imperfect, and will need to be expanded in the future.
+    std::map<wstring, wstring> localeToCountryMap = { 
+        { L"AR", L"SA" },
+        { L"EN", L"US" },
+        { L"FA", L"IR" },
+        { L"RU", L"RU" },
+        { L"TK", L"TM" },
+        { L"TR", L"TR" },
+        { L"VI", L"VN" },
+        { L"ZH", L"CN" },
+    };
+
+    wstring uiLocaleCountry = localeToCountryMap[uiLocaleUpper];
+
+    //
+    // Combine values to make best guess.
+    //
+
+    // If we have a non-generic dialing code country, use that.
+    // We'll prefer using this over the locale, because many of our two-letter
+    // locale/language codes (e.g., "FA") might be used by multiple countries
+    // (e.g., Iran, Afghanistan, Tajikistan, Uzbekistan, etc.).
+
+    auto genericCountryPos = std::find(
+        dialingCodeCountries.begin(), dialingCodeCountries.end(),
+        GENERIC_COUNTRY);
+    bool genericCountryInDialingCodeCountries = (genericCountryPos != dialingCodeCountries.end());
+    if (!dialingCodeCountries.empty() && !genericCountryInDialingCodeCountries)
+    {
+        // We'll use the locale to help us pick which among the dialing code countries
+        // we should use.
+
+        auto localePos = std::find(
+            dialingCodeCountries.begin(), dialingCodeCountries.end(),
+            uiLocaleCountry);
+
+        if (!uiLocaleCountry.empty() && localePos != dialingCodeCountries.end())
+        {
+            my_print(NOT_SENSITIVE, true, _T("%s:%d: uiLocaleCountry found in dialingCodeCountries: %s"), __TFUNCTION__, __LINE__, (*localePos).c_str());
+            return *localePos;
+        }
+
+        // The locale didn't help, and there's no other way of distinguishing
+        // between the matched countries, so just use the first one.
+        my_print(NOT_SENSITIVE, true, _T("%s:%d: using first dialingCodeCountries: %s"), __TFUNCTION__, __LINE__, (*dialingCodeCountries.begin()).c_str());
+        return *dialingCodeCountries.begin();
+    }
+
+    // If we have a UI locale value, use it, even if it's generic.
+    if (!uiLocaleCountry.empty())
+    {
+        my_print(NOT_SENSITIVE, true, _T("%s:%d: using uiLocaleCountry: %s"), __TFUNCTION__, __LINE__, uiLocaleCountry.c_str());
+        return uiLocaleCountry;
+    }
+
+    // We have no info to work with.
+    my_print(NOT_SENSITIVE, true, _T("%s:%d: uiLocaleCountry and dialingCodeCountries are empty"), __TFUNCTION__, __LINE__);
+    return L"";
+}
+
+
+/*
+Resource Utilities
+*/
+
+bool GetResourceBytes(DWORD name, DWORD type, BYTE*& o_pBytes, DWORD& o_size)
+{
+    return GetResourceBytes(MAKEINTRESOURCE(name), MAKEINTRESOURCE(type), o_pBytes, o_size);
+}
+
+bool GetResourceBytes(DWORD name, LPCTSTR type, BYTE*& o_pBytes, DWORD& o_size)
+{
+    return GetResourceBytes(MAKEINTRESOURCE(name), type, o_pBytes, o_size);
+}
+
+bool GetResourceBytes(LPCTSTR name, DWORD type, BYTE*& o_pBytes, DWORD& o_size)
+{
+    return GetResourceBytes(name, MAKEINTRESOURCE(type), o_pBytes, o_size);
+}
+
+bool GetResourceBytes(LPCTSTR name, LPCTSTR type, BYTE*& o_pBytes, DWORD& o_size)
+{
+    o_pBytes = NULL;
+    o_size = 0;
+
+    HRSRC res;
+    HGLOBAL handle = INVALID_HANDLE_VALUE;
+
+    res = FindResource(g_hInst, name, type);
+    if (!res)
+    {
+        my_print(NOT_SENSITIVE, false, _T("GetResourceBytes - FindResource failed (%d)"), GetLastError());
+        return false;
+    }
+
+    handle = LoadResource(NULL, res);
+    if (!handle)
+    {
+        my_print(NOT_SENSITIVE, false, _T("GetResourceBytes - LoadResource failed (%d)"), GetLastError());
+        return false;
+    }
+
+    o_pBytes = (BYTE*)LockResource(handle);
+    o_size = SizeofResource(NULL, res);
+
+    return true;
 }
 
 

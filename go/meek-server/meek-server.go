@@ -62,6 +62,7 @@ const DEFAULT_REDIS_DISCOVERY_EXPIRE_SECONDS = 60 * 5
 type Config struct {
 	Port                                int
 	ListenTLS                           bool
+	Fronted                             bool
 	CookiePrivateKeyBase64              string
 	ObfuscatedKeyword                   string
 	LogFilename                         string
@@ -77,6 +78,8 @@ type Config struct {
 	ThrottleSleepMilliseconds           int
 	ThrottleMaxPayloadSizeMultiple      float64
 	ThrottleRegions                     map[string]bool
+	AllowedRegions                      map[string]bool
+	ForcePsiphonServerAddress           string
 }
 
 type ClientSessionData struct {
@@ -97,6 +100,7 @@ type Session struct {
 	LastSeen            time.Time
 	BytesTransferred    int64
 	IsThrottled         bool
+	IsThrottledSeverely bool
 	meekSessionKeySent  bool
 }
 
@@ -176,8 +180,10 @@ func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *
 	session.BytesTransferred += requestBodySize
 
 	throttle := dispatcher.config.ThrottleThresholdBytes > 0 &&
-		session.IsThrottled &&
-		session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes
+		((session.IsThrottled &&
+			session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes) ||
+			(session.IsThrottledSeverely &&
+				session.BytesTransferred >= dispatcher.config.ThrottleThresholdBytes/10))
 
 	if session.meekProtocolVersion >= MEEK_PROTOCOL_VERSION_2 && session.meekSessionKeySent == false {
 		http.SetCookie(responseWriter, sessionCookie)
@@ -197,9 +203,15 @@ func (dispatcher *Dispatcher) relayPayload(sessionCookie *http.Cookie, session *
 		reponseMaxPayloadLength := MAX_PAYLOAD_LENGTH
 
 		if throttle {
-			time.Sleep(
-				time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
-			reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
+			if session.IsThrottledSeverely {
+				time.Sleep(
+					time.Duration(dispatcher.config.ThrottleSleepMilliseconds*10) * time.Millisecond)
+				reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple / 10)
+			} else {
+				time.Sleep(
+					time.Duration(dispatcher.config.ThrottleSleepMilliseconds) * time.Millisecond)
+				reponseMaxPayloadLength = int(float64(reponseMaxPayloadLength) * dispatcher.config.ThrottleMaxPayloadSizeMultiple)
+			}
 		}
 
 		buf := make([]byte, reponseMaxPayloadLength)
@@ -350,7 +362,7 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return
 	}
 
-	clientSessionData, err := parseCookieJSON(cookieJson)
+	clientSessionData, err := dispatcher.parseCookieJSON(cookieJson)
 	if err != nil {
 		return
 	}
@@ -360,14 +372,30 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 		return
 	}
 
+	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
+
+	if geoIpData != nil {
+		if len(dispatcher.config.AllowedRegions) > 0 {
+			_, ok := dispatcher.config.AllowedRegions[geoIpData.Region]
+			if !ok {
+				err = fmt.Errorf("GetSession denied access to region '%s'", geoIpData.Region)
+				return
+			}
+		}
+	}
+
 	session = &Session{psiConn: conn, meekProtocolVersion: clientSessionData.MeekProtocolVersion, meekSessionKeySent: false}
 	session.Touch()
-
-	geoIpData := dispatcher.doStats(request, clientSessionData.PsiphonClientSessionId)
 
 	if geoIpData != nil {
 		_, ok := dispatcher.config.ThrottleRegions[geoIpData.Region]
 		session.IsThrottled = ok
+	}
+
+	if session.IsThrottled {
+		if strings.Contains(strings.ToLower(request.UserAgent()), "apache") {
+			session.IsThrottledSeverely = true
+		}
 	}
 
 	dispatcher.lock.Lock()
@@ -385,10 +413,13 @@ func (dispatcher *Dispatcher) GetSession(request *http.Request, cookie string) (
 	return
 }
 
-func parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, err error) {
+func (dispatcher *Dispatcher) parseCookieJSON(cookieJson []byte) (clientSessionData *ClientSessionData, err error) {
 	err = json.Unmarshal(cookieJson, &clientSessionData)
 	if err != nil {
 		err = fmt.Errorf("parseCookieJSON error decoding '%s'", string(cookieJson))
+	}
+	if dispatcher.config.ForcePsiphonServerAddress != "" {
+		clientSessionData.PsiphonServerAddress = dispatcher.config.ForcePsiphonServerAddress
 	}
 	return
 }
@@ -401,7 +432,14 @@ func (dispatcher *Dispatcher) doStats(request *http.Request, psiphonClientSessio
 	// Only use headers when sent through TLS (although we're using
 	// self signed keys in TLS mode, so man-in-the-middle is technically
 	// still possible so "faked stats" is still a risk...?)
-	if dispatcher.config.ListenTLS {
+	if dispatcher.config.ListenTLS || dispatcher.config.Fronted {
+		if geoIpData == nil {
+			ipAddress = request.Header.Get("True-Client-IP")
+			if len(ipAddress) > 0 {
+				geoIpData = dispatcher.geoIpRequest(ipAddress)
+			}
+		}
+
 		if geoIpData == nil {
 			ipAddress = request.Header.Get("X-Forwarded-For")
 			if len(ipAddress) > 0 {

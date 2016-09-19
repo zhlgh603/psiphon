@@ -33,6 +33,8 @@
 #include "embeddedvalues.h"
 #include "utilities.h"
 
+using namespace std::experimental;
+
 
 #define AUTOMATICALLY_ASSIGNED_PORT_NUMBER   0
 #define EXE_NAME                             _T("psiphon-tunnel-core.exe")
@@ -70,7 +72,36 @@ bool CoreTransport::Cleanup()
     if (m_processInfo.hProcess != 0
         && m_processInfo.hProcess != INVALID_HANDLE_VALUE)
     {
-        StopProcess(m_processInfo.dwProcessId, m_processInfo.hProcess);
+        bool stoppedGracefully = false;
+
+        // Allows up to 2 seconds for core process to gracefully shutdown.
+        // This gives it an opportunity to send final status requests, and
+        // to persist tunnel stats that cannot yet be reported.
+        // While waiting, continue to consume core process output.
+        // TODO: AttachConsole/FreeConsole sequence not threadsafe?
+        if (AttachConsole(m_processInfo.dwProcessId))
+        {
+            GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, m_processInfo.dwProcessId);
+            FreeConsole();
+
+            for (int i = 0; i < 2000; i += 10)
+            {
+                ConsumeCoreProcessOutput();
+                if (WAIT_OBJECT_0 == WaitForSingleObject(m_processInfo.hProcess, 10))
+                {
+                    stoppedGracefully = true;
+                    break;
+                }
+            }
+        }
+        if (!stoppedGracefully)
+        {
+            if (!TerminateProcess(m_processInfo.hProcess, 0) ||
+                WAIT_OBJECT_0 != WaitForSingleObject(m_processInfo.hProcess, TERMINATE_PROCESS_WAIT_MS))
+            {
+                my_print(NOT_SENSITIVE, false, _T("TerminateProcess failed for process with PID %d"), m_processInfo.dwProcessId);
+            }
+        }
     }
 
     if (m_processInfo.hProcess != 0
@@ -178,7 +209,7 @@ bool CoreTransport::RequiresStatsSupport() const
 
 tstring CoreTransport::GetSessionID(const SessionInfo& sessionInfo)
 {
-    return NarrowToTString(sessionInfo.GetSSHSessionID());
+    return UTF8ToWString(sessionInfo.GetSSHSessionID());
 }
 
 
@@ -288,33 +319,20 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
         my_print(NOT_SENSITIVE, false, _T("%s - SHGetFolderPath failed (%d)"), __TFUNCTION__, GetLastError());
         return false;
     }
-    if (!PathAppend(path, LOCAL_SETTINGS_APPDATA_SUBDIRECTORY))
-    {
-        my_print(NOT_SENSITIVE, false, _T("%s - PathAppend failed (%d)"), __TFUNCTION__, GetLastError());
-        return false;
-    }
-    tstring dataStoreDirectory = path;
+    filesystem::path appDataPath(path);
 
+    auto dataStoreDirectory = filesystem::path(appDataPath).append(LOCAL_SETTINGS_APPDATA_SUBDIRECTORY);
     if (!CreateDirectory(dataStoreDirectory.c_str(), NULL) && ERROR_ALREADY_EXISTS != GetLastError())
     {
         my_print(NOT_SENSITIVE, false, _T("%s - create directory failed (%d)"), __TFUNCTION__, GetLastError());
         return false;
     }
 
-    tstring tempPath;
-    if (!GetTempPath(tempPath))
-    {
-        my_print(NOT_SENSITIVE, false, _T("%s - GetTempPath failed (%d)"), __TFUNCTION__, GetLastError());
-        return false;
-    }
-
     // Passing short path names for data store directories due to sqlite3 incompatibility
-    // with exetended Unicode characters in paths (e.g., unicode user name in AppData or
+    // with extended Unicode characters in paths (e.g., unicode user name in AppData or
     // Temp path)
     tstring shortDataStoreDirectory;
-    tstring shortTempPath;
-    if (!GetShortPathName(dataStoreDirectory, shortDataStoreDirectory) ||
-        !GetShortPathName(tempPath, shortTempPath))
+    if (!GetShortPathName(dataStoreDirectory, shortDataStoreDirectory))
     {
         my_print(NOT_SENSITIVE, false, _T("%s - GetShortPathName failed (%d)"), __TFUNCTION__, GetLastError());
         return false;
@@ -327,9 +345,10 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     config["SponsorId"] = SPONSOR_ID;
     config["RemoteServerListUrl"] = string("https://") + REMOTE_SERVER_LIST_ADDRESS + "/" + REMOTE_SERVER_LIST_REQUEST_PATH;
     config["RemoteServerListSignaturePublicKey"] = REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY;
-    config["DataStoreDirectory"] = TStringToNarrow(shortDataStoreDirectory);
-    config["DataStoreTempDirectory"] = TStringToNarrow(shortTempPath);
-    config["EnablePeriodicSshKeepAlive"] = true;
+    config["DataStoreDirectory"] = WStringToUTF8(shortDataStoreDirectory);
+    config["UseIndistinguishableTLS"] = true;
+    config["DeviceRegion"] = WStringToUTF8(GetDeviceRegion());
+    config["EmitDiagnosticNotices"] = true;
 
     // Don't use an upstream proxy when in VPN mode. If the proxy is on a private network,
     // we may not be able to route to it. If the proxy is on a public network we prefer not
@@ -371,7 +390,34 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
         // Use whichever region the server entry is located in
         config["EgressRegion"] = "";
 
-        if (!RequestingUrlProxyWithoutTunnel())
+        if (RequestingUrlProxyWithoutTunnel())
+        {
+            // The URL proxy can and will be used while the main tunnel is connected, 
+            // and multiple URL proxies might be used concurrently. Each one may/will
+            // try to open/create the tunnel-core datastore, so conflicts will occur
+            // if they try to use the same datastore directory as the main tunnel or
+            // as each other. So we'll give each one a unique, temporary directory.
+
+            tstring tempDir;
+            if (!GetUniqueTempDir(tempDir, true))
+            {
+                my_print(NOT_SENSITIVE, false, _T("%s - GetUniqueTempDir failed (%d)"), __TFUNCTION__, GetLastError());
+                return false;
+            }
+
+            // Passing short path names for data store directories due to sqlite3 incompatibility
+            // with extended Unicode characters in paths (e.g., unicode user name in AppData or
+            // Temp path).
+            tstring shortTempDir;
+            if (!GetShortPathName(tempDir, shortTempDir))
+            {
+                my_print(NOT_SENSITIVE, false, _T("%s - GetShortPathName failed (%d)"), __TFUNCTION__, GetLastError());
+                return false;
+            }
+
+            config["DataStoreDirectory"] = WStringToUTF8(shortTempDir);
+        }
+        else
         {
             config["EstablishTunnelTimeoutSeconds"] = TEMPORARY_TUNNEL_TIMEOUT_SECONDS;
         }
@@ -381,6 +427,10 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
         config["EgressRegion"] = Settings::EgressRegion();
         config["LocalHttpProxyPort"] = Settings::LocalHttpProxyPort();
         config["LocalSocksProxyPort"] = Settings::LocalSocksProxyPort();
+
+        auto remoteServerListFilename = filesystem::path(dataStoreDirectory)
+                                                    .append(LOCAL_SETTINGS_APPDATA_REMOTE_SERVER_LIST_FILENAME);
+        config["RemoteServerListDownloadFilename"] = WStringToUTF8(remoteServerListFilename.wstring());
     }
 
     ostringstream configDataStream;
@@ -394,15 +444,16 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     // TODO: there's still a remote chance that concurrently spawned url
     // proxy instances could clobber each other's config file?
 
-    if (!PathAppend(path,
-            RequestingUrlProxyWithoutTunnel() ?
-                LOCAL_SETTINGS_APPDATA_URL_PROXY_CONFIG_FILENAME :
-                LOCAL_SETTINGS_APPDATA_CONFIG_FILENAME))
+    auto configPath = filesystem::path(dataStoreDirectory);
+    if (RequestingUrlProxyWithoutTunnel()) 
     {
-        my_print(NOT_SENSITIVE, false, _T("%s - PathAppend failed (%d)"), __TFUNCTION__, GetLastError());
-        return false;
+        configPath.append(LOCAL_SETTINGS_APPDATA_URL_PROXY_CONFIG_FILENAME);
     }
-    configFilename = path;
+    else
+    {
+        configPath.append(LOCAL_SETTINGS_APPDATA_CONFIG_FILENAME);
+    }
+    configFilename = configPath;
 
     if (!WriteFile(configFilename, configDataStream.str()))
     {
@@ -412,13 +463,9 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
 
     if (!RequestingUrlProxyWithoutTunnel())
     {
-        _tcsncpy_s(path, dataStoreDirectory.c_str(), _TRUNCATE);
-        if (!PathAppend(path, LOCAL_SETTINGS_APPDATA_SERVER_LIST_FILENAME))
-        {
-            my_print(NOT_SENSITIVE, false, _T("%s - PathAppend failed (%d)"), __TFUNCTION__, GetLastError());
-            return false;
-        }
-        serverListFilename = path;
+        auto serverListPath = filesystem::path(dataStoreDirectory)
+                                          .append(LOCAL_SETTINGS_APPDATA_SERVER_LIST_FILENAME);
+        serverListFilename = serverListPath;
 
         string serverList = EMBEDDED_SERVER_LIST;
 
@@ -474,7 +521,7 @@ string CoreTransport::GetUpstreamProxyAddress()
         if (!proxyConfig.httpsProxy.empty())
         {
             upstreamProxyAddress <<
-                TStringToNarrow(proxyConfig.httpsProxy) << ":" << proxyConfig.httpsProxyPort;
+				WStringToUTF8(proxyConfig.httpsProxy) << ":" << proxyConfig.httpsProxyPort;
         }
     }
 

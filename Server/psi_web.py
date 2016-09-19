@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright (c) 2011, Psiphon Inc.
+# Copyright (c) 2016, Psiphon Inc.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -49,6 +49,14 @@ import redis
 from datetime import datetime
 from functools import wraps
 import psi_web_patch
+import multiprocessing
+from base64 import b64decode
+from base64 import urlsafe_b64decode
+from OpenSSL.crypto import X509Store, X509StoreContext
+from OpenSSL.crypto import load_certificate
+from OpenSSL.crypto import FILETYPE_PEM
+from OpenSSL.crypto import FILETYPE_ASN1
+from OpenSSL.crypto import verify
 
 # ===== PSINET database ===================================================
 
@@ -58,6 +66,12 @@ import psi_ops_discovery
 
 psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
+# ===== Globals =====
+
+CLIENT_VERIFICATION_REQUIRED = True
+
+# one week TTL
+CLIENT_VERIFICATION_TTL_SECONDS = 60 * 60 * 24 * 7
 
 # ===== Helpers =====
 
@@ -75,6 +89,10 @@ def consists_of(str, characters):
     return 0 == len(filter(lambda x : x not in characters, str))
 
 
+def contains(str, characters):
+    return True in [character in str for character in characters]
+
+
 def is_valid_ip_address(str):
     try:
         socket.inet_aton(str)
@@ -83,19 +101,81 @@ def is_valid_ip_address(str):
         return False
 
 
+# From: http://stackoverflow.com/questions/2532053/validate-a-hostname-string
+#
+# "ensures that each segment
+#    * contains at least one character and a maximum of 63 characters
+#    * consists only of allowed characters
+#    * doesn't begin or end with a hyphen"
+#
+def is_valid_domain(hostname):
+    if len(hostname) > 255:
+        return False
+    if hostname[-1] == ".":
+        hostname = hostname[:-1] # strip exactly one dot from the right, if present
+    allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in hostname.split("."))
+
+
+# "<host>:<port>", where <host> is a domain or IP address
+def is_valid_dial_address(str):
+    strs = string.split(str, ':')
+    if len(strs) != 2:
+        return False
+    if not is_valid_ip_address(strs[0]) and not is_valid_domain(strs[0]):
+        return False
+    if not strs[1].isdigit():
+        return False
+    port = int(strs[1])
+    return port > 0 and port < 65536
+
+
+# "<host>:<port>", where <host> is a domain or IP address and ":<port>" is optional
+def is_valid_host_header(str):
+    return is_valid_dial_address(str) or is_valid_domain(str) or is_valid_ip_address(str)
+
+
+# takes "<host>:<port>" and returns "<host>"
+def get_host(str):
+    return string.split(str, ':', 1)[0]
+
+
 EMPTY_VALUE = '(NONE)'
 
 
 def is_valid_relay_protocol(str):
-    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-OSSH', EMPTY_VALUE]
+    return str in ['VPN', 'SSH', 'OSSH', 'FRONTED-MEEK-OSSH', 'FRONTED-MEEK-HTTP-OSSH', 'UNFRONTED-MEEK-OSSH', 'UNFRONTED-MEEK-HTTPS-OSSH', EMPTY_VALUE]
 
 
-is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})\.(?P<fraction>[0-9]+)(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
+def is_valid_server_entry_source(str):
+    return str in ['EMBEDDED', 'REMOTE', 'DISCOVERY', 'TARGET']
+
+
+is_valid_iso8601_date_regex = re.compile(r'(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})(\.(?P<fraction>[0-9]+))?(?P<timezone>Z|(([-+])([0-9]{2}):([0-9]{2})))')
 def is_valid_iso8601_date(str):
     return is_valid_iso8601_date_regex.match(str) != None
 
+
 def is_valid_boolean_str(str):
     return str in ['0', '1']
+
+
+def is_valid_upstream_proxy_type(value):
+    return isinstance(value, basestring) and value.lower() in ['socks4a', 'socks5', 'http']
+
+
+def is_valid_json_string_array(value):
+    try:
+        string_array = json.loads(value)
+        if not isinstance(string_array, list):
+            return False
+        for item in string_array:
+            if not isinstance(item, basestring):
+                return False
+    except ValueError:
+        return False
+    return True
+
 
 # see: http://code.activestate.com/recipes/496784-split-string-into-n-size-pieces/
 def split_len(seq, length):
@@ -110,6 +190,12 @@ def safe_int(input):
         pass
     return return_value
 
+def decode_base64(data):
+    data = str(data)
+    missing_padding = 4 - len(data) % 4
+    if missing_padding:
+        data += b'='* missing_padding
+    return urlsafe_b64decode(data)
 
 def exception_logger(function):
     @wraps(function)
@@ -121,8 +207,8 @@ def exception_logger(function):
                 syslog.syslog(syslog.LOG_ERR, line)
             raise
     return wrapper
-    
-    
+
+
 # ===== Psiphon Web Server =====
 
 class ServerInstance(object):
@@ -140,14 +226,41 @@ class ServerInstance(object):
         self.server_secret = server_secret
         self.capabilities = capabilities
         self.host_id = host_id
+
         self.COMMON_INPUTS = [
             ('server_secret', lambda x: constant_time_compare(x, self.server_secret)),
             ('propagation_channel_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('sponsor_id', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('client_version', lambda x: consists_of(x, string.digits) or x == EMPTY_VALUE),
-            ('client_platform', lambda x: consists_of(x, string.letters + string.digits + '-._()')),
+            ('client_platform', lambda x: not contains(x, string.whitespace)),
             ('relay_protocol', is_valid_relay_protocol),
             ('tunnel_whole_device', is_valid_boolean_str)]
+
+        self.OPTIONAL_COMMON_INPUTS = [
+            ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('meek_dial_address', is_valid_dial_address),
+            ('meek_resolved_ip_address', is_valid_ip_address),
+            ('meek_sni_server_name', is_valid_domain),
+            ('meek_host_header', is_valid_host_header),
+            ('meek_transformed_host_name', is_valid_boolean_str),
+            ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
+            ('server_entry_source', is_valid_server_entry_source),
+            ('server_entry_timestamp', is_valid_iso8601_date),
+            ('upstream_proxy_type', is_valid_upstream_proxy_type),
+            # Validation note: upstream_proxy_custom_header_names allows arbitrary string values within the array
+            ('upstream_proxy_custom_header_names', is_valid_json_string_array),
+
+            # Obsolete
+            ('fronting_host', is_valid_domain),
+            ('fronting_address', lambda x: is_valid_ip_address(x) or is_valid_domain(x)),
+            ('fronting_resolved_ip_address', is_valid_ip_address),
+            ('fronting_enabled_sni', is_valid_boolean_str),
+            ('fronting_use_http', is_valid_boolean_str),
+            ('substitute_server_name', is_valid_domain),
+            ('substitute_host_header', is_valid_domain)]
+
+
+        self.OPTIONAL_COMMON_INPUT_NAMES = [x for (x, _) in self.OPTIONAL_COMMON_INPUTS]
 
     def _is_request_tunnelled(self, client_ip_address):
         return client_ip_address in ['localhost', '127.0.0.1', self.server_ip_address]
@@ -168,7 +281,11 @@ class ServerInstance(object):
         # database
         # Update: now we also cache GeoIP lookups done outside the tunnel
         client_ip_address = request.remote_addr
-        geoip = psi_geoip.get_unknown()
+        #geoip = psi_geoip.get_unknown()
+        # Use a distinct "Unknown" value to distinguish the case where the request is
+        # tunneled and the session redis has expired,
+        # from the case where the session has been logged with an unknown ('None') region
+        geoip = {'region': 'Unknown', 'city': 'Unknown', 'isp': 'Unknown'}
         if request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
             if not consists_of(client_session_id, string.hexdigits):
@@ -204,7 +321,7 @@ class ServerInstance(object):
         input_values.append(('client_isp', geoip['isp'].replace(' ', '_')))
 
         # Check for each expected input
-        for (input_name, validator) in self.COMMON_INPUTS + additional_inputs:
+        for (input_name, validator) in self.COMMON_INPUTS + self.OPTIONAL_COMMON_INPUTS + additional_inputs:
             try:
                 value = request.params[input_name]
             except KeyError as e:
@@ -227,6 +344,9 @@ class ServerInstance(object):
                     value = 'Unknown'
                 elif input_name == 'tunnel_whole_device':
                     value = '0'
+                elif input_name in self.OPTIONAL_COMMON_INPUT_NAMES:
+                    # Skip this input
+                    continue
                 else:
                     syslog.syslog(
                         syslog.LOG_ERR,
@@ -247,20 +367,53 @@ class ServerInstance(object):
         return input_values
 
     def _log_event(self, event_name, log_values):
-        syslog.syslog(
-            syslog.LOG_INFO,
-            ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value) for (_, value) in log_values]))
-        if event_name not in ['status']:
+        # Note: OPTIONAL_COMMON_INPUTS are excluded from legacy stats
+        if event_name not in ['domain_bytes', 'session']:
+            syslog.syslog(
+                syslog.LOG_INFO,
+                ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value)
+                                        for (name, value) in log_values if name not in self.OPTIONAL_COMMON_INPUT_NAMES]))
+
+        if event_name not in ['status', 'speed', 'routes', 'download']:
             json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
             for key, value in log_values:
                 # convert a number in a string to a long
                 if (type(value) == str or type(value) == unicode) and value.isdigit():
-                    json_log[key] = long(value)
+                    normalizedValue = long(value)
                 # encode unicode to utf8
                 elif type(value) == unicode:
-                    json_log[key] = str(value.encode('utf8'))
+                    normalizedValue = str(value.encode('utf8'))
                 else:
-                    json_log[key] = value
+                    normalizedValue = value
+
+                # Special cases: for ELK performance we record these domain-or-IP
+                # fields as one of two different values based on type; we also
+                # omit port from host:port fields for now.
+                if key == 'fronting_address':
+                    if is_valid_ip_address(normalizedValue):
+                        json_log['fronting_ip_address'] = normalizedValue
+                    else:
+                        json_log['fronting_domain'] = normalizedValue
+                elif key == 'meek_dial_address':
+                    normalizedValue = get_host(normalizedValue)
+                    if is_valid_ip_address(normalizedValue):
+                        json_log['meek_dial_ip_address'] = normalizedValue
+                    else:
+                        json_log['meek_dial_domain'] = normalizedValue
+                elif key == 'meek_host_header':
+                    normalizedValue = get_host(normalizedValue)
+                    json_log['meek_host_header'] = normalizedValue
+                elif key == 'upstream_proxy_type':
+                    # Submitted value could be e.g., "SOCKS5" or "socks5"; log lowercase
+                    normalizedValue = normalizedValue.lower()
+                    json_log['upstream_proxy_type'] = normalizedValue
+                elif key == 'upstream_proxy_custom_header_names':
+                    # Note: upstream_proxy_custom_header_names has been validated with is_valid_json_string_array
+                    normalizedValue = json.dumps([(str(item.encode('utf8')) if type(item) == unicode else item) for item in json.loads(normalizedValue)])
+                    json_log['upstream_proxy_custom_header_names'] = normalizedValue
+                else:
+                    json_log[key] = normalizedValue
+
             syslog.syslog(
                 syslog.LOG_INFO | syslog.LOG_LOCAL0,
                 json.dumps(json_log))
@@ -305,7 +458,7 @@ class ServerInstance(object):
         client_session_id = None
         if request.params.has_key('client_session_id'):
             client_session_id = request.params['client_session_id']
-            
+
         # If the request is tunnelled, we should find a pre-computed
         # ip_address_strategy_value stored in redis by psi_auth.
 
@@ -346,7 +499,7 @@ class ServerInstance(object):
                     event_logger=discovery_logger)
 
         # Report back client region in case client needs to fetch routes file
-        # for his region off a 3rd party 
+        # for his region off a 3rd party
         config['client_region'] = client_region
 
         config['preemptive_reconnect_lifetime_milliseconds'] = \
@@ -387,6 +540,9 @@ class ServerInstance(object):
             psk = psi_psk.set_psk(self.server_ip_address)
             config['l2tp_ipsec_psk'] = psk
             output.append('PSK: %s' % (psk,))
+
+
+        config["server_timestamp"] = datetime.utcnow().isoformat() + 'Z'
 
         # The entire config is JSON encoded and included as well.
 
@@ -479,6 +635,7 @@ class ServerInstance(object):
         if not inputs:
             start_response('404 Not Found', [])
             return []
+
         self._log_event('connected', inputs)
         inputs_lookup = dict(inputs)
 
@@ -522,6 +679,7 @@ class ServerInstance(object):
         if not inputs:
             start_response('404 Not Found', [])
             return []
+
         log_event = 'status' if request.params['connected'] == '1' else 'disconnected'
         self._log_event(log_event,
                          [('relay_protocol', request.params['relay_protocol']),
@@ -554,7 +712,36 @@ class ServerInstance(object):
                     self._log_event('https_requests',
                                     inputs + [('domain', https_req['domain']),
                                               ('count', safe_int(https_req['count']))])
+
+                # Older clients will not send this key in the message body
+                if 'tunnel_stats' in stats.keys():
+                    for tunnel in stats['tunnel_stats']:
+                        self._log_event('session', inputs + [
+                            ('session_id', tunnel['session_id']),
+                            ('tunnel_number', tunnel['tunnel_number']),
+                            ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),] +
+
+                            # Tunnel Core sends establishment_duration in nanoseconds, divide to get to milliseconds
+                            ([('establishment_duration', (int(tunnel['establishment_duration']) / 1000000)),] if 'establishment_duration' in tunnel else []) +
+
+                            [('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
+                            # Tunnel Core sends duration in nanoseconds, divide to get to milliseconds
+                            ('duration', (int(tunnel['duration']) / 1000000)),
+                            ('total_bytes_sent', tunnel['total_bytes_sent']),
+                            ('total_bytes_received', tunnel['total_bytes_received'])
+                        ])
+
+                # Older clients do not send this key
+                if 'host_bytes' in stats.keys():
+                    for domain, bytes in stats['host_bytes'].iteritems():
+                        self._log_event('domain_bytes', inputs + [
+                            ('domain', domain),
+                            ('bytes', bytes)
+                        ])
+
             except:
+                # Note that this response will cause clients to keep trying to send the same stats repeatedly, so bugs in the above code block
+                # can have bad consequences.
                 start_response('403 Forbidden', [])
                 return []
 
@@ -565,6 +752,190 @@ class ServerInstance(object):
         # No action, this request is just for stats logging
         start_response('200 OK', [])
         return []
+
+    @exception_logger
+    def client_verification(self, environ, start_response):
+        SAFTEYNET_CN = 'attest.android.com'
+        PSIPHON3_APK_PACKAGENAMES = ['com.psiphon3', 'com.psiphon3.subscription']
+        # cert of the root certificate authority (GeoTrust Global CA)
+        # which signs the intermediate certificate from Google (GIAG2)
+        GEOTRUST_CERT = '-----BEGIN CERTIFICATE-----\nMIIDVDCCAjygAwIBAgIDAjRWMA0GCSqGSIb3DQEBBQUAMEIxCzAJBgNVBAYTAlVT\nMRYwFAYDVQQKEw1HZW9UcnVzdCBJbmMuMRswGQYDVQQDExJHZW9UcnVzdCBHbG9i\nYWwgQ0EwHhcNMDIwNTIxMDQwMDAwWhcNMjIwNTIxMDQwMDAwWjBCMQswCQYDVQQG\nEwJVUzEWMBQGA1UEChMNR2VvVHJ1c3QgSW5jLjEbMBkGA1UEAxMSR2VvVHJ1c3Qg\nR2xvYmFsIENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2swYYzD9\n9BcjGlZ+W988bDjkcbd4kdS8odhM+KhDtgPpTSEHCIjaWC9mOSm9BXiLnTjoBbdq\nfnGk5sRgprDvgOSJKA+eJdbtg/OtppHHmMlCGDUUna2YRpIuT8rxh0PBFpVXLVDv\niS2Aelet8u5fa9IAjbkU+BQVNdnARqN7csiRv8lVK83Qlz6cJmTM386DGXHKTubU\n1XupGc1V3sjs0l44U+VcT4wt/lAjNvxm5suOpDkZALeVAjmRCw7+OC7RHQWa9k0+\nbw8HHa8sHo9gOeL6NlMTOdReJivbPagUvTLrGAMoUgRx5aszPeE4uwc2hGKceeoW\nMPRfwCvocWvk+QIDAQABo1MwUTAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBTA\nephojYn7qwVkDBF9qn1luMrMTjAfBgNVHSMEGDAWgBTAephojYn7qwVkDBF9qn1l\nuMrMTjANBgkqhkiG9w0BAQUFAAOCAQEANeMpauUvXVSOKVCUn5kaFOSPeCpilKIn\nZ57QzxpeR+nBsqTP3UEaBU6bS+5Kb1VSsyShNwrrZHYqLizz/Tt1kL/6cdjHPTfS\ntQWVYrmm3ok9Nns4d0iXrKYgjy6myQzCsplFAMfOEVEiIuCl6rYVSAlk6l5PdPcF\nPseKUgzbFbS9bZvlxrFUaKnjaZC2mqUPuLk/IH2uSrW4nOQdtqvmlKXBx4Ot2/Un\nhw4EbNX/3aBd7YdStysVAq45pmp06drE57xNNB6pXE0zX5IJL4hmXXeXxx12E6nV\n5fEWCRE11azbJHFwLJhWC9kXtNHjUStedejV0NxPNO3CBWaAocvmMw==\n-----END CERTIFICATE-----\n'
+        # base64 encoded sha256 hash of the license used to sign the android
+        # client (.apk) https://psiphon.ca/en/faq.html#authentic-android
+        #
+        # keytool -printcert -file CERT.RSA
+        # SHA256: 76:DB:EF:15:F6:77:26:D4:51:A1:23:59:B8:57:9C:0D:7A:9F:63:5D:52:6A:A3:74:24:DF:13:16:32:F1:78:10
+        #
+        # echo dtvvFfZ3JtRRoSNZuFecDXqfY11SaqN0JN8TFjLxeBA= | base64 -d | hexdump  -e '32/1 "%02X " "\n"'
+        # 76 DB EF 15 F6 77 26 D4 51 A1 23 59 B8 57 9C 0D 7A 9F 63 5D 52 6A A3 74 24 DF 13 16 32 F1 78 10
+        PSIPHON3_BASE64_CERTHASH = 'dtvvFfZ3JtRRoSNZuFecDXqfY11SaqN0JN8TFjLxeBA='
+
+        global CLIENT_VERIFICATION_REQUIRED
+        global CLIENT_VERIFICATION_TTL_SECONDS
+
+        request = Request(environ)
+
+        # get default inputs for logging
+        get_inputs = self._get_inputs(request, "client_verification")
+        # still log malformed requests for now
+        inputs = get_inputs if get_inputs else []
+
+        if not request.body:
+            start_response('200 OK', [("Content-Type", "application/json")])
+            if CLIENT_VERIFICATION_REQUIRED:
+                return [json.dumps({"client_verification_ttl_seconds":CLIENT_VERIFICATION_TTL_SECONDS})]
+            else:
+                # Send valid empty JSON here.
+                # There is a bug in Android client v.133 that treats JSON parse failure as a 
+                # failure to send payload and sends client into an infinite retry loop
+                return ['{}']
+        else:
+            try:
+                body = json.loads(request.body)
+                status = body['status']
+
+                status_strings = {
+                    0: "API_REQUEST_OK",
+                    1: "API_REQUEST_FAILED",
+                    2: "API_CONNECT_FAILED"
+                }
+
+                status_string = status_strings.get(status, "INVALID_STATUS: expected 0-2, got %d" % status)
+
+                if (status != 0):
+                    # log errors for now
+                    self._log_event("client_verification", inputs + [('safetynet_check',
+                                                                    {
+                                                                        'error_message': status_string,
+                                                                        'payload': body.get('payload', None)
+                                                                    }
+                                                                    )])
+                    start_response('200 OK', [("Content-Type", "application/json")])
+                    return ['{}']
+
+                jwt = body['payload']
+                jwt_parts = jwt.split('.')
+
+                if (len(jwt_parts) == 3):
+                    header = decode_base64(jwt_parts[0])
+                    payload = decode_base64(jwt_parts[1])
+                    signature = decode_base64(jwt_parts[2])
+                else:
+                    # invalid request to /client_verification, log for now
+                    self._log_event("client_verification", inputs + [('safetynet_check',
+                                                                    {
+                                                                        'error_message': 'Invalid request to client_verification, malformed jwt',
+                                                                        'payload': str(jwt)
+                                                                    }
+                                                                    )])
+                    start_response('200 OK', [("Content-Type", "application/json")])
+                    return ['{}']
+
+                jwt_header_obj = json.loads(header)
+                jwt_payload_obj = json.loads(payload)
+
+                # verify cert chain
+                x5c = jwt_header_obj['x5c']
+
+                if (len(x5c) == 0 or len(x5c) > 10):
+                    # invalid cert chain, log for now
+                    # OpenSSL's default maximum chain length is 10
+                    self._log_event("client_verification", inputs + [('safetynet_check',
+                                                                    {
+                                                                        'error_message': 'Invalid certchain of size %d' % len(x5c),
+                                                                        'payload': str(jwt)
+                                                                    }
+                                                                    )])
+                    start_response('200 OK', [("Content-Type", "application/json")])
+                    return ['{}']
+
+                leaf_cert_data = b64decode(x5c[0])
+                leaf_cert = load_certificate(FILETYPE_ASN1, leaf_cert_data)
+                root_cert = load_certificate(FILETYPE_PEM, GEOTRUST_CERT)
+
+                store = X509Store()
+                store.add_cert(root_cert)
+
+                for cert_index in xrange(1,len(x5c)):
+                    intermediate_data = b64decode(x5c[cert_index])
+                    intermediate_cert = load_certificate(FILETYPE_ASN1, intermediate_data)
+                    store.add_cert(intermediate_cert)
+
+                store_ctx = X509StoreContext(store, leaf_cert)
+
+                try:
+                    valid_certchain = store_ctx.verify_certificate()
+                except Exception as e:
+                    valid_certchain = e
+
+                # verify CN
+                components = dict(leaf_cert.get_subject().get_components())
+                valid_CN = components['CN'] == SAFTEYNET_CN
+
+                # verify signature
+                try:
+                    signature_errors = verify(leaf_cert, signature, jwt_parts[0] + '.' + jwt_parts[1], 'sha256')
+                except Exception as e:
+                    signature_errors = e
+
+                # verify apkCertificateDigest
+                valid_apk_cert = (len(jwt_payload_obj['apkCertificateDigestSha256']) > 0 and
+                                    jwt_payload_obj['apkCertificateDigestSha256'][0] == PSIPHON3_BASE64_CERTHASH)
+
+                # verify packagename
+                valid_apk_packagename = jwt_payload_obj['apkPackageName'] in PSIPHON3_APK_PACKAGENAMES
+
+                # convert timestamp from ms to iso format
+                timestamp = datetime.fromtimestamp(jwt_payload_obj['timestampMs']/1000.0).isoformat() + 'Z'
+
+                # both will be error type otherwise
+                is_valid_certchain = valid_certchain == None
+                is_valid_sig = signature_errors == None
+
+                self._log_event("client_verification", inputs +
+                                                    [('safetynet_check',
+                                                    {
+                                                        'apk_certificate_digest_sha256': (jwt_payload_obj['apkCertificateDigestSha256'][0]
+                                                                                            if len(jwt_payload_obj['apkCertificateDigestSha256']) > 0 else ''),
+                                                        'apk_digest_sha256': jwt_payload_obj['apkDigestSha256'],
+                                                        'apk_package_name': jwt_payload_obj['apkPackageName'],
+                                                        'certchain_errors': str(valid_certchain),
+                                                        'cts_profile_match': jwt_payload_obj['ctsProfileMatch'],
+                                                        'extension': jwt_payload_obj['extension'],
+                                                        'nonce': jwt_payload_obj['nonce'],
+                                                        'signature_errors': str(signature_errors),
+                                                        'status': str(status),
+                                                        'status_string': status_string,
+                                                        'valid_cn': valid_CN,
+                                                        'valid_apk_cert': valid_apk_cert,
+                                                        'valid_apk_packagename': valid_apk_packagename,
+                                                        'valid_certchain': is_valid_certchain,
+                                                        'valid_signature': is_valid_sig,
+                                                        'verification_timestamp': timestamp
+                                                    }
+                                                    )])
+            except Exception:
+                try:
+                    payload = json.loads(request.body).get('payload', None)
+                    jwt_parts = payload.split('.')
+                    if len(jwt_parts) != 3:
+                        payload = "JWT does not have 3 parts"
+                    else:
+                        payload = decode_base64(jwt_parts[1])
+                except (AttributeError, ValueError):
+                    payload = "No valid JSON could be decoded in request body"
+                except:
+                    payload = "Payload is not valid base64"
+
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                self._log_event("client_verification", inputs + [('safetynet_check',
+                                                                {
+                                                                    'error_message': 'Exception: %s %s on line %s' % (str(exc_type), str(exc_obj), str(exc_tb.tb_lineno)),
+                                                                    'payload': payload
+                                                                }
+                                                                )])
+        start_response('200 OK', [("Content-Type", "application/json")])
+        return ['{}']
 
     @exception_logger
     def speed(self, environ, start_response):
@@ -689,6 +1060,7 @@ class WebServerThread(threading.Thread):
         while True:
             try:
                 server_instance = ServerInstance(self.ip_address, self.secret, self.capabilities, self.host_id)
+
                 self.server = wsgiserver.CherryPyWSGIServer(
                                 (self.ip_address, int(self.port)),
                                 wsgiserver.WSGIPathInfoDispatcher(
@@ -698,6 +1070,7 @@ class WebServerThread(threading.Thread):
                                      '/routes': server_instance.routes,
                                      '/failed': server_instance.failed,
                                      '/status': server_instance.status,
+                                     '/client_verification': server_instance.client_verification,
                                      '/speed': server_instance.speed,
                                      '/feedback': server_instance.feedback,
                                      '/check': server_instance.check,
@@ -826,7 +1199,7 @@ def main():
     # (presently web server-per-entry since each has its own certificate;
     #  we could, in principle, run one web server that presents a different
     #  cert per IP address)
-    threads_per_server = 60
+    threads_per_server = 30 * multiprocessing.cpu_count()
     if '32bit' in platform.architecture():
         # Only 381 threads can run on 32-bit Linux
         # Assuming 361 to allow for some extra overhead, plus the additional overhead
@@ -849,6 +1222,7 @@ def main():
     except KeyboardInterrupt as e:
         pass
     print 'Stopping...'
+
     for thread in threads:
         thread.stop_server()
         thread.join()
@@ -856,4 +1230,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

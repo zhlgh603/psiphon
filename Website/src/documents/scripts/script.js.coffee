@@ -22,18 +22,6 @@ $ ->
       $(@).prop('href', $(@).prop('href') + window.location.hash)
 
   #
-  # Add the FAQ table of contents
-  # TODO: Statically create at render time
-  #
-  if $('#faq-toc')
-    childTag = $('#faq-toc').data('child-tag')
-    $('.anchor-target').each ->
-      child = $(childTag).appendTo($('#faq-toc'))
-      childLink = $('<a>').appendTo(child)
-      childLink.prop('href', '#' + $(this).prop('id'))
-               .text($(this).data('anchor-text'))
-
-  #
   # Where indicated by a class name, equalize the height of elements in a row.
   # Note that the `equal-height` class cannot be on a column div, but must be
   # on a div inside it.
@@ -60,13 +48,21 @@ $ ->
   #
   banner_img_file = $('.sponsor-banner img').prop('src')
   banner_link_file = $('.sponsor-banner img').data('link-file')
-  $.ajax(type: 'HEAD', url: banner_img_file)
-    .done ->
-      $('.show-if-sponsored').toggleClass('hidden', false)
-      $('.show-if-not-sponsored').toggleClass('hidden', true)
-    .error ->
-      $('.show-if-sponsored').toggleClass('hidden', true)
-      $('.show-if-not-sponsored').toggleClass('hidden', false)
+  if banner_img_file
+    $.ajax(type: 'HEAD', url: banner_img_file)
+      .done ->
+        $('.show-if-sponsored').toggleClass('hidden', false)
+        $('.show-if-not-sponsored').toggleClass('hidden', true)
+      .error ->
+        $('.show-if-sponsored').toggleClass('hidden', true)
+        $('.show-if-not-sponsored').toggleClass('hidden', false)
+  else
+    # Some CDN optimizers detect that the sponsor image is missing and alter the
+    # page source to hide the image element and remove the `src` attribute.
+    # This breaks the test-with-AJAX logic, so we'll also handle the case that
+    # the `src` attribute is absent.
+    $('.show-if-sponsored').toggleClass('hidden', true)
+    $('.show-if-not-sponsored').toggleClass('hidden', false)
 
   #
   # Some copies of the site only offer Windows xor Android builds, so certain
@@ -122,14 +118,19 @@ $ ->
   # If there are dates on the page that should be localized, localize them.
   $('.localize-date').each (idx, elem) ->
     locale = $('html').prop('lang')
+    options = {}
+
     if locale == 'fa'
       # Most Farsi speakers use the Persian calendar
       locale = "#{locale}-u-ca-persian"
+    else if locale == 'zh'
+      # Needed to get something like "2016年5月3日"
+      options = {year: "numeric", month: "long", day: "numeric"}
 
     date = new Date($(elem).text())
 
     # TODO: Are there more special-case calendars? See: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toLocaleDateString
-    $(elem).text(date.toLocaleDateString(locale))
+    $(elem).text(date.toLocaleDateString(locale, options))
 
   if endsWith(window.location.pathname, '/download.html')
     # If the anchor is for the "direct downloads" section, move that section to

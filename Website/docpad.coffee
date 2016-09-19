@@ -3,6 +3,7 @@
 
 url = require('url')
 cheerio = require('cheerio')
+helpers = require('./helpers')
 
 
 docpadConfig = {
@@ -57,7 +58,7 @@ docpadConfig = {
 
     # Enabled languages
     # This is the order in which they will be displayed in the language picker
-    languages: ['en', 'fa', 'ar', 'zh', 'az', 'de', 'el', 'es', 'fr', 'kk', 'ko', 'hr', 'nb', 'pt_PT', 'ru', 'th', 'tk', 'tr', 'ug@Latn', 'uz@cyrillic', 'uz@Latn', 'vi']
+    languages: ['en', 'fa', 'ar', 'zh', 'az', 'de', 'el', 'es', 'fr', 'id', 'kk', 'ko', 'hr', 'nb', 'pt_PT', 'ru', 'th', 'tk', 'tr', 'ug@Latn', 'uz@cyrillic', 'uz@Latn', 'vi']
 
     # Translation file location.
     translation_files:
@@ -84,6 +85,7 @@ docpadConfig = {
       ko: './_locales/ko/messages.json'
       pt_PT: './_locales/pt_PT/messages.json'
       hr: './_locales/hr/messages.json'
+      id: './_locales/id/messages.json'
 
     # Translations will be loaded into this object.
     translations: {}
@@ -164,12 +166,13 @@ docpadConfig = {
       android: '/PsiphonAndroid.apk'
       email: 'get@psiphon3.com'
       playstore: 'https://play.google.com/store/apps/details?id=com.psiphon3'
-      amazonappstore: 'http://www.amazon.com/gp/product/B00FAV9K4Q/ref=mas_pm_Psiphon'
+      playstorePro: 'https://play.google.com/store/apps/details?id=com.psiphon3.subscription'
+      playstoreDevPage: 'https://play.google.com/store/apps/developer?id=Psiphon+Inc.'
 
     # -----------------------------
     # Helper Functions
 
-    # `document` arugment is optional -- if not supplied, @document will be used
+    # `document` argument is optional -- if not supplied, @document will be used
     getPageInfoKeyFromDocument: (document) ->
       if not document
         document = @document
@@ -190,7 +193,7 @@ docpadConfig = {
       return @pageInfo[name]
 
     # The title might need to be translated from a string key.
-    # `document` arugment is optional -- if not supplied, @document will be used
+    # `document` argument is optional -- if not supplied, @document will be used
     getTitle: (document) ->
       if not document
         document = @document
@@ -291,14 +294,14 @@ docpadConfig = {
     rtl_languages: ['ar', 'fa', 'he']
 
 
-    # `document` arugment is optional -- if not supplied, @document will be used
+    # `document` argument is optional -- if not supplied, @document will be used
     isRTL: (document=null) ->
       if not document
         document = @document
       document.language in @rtl_languages
 
 
-    # `document` arugment is optional -- if not supplied, @document will be used
+    # `document` argument is optional -- if not supplied, @document will be used
     ifRTL: (rtlValue, ltrValue='', document=null) ->
       if @isRTL(document) then rtlValue else ltrValue
 
@@ -317,6 +320,7 @@ docpadConfig = {
         "fr": "Français"
         "hr": "Hrvatski"
         "hu": "Magyar"
+        "id": "Bahasa Indonesia"
         "it": "Italiano"
         "ko": "한국말"
         "nl": "Nederlands"
@@ -503,6 +507,9 @@ docpadConfig = {
           throw error
 
       next()
+
+    renderDocument: (opts) ->
+      helpers.handleRenderDocument(opts)
 
 
   # =================================
