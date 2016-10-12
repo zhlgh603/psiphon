@@ -1448,10 +1448,6 @@ public abstract class MainBase {
                         updateServiceStateUI();
                         break;
 
-                    case TunnelManager.MSG_CLIENT_REGION:
-                        m_tunnelState.clientRegion = data.getString(TunnelManager.DATA_TUNNEL_STATE_CLIENT_REGION);
-                        break;
-
                     case TunnelManager.MSG_DATA_TRANSFER_STATS:
                         getDataTransferStatsFromBundle(data);
                         break;
