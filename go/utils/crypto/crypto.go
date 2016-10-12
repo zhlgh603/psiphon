@@ -6,7 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"errors"
-	"golang.org/x/crypto/nacl/box"
+	"github.com/Psiphon-Inc/crypto/nacl/box"
 	mrand "math/rand"
 	"time"
 )
@@ -19,9 +19,9 @@ const OBFUSCATE_MAX_PADDING = 32
 const CLIENT_TO_SERVER_IV = "client_to_server"
 
 type Crypto struct {
-	publicKey          [32]byte
-	privateKey         [32]byte
-	nonce              [24]byte
+	publicKey  [32]byte
+	privateKey [32]byte
+	nonce      [24]byte
 }
 
 func (cr *Crypto) generateKey(seed []byte, keyword []byte, iv []byte) ([]byte, error) {
@@ -175,8 +175,8 @@ func New(pubKey, privKey [32]byte) (cr *Crypto) {
 	var n [24]byte
 
 	return &Crypto{
-		publicKey:          pubKey,
-		privateKey:         privKey,
-		nonce:              n,
+		publicKey:  pubKey,
+		privateKey: privKey,
+		nonce:      n,
 	}
 }
