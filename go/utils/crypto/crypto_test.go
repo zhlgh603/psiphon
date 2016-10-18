@@ -3,7 +3,7 @@ package crypto
 import "testing"
 import "crypto/rand"
 import mrand "math/rand"
-import "golang.org/x/crypto/nacl/box"
+import "github.com/Psiphon-Inc/crypto/nacl/box"
 import "bytes"
 
 func TestCrypto(t *testing.T) {
@@ -22,10 +22,10 @@ func TestCrypto(t *testing.T) {
 
 		//sender
 		encrypted, _ := senderCrypto.Encrypt(payload)
-                obfuscated, _ :=senderCrypto.Obfuscate(encrypted, obfuscationKeyword)
+		obfuscated, _ := senderCrypto.Obfuscate(encrypted, obfuscationKeyword)
 
 		//relay
-                deobfuscated, _ :=senderCrypto.Deobfuscate(obfuscated, obfuscationKeyword)
+		deobfuscated, _ := senderCrypto.Deobfuscate(obfuscated, obfuscationKeyword)
 		decrypted, _ := relayCrypto.Decrypt(deobfuscated)
 		encrypted, _ = relayCrypto.Encrypt(decrypted)
 
