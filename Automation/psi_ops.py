@@ -1451,8 +1451,11 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         # hosts that no longer exist
         # NOTE: This will also call save() only if a host has been removed and
         # __deploy_stats_config_required is set. If hosts have only been disabled, a save()
-        # might not occur. That's OK because the disabled state doesn't need to be saved.
+        # might not occur.
         self.deploy()
+
+        if number_removed == 0 and number_disabled > 0:
+            self.save()
 
         return number_removed, number_disabled
 
@@ -1566,7 +1569,10 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         if not host.meek_server_obfuscated_key:
             host.meek_server_obfuscated_key = binascii.hexlify(os.urandom(psi_ops_install.SSH_OBFUSCATED_KEY_BYTE_LENGTH))
         if not host.meek_cookie_encryption_public_key or not host.meek_cookie_encryption_private_key:
-            keypair = json.loads(subprocess.Popen([os.path.join('.', 'keygenerator.exe')], stdout=subprocess.PIPE).communicate()[0])
+            keygenerator_binary = 'keygenerator.exe'
+            if os.name == 'posix':
+                keygenerator_binary = 'keygenerator'
+            keypair = json.loads(subprocess.Popen([os.path.join('.', keygenerator_binary)], stdout=subprocess.PIPE).communicate()[0])
             host.meek_cookie_encryption_public_key = keypair['publicKey']
             host.meek_cookie_encryption_private_key = keypair['privateKey']
 
@@ -1710,9 +1716,6 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             ossh_port = random.choice([53, 443])
             capabilities = ServerCapabilities()
 
-            # All and only TCS servers support SSH API requests
-            capabilities['ssh-api-requests'] = host.is_TCS
-
             if server_capabilities:
                 capabilities = copy_server_capabilities(server_capabilities)
             elif discovery:
@@ -1750,6 +1753,9 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                 else:
                     ossh_port = 53
                     self.setup_meek_parameters_for_host(host, 443)
+            
+            # All and only TCS servers support SSH API requests
+            capabilities['ssh-api-requests'] = host.is_TCS
 
             server = Server(
                         None,
@@ -2998,7 +3004,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         # - send versions info for upgrades
 
         if is_TCS:
-            return __compartmentalize_data_for_tcs(host_id, discovery_date)
+            return self.__compartmentalize_data_for_tcs(host_id, discovery_date)
 
         copy = PsiphonNetwork(initialize_plugins=False)
 
@@ -3303,12 +3309,13 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                                             server.id,
                                             server.host_id,
                                             server.ip_address,
-                                            None,
+                                            None, # Omit: egress_ip_address 
                                             server.internal_ip_address,
-                                            None,
+                                            None, # Omit: propagation_channel_id 
                                             server.is_embedded,
                                             server.is_permanent,
-                                            server.discovery_date_range)
+                                            server.discovery_date_range,
+                                            server.capabilities)
                                             # Omit: propagation, web server, ssh info
 
         for deleted_server in self.__deleted_servers.itervalues():
@@ -3601,7 +3608,9 @@ def prune_all_propagation_channels():
     psinet = PsiphonNetwork.load(lock=True)
     psinet.show_status()
     try:
-        for propagation_channel in psinet._PsiphonNetwork__propagation_channels.itervalues():
+        propagation_channels = psinet._PsiphonNetwork__propagation_channels.values()
+        random.shuffle(propagation_channels)
+        for propagation_channel in propagation_channels[0:10]:
             number_removed, number_disabled = psinet.prune_propagation_channel_servers(propagation_channel.name)
             sys.stderr.write('Pruned %d servers from %s\n' % (number_removed, propagation_channel.name))
             sys.stderr.write('Disabled %d servers from %s\n' % (number_disabled, propagation_channel.name))
